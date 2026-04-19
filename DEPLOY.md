@@ -1,81 +1,44 @@
 # デプロイ手順
 
-## 前提：初回のみ（Git リポジトリをまだ設定していない場合）
+## URL 早見表
 
-```bash
-cd "C:\Users\User\OneDrive\Desktop\ManColor"
-git init
-git remote add origin https://github.com/<ユーザー名>/<リポジトリ名>.git
-git branch -M main
-```
+| 用途                           | URL                                        |
+| ------------------------------ | ------------------------------------------ |
+| **フロントエンド（遊ぶ場所）** | https://mancolor-static-site.onrender.com/ |
+| **サーバー（疎通確認）**       | https://mancolor.onrender.com              |
+| **GitHub リポジトリ**          | https://github.com/Ryona272/ManColor       |
 
 ---
 
-## コードをアップデートする手順（毎回）
+## アップデート手順（毎回これだけ）
 
-### 1. ビルドを作成する
-
-```bash
-cd "C:\Users\User\OneDrive\Desktop\ManColor"
-npm.cmd run build
 ```
-
-> `dist/` フォルダが更新される。Render の Static Site はここを参照する。
-
-### 2. 変更をステージングしてコミットする
-
-```bash
+npm.cmd run build
 git add .
 git commit -m "update: 変更内容の説明"
-```
-
-> コミットメッセージは日本語でもOK。変更内容がわかるように書くと後で便利。
-> 例: `git commit -m "fix: 強いAIのぐるぐる連鎖読みを追加"`
-
-### 3. GitHub にプッシュする
-
-```bash
 git push origin main
 ```
 
-> 初回プッシュで認証を求められた場合は、GitHub のユーザー名とパスワード（または Personal Access Token）を入力する。
+その後 [Render ダッシュボード](https://dashboard.render.com/) を開く：
 
-### 4. Render にデプロイする
-
-1. [Render ダッシュボード](https://dashboard.render.com/) を開く
-2. **Web Service**（サーバー）を選択 → **Manual Deploy** → **Deploy latest commit**
-3. **Static Site**（フロントエンド）を選択 → **Manual Deploy** → **Deploy latest commit**
-
-> Render を「Auto Deploy」に設定している場合は、プッシュすると自動でデプロイが始まるので手順4は不要。
+- **Static Site** → Manual Deploy → **Deploy latest commit**
+- **Web Service** → Manual Deploy → **Deploy latest commit**（サーバー側を変更した場合のみ）
 
 ---
 
-## コミット履歴を確認する
+## 初回のみ（PCを変えたとき・.gitフォルダが消えたとき）
 
-```bash
-git log --oneline
+```
+git init
+git remote add origin https://github.com/Ryona272/ManColor.git
+git branch -M main
 ```
 
-## 直前のコミットを修正する（まだプッシュ前）
+その後アップデート手順の `git push` を初回だけ以下に変える：
 
-```bash
-git commit --amend -m "修正後のメッセージ"
 ```
-
-## 間違えてコミットしたファイルをなかったことにする（まだプッシュ前）
-
-```bash
-git reset HEAD~1
+git push origin main --force
 ```
-
-## URL 早見表
-
-| 用途                           | URL                                                                                |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| **フロントエンド（遊ぶ場所）** | Render ダッシュボード → Static Site → 上部に表示される `https://xxxx.onrender.com` |
-| **サーバー（疎通確認）**       | `https://mancolor.onrender.com`                                                    |
-
-> Static Site の URL は Render ダッシュボードを開いて、左メニューから **Static Sites** → ManColor のサービスをクリック → 画面上部の青いリンクで確認できる。
 
 ---
 
@@ -88,6 +51,8 @@ git reset HEAD~1
 | Static Site Publish Directory | `dist`                    |
 | `VITE_ROOM_SERVER_HOST`       | `mancolor.onrender.com`   |
 | `VITE_ROOM_SERVER_PORT`       | `443`                     |
+
+---
 
 ## 障害時の切り分け
 

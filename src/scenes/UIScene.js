@@ -24,6 +24,7 @@ export class UIScene extends Phaser.Scene {
     this.onlineScoreAnimationStarted = false;
     this.onlineFinalIntroPlayed = false;
     this.onlineRevealPlayed = false;
+    this.disconnectBar = null;
   }
 
   init(data) {
@@ -146,6 +147,35 @@ export class UIScene extends Phaser.Scene {
     this.rulesButton.on("pointerout", () => this._hideRulesPopup());
     this.rulesOverlay = null;
 
+    // オンライン対戦時のプレイヤー名ラベル
+    const isOnline = this.gameScene._isOnlineRoomMode?.() ?? false;
+    const selfName = this.gameScene.selfPlayerName;
+    const oppName = this.gameScene.oppPlayerName;
+
+    this.oppNameLabel = this.add
+      .text(W / 2, 198, oppName ? `相手: ${oppName}` : "", {
+        fontSize: "26px",
+        color: "#ff9f9f",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 0)
+      .setVisible(isOnline && !!oppName)
+      .setDepth(DEPTH_MESSAGE);
+
+    this.selfNameLabel = this.add
+      .text(W / 2, 1838, selfName ? `あなた: ${selfName}` : "", {
+        fontSize: "26px",
+        color: "#9fd6ff",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 1)
+      .setVisible(isOnline && !!selfName)
+      .setDepth(DEPTH_MESSAGE);
+
     this.refreshFortuneAndDiscard();
     this.gameScene.refreshTurnLaneGuidance?.(
       (this.gameScene.playerTurn ?? true) && this.gameScene.mode === "turn",
@@ -258,6 +288,64 @@ export class UIScene extends Phaser.Scene {
     if (!this.statusText) return;
     this.statusText.setText("");
     this.statusText.setVisible(false);
+  }
+
+  /**
+   * 接続状態バー（画面上部に固定表示）を表示する
+   * severity: 'warning' | 'error' | 'reconnected'
+   */
+  showDisconnectBar(message, severity = "warning") {
+    this.clearDisconnectBar();
+    const W = 1080;
+    const isError = severity === "error";
+    const isReconnected = severity === "reconnected";
+    const bgColor = isError ? 0x991111 : isReconnected ? 0x1a6a50 : 0x8a5500;
+    const borderColor = isError
+      ? 0xff5555
+      : isReconnected
+        ? 0x44cc99
+        : 0xffcc44;
+
+    const container = this.add.container(0, 0);
+    container.setDepth(DEPTH_BANNER_TOP + 1);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(bgColor, 0.96);
+    bg.fillRect(0, 0, W, 52);
+    bg.lineStyle(2, borderColor, 0.85);
+    bg.strokeRect(0, 0, W, 52);
+    container.add(bg);
+
+    const txt = this.add
+      .text(W / 2, 26, message, {
+        fontSize: "24px",
+        color: "#ffffff",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5);
+    container.add(txt);
+
+    this.disconnectBar = container;
+
+    // 警告色の場合はパルスで注意を引く
+    if (!isReconnected) {
+      this.tweens.add({
+        targets: bg,
+        alpha: 0.7,
+        duration: 900,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.InOut",
+      });
+    }
+  }
+
+  clearDisconnectBar() {
+    if (!this.disconnectBar) return;
+    this.disconnectBar.destroy();
+    this.disconnectBar = null;
   }
 
   _handleSurrender() {

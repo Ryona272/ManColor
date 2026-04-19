@@ -34,3 +34,7 @@ npm.cmd run dev:all
 
 npm.cmd run docker:build
 npm.cmd run docker:run
+
+# Google Play Console用
+
+npm.cmd run release:bundle

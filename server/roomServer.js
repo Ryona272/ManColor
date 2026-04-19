@@ -8,6 +8,7 @@ const DEBUG_NEAR_KUTAKUTA = process.env.DEBUG_NEAR_KUTAKUTA === "1";
 const rooms = new Map();
 const clients = new Map();
 const keyToClientId = new Map();
+const matchmakingQueue = new Set();
 
 const httpServer = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
@@ -180,6 +181,7 @@ function getRoomState(code) {
       ready: !!member.ready,
       online: !!member.online,
       role: memberRoleByIndex(index),
+      playerName: member.playerName || "ゲスト",
     })),
   };
 }
@@ -431,6 +433,15 @@ function finishMove(room, role, extraTurn, action) {
 
   if (!extraTurn) {
     room.match.currentTurn = role === "self" ? "opp" : "self";
+  } else {
+    // ぐるぐる: 手番プレイヤーの路に石がなければスキップして相手に渡す
+    const [laneStart, laneEnd] = getLaneRange(role);
+    const hasValidMoves = state.pits
+      .slice(laneStart, laneEnd + 1)
+      .some((pit) => pit.stones.length > 0);
+    if (!hasValidMoves) {
+      room.match.currentTurn = role === "self" ? "opp" : "self";
+    }
   }
   room.match.phase = "turn";
   room.match.actionSeq = (room.match.actionSeq || 0) + 1;
@@ -1029,6 +1040,7 @@ function broadcastMatchState(code) {
 function cleanupClient(clientId) {
   const client = clients.get(clientId);
   if (!client) return;
+  matchmakingQueue.delete(clientId);
 
   if (client.cleanupTimer) {
     clearTimeout(client.cleanupTimer);
@@ -1059,6 +1071,7 @@ function cleanupClient(clientId) {
 function markClientOffline(clientId) {
   const client = clients.get(clientId);
   if (!client) return;
+  matchmakingQueue.delete(clientId);
 
   client.online = false;
   client.ws = null;
@@ -1135,7 +1148,7 @@ function removeClientFromRoom(clientId, notify = true) {
   }
 }
 
-function createRoom(clientId) {
+function createRoom(clientId, playerName) {
   const client = clients.get(clientId);
   if (!client) return;
 
@@ -1146,10 +1159,17 @@ function createRoom(clientId) {
     code = generateRoomCode();
   }
 
+  const safePlayerName =
+    String(playerName || "ゲスト")
+      .trim()
+      .slice(0, 20) || "ゲスト";
+
   const room = {
     code,
     hostId: clientId,
-    members: [{ clientId, ready: false, online: true }],
+    members: [
+      { clientId, ready: false, online: true, playerName: safePlayerName },
+    ],
     match: null,
     rematchVotes: { self: false, opp: false },
   };
@@ -1166,7 +1186,7 @@ function createRoom(clientId) {
   broadcastRoomState(code);
 }
 
-function joinRoom(clientId, roomCode) {
+function joinRoom(clientId, roomCode, playerName) {
   const code = String(roomCode || "")
     .replace(/\D/g, "")
     .slice(0, 4);
@@ -1193,7 +1213,16 @@ function joinRoom(clientId, roomCode) {
   }
 
   removeClientFromRoom(clientId, false);
-  room.members.push({ clientId, ready: false, online: true });
+  const safeJoinName =
+    String(playerName || "ゲスト")
+      .trim()
+      .slice(0, 20) || "ゲスト";
+  room.members.push({
+    clientId,
+    ready: false,
+    online: true,
+    playerName: safeJoinName,
+  });
   client.roomCode = code;
 
   safeSend(client.ws, {
@@ -1239,12 +1268,15 @@ function startMatch(room) {
     const client = clients.get(member.clientId);
     if (!client || !client.online) return;
     const role = getPlayerRole(room, member.clientId);
+    const oppMember = room.members.find((m) => m.clientId !== member.clientId);
     safeSend(client.ws, {
       type: "match_start",
       roomCode: room.code,
       role,
       currentTurn: room.match.currentTurn,
       state: clone(room.match.state),
+      playerName: member.playerName || "ゲスト",
+      oppPlayerName: oppMember?.playerName || "ゲスト",
     });
   });
 
@@ -1326,7 +1358,7 @@ function requestSurrender(clientId) {
 
   // 降参したプレイヤーの相手を取得
   const opponentClientId = room.members.find(
-    (member) => member.clientId !== clientId
+    (member) => member.clientId !== clientId,
   )?.clientId;
 
   if (opponentClientId) {
@@ -1432,12 +1464,12 @@ wss.on("connection", (ws, request) => {
     const messageType = message.type.trim();
 
     if (messageType === "create_room") {
-      createRoom(client.clientId);
+      createRoom(client.clientId, message.playerName);
       return;
     }
 
     if (messageType === "join_room") {
-      joinRoom(client.clientId, message.code);
+      joinRoom(client.clientId, message.code, message.playerName);
       return;
     }
 
@@ -1553,6 +1585,72 @@ wss.on("connection", (ws, request) => {
 
     if (messageType === "request_rematch") {
       requestRematch(client.clientId);
+      return;
+    }
+
+    if (messageType === "join_matchmaking") {
+      matchmakingQueue.delete(client.clientId);
+      removeClientFromRoom(client.clientId, true);
+
+      const safeMatchName =
+        String(message.playerName || "ゲスト")
+          .trim()
+          .slice(0, 20) || "ゲスト";
+      client.playerName = safeMatchName;
+
+      // Find a waiting opponent
+      let waitingId = null;
+      for (const id of matchmakingQueue) {
+        if (id !== client.clientId) {
+          waitingId = id;
+          break;
+        }
+      }
+
+      if (waitingId) {
+        const waitingClient = clients.get(waitingId);
+        if (waitingClient && waitingClient.online) {
+          matchmakingQueue.delete(waitingId);
+          let code = generateRoomCode();
+          while (rooms.has(code)) code = generateRoomCode();
+          const room = {
+            code,
+            hostId: waitingId,
+            members: [
+              {
+                clientId: waitingId,
+                ready: true,
+                online: true,
+                playerName: waitingClient.playerName || "ゲスト",
+              },
+              {
+                clientId: client.clientId,
+                ready: true,
+                online: true,
+                playerName: safeMatchName,
+              },
+            ],
+            match: null,
+            rematchVotes: { self: false, opp: false },
+          };
+          rooms.set(code, room);
+          waitingClient.roomCode = code;
+          client.roomCode = code;
+          startMatch(room);
+          return;
+        }
+        // Waiting client went offline, remove and queue ourselves
+        matchmakingQueue.delete(waitingId);
+      }
+
+      matchmakingQueue.add(client.clientId);
+      safeSend(ws, { type: "matchmaking_waiting" });
+      return;
+    }
+
+    if (messageType === "leave_matchmaking") {
+      matchmakingQueue.delete(client.clientId);
+      safeSend(ws, { type: "matchmaking_left" });
       return;
     }
 

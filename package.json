@@ -13,9 +13,13 @@
     "preview": "vite preview",
     "preview:lan": "vite preview --host 0.0.0.0 --port 3000 --strictPort",
     "cap:sync": "npx cap sync",
-    "cap:android": "npx cap open android"
+    "cap:android": "npx cap open android",
+    "release:bundle": "npm run build && npx cap sync && cd android && gradlew.bat bundleRelease",
+    "release:apk": "npm run build && npx cap sync && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^6.3.1",
+    "firebase": "^12.12.0",
     "phaser": "^3.87.0",
     "ws": "^8.20.0"
   },

@@ -1,4 +1,5 @@
 import { roomClient } from "../net/roomClient.js";
+import { getPlayerName } from "../net/firebaseAuth.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -533,11 +534,7 @@ export class FriendLobbyScene extends Phaser.Scene {
     }
 
     if (message.type === "match_start") {
-      this.scene.start("GameScene", {
-        mode: "online-room",
-        roomCode: message.roomCode,
-        side: message.role,
-      });
+      this._showMatchFoundOverlay(message);
       return;
     }
 
@@ -575,7 +572,9 @@ export class FriendLobbyScene extends Phaser.Scene {
     this.readyButton?.setText(this.isReady ? "準備解除" : "準備完了");
     this.readyButton?.setAlpha(1);
     if (this.memberCountText) {
-      this.memberCountText.setText(`${members.length}/2人  準備 ${readyCount}/2`);
+      this.memberCountText.setText(
+        `${members.length}/2人  準備 ${readyCount}/2`,
+      );
     }
   }
 
@@ -602,7 +601,7 @@ export class FriendLobbyScene extends Phaser.Scene {
       this._showNotice("すでにルーム参加中です");
       return;
     }
-    roomClient.send({ type: "create_room" });
+    roomClient.send({ type: "create_room", playerName: getPlayerName() });
   }
 
   _joinRoom() {
@@ -616,7 +615,11 @@ export class FriendLobbyScene extends Phaser.Scene {
       return;
     }
 
-    roomClient.send({ type: "join_room", code: this.joinCode });
+    roomClient.send({
+      type: "join_room",
+      code: this.joinCode,
+      playerName: getPlayerName(),
+    });
   }
 
   _leaveRoom() {
@@ -690,7 +693,13 @@ export class FriendLobbyScene extends Phaser.Scene {
 
     bar.clear();
     bar.fillStyle(0x5ea8ff, 0.95);
-    bar.fillRoundedRect(x + 2, y + 2, Math.max(8, (width - 4) * ratio), height - 4, 8);
+    bar.fillRoundedRect(
+      x + 2,
+      y + 2,
+      Math.max(8, (width - 4) * ratio),
+      height - 4,
+      8,
+    );
   }
 
   _setConnectionState(state, label) {
@@ -728,5 +737,223 @@ export class FriendLobbyScene extends Phaser.Scene {
     this.connectionDotTimer.remove();
     this.connectionDotTimer = null;
     this.connectionDots = 0;
+  }
+
+  _showMatchFoundOverlay(data) {
+    const W = 1080;
+    const H = 1920;
+    const selfName = data.playerName || "あなた";
+    const oppName = data.oppPlayerName || "相手";
+
+    const container = this.add.container(0, 0).setDepth(9999);
+
+    // 暗転背景
+    const dim = this.add.graphics();
+    dim.fillStyle(0x000000, 0.87);
+    dim.fillRect(0, 0, W, H);
+    container.add(dim);
+
+    // カード
+    const cardBg = this.add.graphics();
+    cardBg.fillStyle(0x0e1829, 0.97);
+    cardBg.lineStyle(4, 0xf0c36a, 0.92);
+    cardBg.fillRoundedRect(W / 2 - 450, H / 2 - 300, 900, 560, 28);
+    cardBg.strokeRoundedRect(W / 2 - 450, H / 2 - 300, 900, 560, 28);
+    container.add(cardBg);
+
+    // タイトル
+    const title = this.add
+      .text(W / 2, H / 2 - 210, "マッチ成立！", {
+        fontSize: "88px",
+        color: "#f0c36a",
+        fontFamily: DISPLAY_FONT,
+        stroke: "#2a1a00",
+        strokeThickness: 10,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setScale(0.6);
+    container.add(title);
+
+    // 区切り線
+    const divider = this.add.graphics();
+    divider.lineStyle(2, 0xf0c36a, 0.4);
+    divider.lineBetween(W / 2 - 380, H / 2 - 100, W / 2 + 380, H / 2 - 100);
+    divider.setAlpha(0);
+    container.add(divider);
+
+    // 自分ラベル
+    const selfLabel = this.add
+      .text(W / 2 - 220, H / 2 - 50, "あなた", {
+        fontSize: "24px",
+        color: "#9fd6ff",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5, 1)
+      .setAlpha(0);
+    container.add(selfLabel);
+
+    // 自分の名前
+    const selfText = this.add
+      .text(W / 2 - 220, H / 2 - 46, selfName, {
+        fontSize: "46px",
+        color: "#c8e8ff",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5, 0)
+      .setAlpha(0);
+    selfText.setX(W / 2 - 380);
+    container.add(selfText);
+
+    // VS
+    const vsText = this.add
+      .text(W / 2, H / 2 + 40, "VS", {
+        fontSize: "80px",
+        color: "#ffffff",
+        fontFamily: DISPLAY_FONT,
+        stroke: "#333333",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setScale(0.5);
+    container.add(vsText);
+
+    // 相手ラベル
+    const oppLabel = this.add
+      .text(W / 2 + 220, H / 2 - 50, "相手", {
+        fontSize: "24px",
+        color: "#ffa0a0",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5, 1)
+      .setAlpha(0);
+    container.add(oppLabel);
+
+    // 相手の名前
+    const oppText = this.add
+      .text(W / 2 + 220, H / 2 - 46, oppName, {
+        fontSize: "46px",
+        color: "#ffc8c8",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5, 0)
+      .setAlpha(0);
+    oppText.setX(W / 2 + 380);
+    container.add(oppText);
+
+    // ヒント
+    const hint = this.add
+      .text(W / 2, H / 2 + 190, "ゲームを開始します...", {
+        fontSize: "30px",
+        color: "#8aabbf",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0);
+    container.add(hint);
+
+    // アニメーション: タイトル pop in
+    this.tweens.add({
+      targets: title,
+      alpha: 1,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 380,
+      ease: "Back.Out",
+    });
+
+    // 区切り線フェードイン
+    this.tweens.add({
+      targets: divider,
+      alpha: 1,
+      duration: 300,
+      delay: 250,
+      ease: "Sine.Out",
+    });
+
+    // VS pop in
+    this.tweens.add({
+      targets: vsText,
+      alpha: 1,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 380,
+      delay: 300,
+      ease: "Back.Out",
+      onComplete: () => {
+        this.tweens.add({
+          targets: vsText,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 200,
+          ease: "Sine.Out",
+        });
+      },
+    });
+
+    // 自分名: 左からスライドイン
+    this.tweens.add({
+      targets: [selfLabel, selfText],
+      alpha: 1,
+      duration: 360,
+      delay: 380,
+      ease: "Sine.Out",
+    });
+    this.tweens.add({
+      targets: selfText,
+      x: W / 2 - 220,
+      duration: 380,
+      delay: 380,
+      ease: "Sine.Out",
+    });
+
+    // 相手名: 右からスライドイン
+    this.tweens.add({
+      targets: [oppLabel, oppText],
+      alpha: 1,
+      duration: 360,
+      delay: 380,
+      ease: "Sine.Out",
+    });
+    this.tweens.add({
+      targets: oppText,
+      x: W / 2 + 220,
+      duration: 380,
+      delay: 380,
+      ease: "Sine.Out",
+    });
+
+    // ヒント: 遅延フェードイン
+    this.tweens.add({
+      targets: hint,
+      alpha: 0.85,
+      duration: 400,
+      delay: 1500,
+      ease: "Sine.Out",
+    });
+
+    // 一定時間後: フェードアウト → GameScene
+    this.time.delayedCall(2600, () => {
+      this.tweens.add({
+        targets: container,
+        alpha: 0,
+        duration: 300,
+        ease: "Sine.In",
+        onComplete: () => {
+          this.scene.start("GameScene", {
+            mode: "online-room",
+            roomCode: data.roomCode,
+            side: data.role,
+            playerName: data.playerName,
+            oppPlayerName: data.oppPlayerName,
+          });
+        },
+      });
+    });
   }
 }

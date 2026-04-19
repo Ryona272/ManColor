@@ -1,6 +1,8 @@
 /**
  * BootScene - アセット読み込みと初期設定
  */
+import { restoreSession } from "../net/firebaseAuth.js";
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: "BootScene" });
@@ -68,7 +70,10 @@ export class BootScene extends Phaser.Scene {
         logo.setScale(0.085);
       }
       loadingText.setText("Loading... 100%");
-      this.time.delayedCall(1800, () => this._startGameOnce());
+      // Firebase セッションを復元してからロビーへ遷移
+      restoreSession().finally(() => {
+        this.time.delayedCall(1800, () => this._startGameOnce());
+      });
     });
 
     // Fallback: if loading stalls for any reason, continue anyway.

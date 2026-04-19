@@ -1,3 +1,11 @@
+import {
+  getPlayerName,
+  setPlayerName,
+  getStoredUser,
+  signInWithGoogle,
+  signOut,
+} from "../net/firebaseAuth.js";
+
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
 
@@ -5,6 +13,8 @@ export class LobbyScene extends Phaser.Scene {
   constructor() {
     super({ key: "LobbyScene" });
     this.noticeText = null;
+    this._playerNameText = null;
+    this._authButtonText = null;
   }
 
   create() {
@@ -57,8 +67,7 @@ export class LobbyScene extends Phaser.Scene {
       title: "ランダム対戦",
       sub: "オンラインで自動マッチ",
       fill: 0x7a3f45,
-      onClick: () =>
-        this._showNotice("ランダムマッチは友達対戦の次に実装します"),
+      onClick: () => this.scene.start("RandomLobbyScene"),
     });
 
     this.noticeText = this.add
@@ -69,6 +78,8 @@ export class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setAlpha(0.95);
+
+    this._createPlayerPanel(W, H);
   }
 
   _drawBackground(W, H) {
@@ -247,5 +258,206 @@ export class LobbyScene extends Phaser.Scene {
       duration: 1400,
       ease: "Sine.Out",
     });
+  }
+
+  _createPlayerPanel(W, H) {
+    const panelY = 1650;
+    const panelH = 220;
+
+    // パネル背景
+    const g = this.add.graphics();
+    g.fillStyle(0x1a2030, 0.85);
+    g.lineStyle(2, 0xe5d5b1, 0.3);
+    g.fillRoundedRect(W / 2 - 460, panelY, 920, panelH, 20);
+    g.strokeRoundedRect(W / 2 - 460, panelY, 920, panelH, 20);
+
+    // アバター円
+    const avatarG = this.add.graphics();
+    avatarG.fillStyle(0x2e4f7a, 1);
+    avatarG.fillCircle(W / 2 - 360, panelY + panelH / 2, 52);
+    this.add
+      .text(W / 2 - 360, panelY + panelH / 2, "👤", {
+        fontSize: "48px",
+      })
+      .setOrigin(0.5);
+
+    // プレイヤー名
+    this._playerNameText = this.add
+      .text(W / 2 - 280, panelY + 58, getPlayerName(), {
+        fontSize: "46px",
+        color: "#f4deb1",
+        fontFamily: DISPLAY_FONT,
+      })
+      .setOrigin(0, 0.5);
+
+    // 「✎ 名前を変更」ボタン
+    const editBtn = this.add
+      .text(W / 2 - 280, panelY + 120, "✎ 名前を変更", {
+        fontSize: "26px",
+        color: "#88aacc",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0, 0.5)
+      .setInteractive({ useHandCursor: true });
+    editBtn.on("pointerover", () => editBtn.setColor("#aaccee"));
+    editBtn.on("pointerout", () => editBtn.setColor("#88aacc"));
+    editBtn.on("pointerdown", () => this._showNameEditDialog());
+
+    // Google ログイン / ログアウトボタン
+    const isSignedIn = !!getStoredUser();
+    this._authButtonText = this.add
+      .text(
+        W / 2 + 370,
+        panelY + panelH / 2,
+        isSignedIn ? "ログアウト" : "Googleでログイン",
+        {
+          fontSize: "26px",
+          color: isSignedIn ? "#cc8888" : "#88ccaa",
+          fontFamily: UI_FONT,
+        },
+      )
+      .setOrigin(1, 0.5)
+      .setInteractive({ useHandCursor: true });
+
+    this._authButtonText.on("pointerdown", () => this._handleAuthButton());
+  }
+
+  _refreshPlayerPanel() {
+    if (this._playerNameText) {
+      this._playerNameText.setText(getPlayerName());
+    }
+    if (this._authButtonText) {
+      const isSignedIn = !!getStoredUser();
+      this._authButtonText.setText(
+        isSignedIn ? "ログアウト" : "Googleでログイン",
+      );
+      this._authButtonText.setColor(isSignedIn ? "#cc8888" : "#88ccaa");
+    }
+  }
+
+  async _handleAuthButton() {
+    if (getStoredUser()) {
+      // ログアウト
+      await signOut();
+      this._showNotice("ログアウトしました");
+      this._refreshPlayerPanel();
+    } else {
+      // Google ログイン
+      try {
+        this._authButtonText?.setText("ログイン中...");
+        const user = await signInWithGoogle();
+        this._showNotice(
+          `ようこそ、${user.displayName || getPlayerName()} さん！`,
+        );
+        this._refreshPlayerPanel();
+      } catch (e) {
+        this._authButtonText?.setText("Googleでログイン");
+        this._showNotice(e.message || "ログインに失敗しました");
+      }
+    }
+  }
+
+  _showNameEditDialog() {
+    const W = 1080;
+    const H = 1920;
+    const objs = [];
+
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.72);
+    overlay.setInteractive();
+    objs.push(overlay);
+
+    const panelG = this.add.graphics();
+    panelG.fillStyle(0x1a2535, 0.98);
+    panelG.lineStyle(2, 0xe5d5b1, 0.5);
+    panelG.fillRoundedRect(W / 2 - 380, 740, 760, 440, 24);
+    panelG.strokeRoundedRect(W / 2 - 380, 740, 760, 440, 24);
+    objs.push(panelG);
+
+    objs.push(
+      this.add
+        .text(W / 2, 820, "プレイヤー名を変更", {
+          fontSize: "38px",
+          color: "#e6decf",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5),
+    );
+
+    // 入力欄（DOM input）
+    const inputEl = document.createElement("input");
+    inputEl.type = "text";
+    inputEl.maxLength = 20;
+    inputEl.value = getPlayerName();
+    inputEl.style.cssText = [
+      "position:fixed",
+      "left:50%",
+      "top:54%",
+      "transform:translate(-50%,-50%)",
+      "width:460px",
+      "padding:14px 18px",
+      "font-size:28px",
+      "font-family:Yu Gothic UI,sans-serif",
+      "background:#0e1520",
+      "color:#f4deb1",
+      "border:2px solid #e5d5b1",
+      "border-radius:10px",
+      "outline:none",
+      "z-index:9999",
+      "text-align:center",
+    ].join(";");
+    document.body.appendChild(inputEl);
+    inputEl.focus();
+    inputEl.select();
+
+    const cleanup = () => {
+      document.body.removeChild(inputEl);
+      objs.forEach((o) => o.destroy());
+    };
+
+    // 確定ボタン
+    const confirmG = this.add.graphics();
+    confirmG.fillStyle(0x2e6652, 0.9);
+    confirmG.lineStyle(2, 0xf2dfbe, 0.7);
+    confirmG.fillRoundedRect(W / 2 - 200, 1020, 400, 90, 16);
+    confirmG.strokeRoundedRect(W / 2 - 200, 1020, 400, 90, 16);
+    objs.push(confirmG);
+
+    const confirmT = this.add
+      .text(W / 2, 1065, "決定", {
+        fontSize: "40px",
+        color: "#fff8e6",
+        fontFamily: DISPLAY_FONT,
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    objs.push(confirmT);
+
+    const confirm = () => {
+      const newName = inputEl.value.trim().slice(0, 20);
+      if (newName) {
+        setPlayerName(newName);
+        this._refreshPlayerPanel();
+        this._showNotice(`名前を「${newName}」に変更しました`);
+      }
+      cleanup();
+    };
+
+    confirmT.on("pointerdown", confirm);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") confirm();
+      if (e.key === "Escape") cleanup();
+    });
+
+    objs.push(
+      this.add
+        .text(W / 2, 1150, "キャンセル", {
+          fontSize: "28px",
+          color: "#8899bb",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", cleanup),
+    );
   }
 }

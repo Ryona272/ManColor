@@ -78,6 +78,8 @@ export class GameScene extends Phaser.Scene {
     this.rematchRequestedLocal = false;
     this.personalFortunesRevealedSticky = false;
     this.aiDifficulty = "normal";
+    this._initialConnectionEstablished = false;
+    this._connectionErrorCount = 0;
   }
 
   init(data) {
@@ -96,8 +98,13 @@ export class GameScene extends Phaser.Scene {
     this.rematchRequestedLocal = false;
     this.personalFortunesRevealedSticky = false;
     this.aiDifficulty = data?.aiDifficulty ?? "normal";
+    this._initialConnectionEstablished = false;
+    this._connectionErrorCount = 0;
     // 強いAI用: プレイヤー行動の観察メモ
     this._aiMemo = { playerColorFreq: {}, inferredPlayerColor: null };
+    // プレイヤー名 (オンライン対戦用)
+    this.selfPlayerName = data?.playerName ?? null;
+    this.oppPlayerName = data?.oppPlayerName ?? null;
   }
 
   requestOnlineRematch() {
@@ -224,6 +231,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this._isOnlineRoomMode()) {
+      this._initialConnectionEstablished = false;
+      this._connectionErrorCount = 0;
       this.waitingForInitialSync = true;
       this.onlineInputLockUntil = this.time.now + 1700;
       this.roomUnsubscribe = roomClient.subscribe((message) => {
@@ -1705,6 +1714,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 自分の路に石があるときだけぐるぐる。なければAIへ手番を渡す
+    const playerHasMoves = [0, 1, 2, 3, 4].some(
+      (i) => this.gameState.getState().pits[i].stones.length > 0,
+    );
+    if (!playerHasMoves) {
+      this.playerTurn = false;
+      const ui = this.scene.get("UIScene");
+      ui.clearCenterBanner();
+      ui.updateTurnDisplay(this.playerTurn);
+      this.time.delayedCall(1200, () => this._aiTurn());
+      return;
+    }
     this._announceTechnique("ぐるぐる！", 0x6ab4e8, "もう一度あなたのターン！");
     this.scene.get("UIScene").updateTurnDisplay(this.playerTurn);
   }
@@ -1981,12 +2002,18 @@ export class GameScene extends Phaser.Scene {
 
   _aiTurn() {
     if (this._isOnlineRoomMode()) return;
+    if (this.mode === "final-phase") return;
 
     const state = this.gameState.getState();
     const validPits = [6, 7, 8, 9, 10].filter(
       (i) => state.pits[i].stones.length > 0,
     );
     if (validPits.length === 0) {
+      // 相手の路が全て空 — 終了判定を優先する
+      if (this.gameState.isGameOver()) {
+        this.scene.get("UIScene").showResult();
+        return;
+      }
       this.playerTurn = true;
       this.scene.get("UIScene").updateTurnDisplay(this.playerTurn);
       return;
@@ -2624,6 +2651,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (extraTurn) {
+      // 相手の路に石があるときだけぐるぐる。なければプレイヤーへ手番を渡す
+      const aiHasMoves = [6, 7, 8, 9, 10].some(
+        (i) => this.gameState.getState().pits[i].stones.length > 0,
+      );
+      if (!aiHasMoves) {
+        this.playerTurn = true;
+        const ui = this.scene.get("UIScene");
+        ui?.clearCenterBanner();
+        ui.updateTurnDisplay(this.playerTurn);
+        return;
+      }
       this._announceTechnique("ぐるぐる！", 0xe87070, "もう一度相手のターン！");
       this.time.delayedCall(1100, () => this._aiTurn());
       return;
@@ -2736,27 +2774,65 @@ export class GameScene extends Phaser.Scene {
     if (!this._isOnlineRoomMode()) return;
     if (!message || typeof message.type !== "string") return;
 
+    if (message.type === "client_connecting") {
+      // 初回接続試み中はステータステキストで小さく示す
+      if (!this._initialConnectionEstablished) {
+        this.scene.get("UIScene")?.setStatusMessage("接続中…", "#d7e8ff");
+      }
+      return;
+    }
+
     if (message.type === "client_close") {
       this.onlineMovePending = false;
       this.waitingForInitialSync = true;
       this.onlineInputLockUntil = this.time.now + 10000;
       const ui = this.scene.get("UIScene");
-      ui?.showCenterBanner("再接続中", 0xffd77a, "通信の復帰を待っています");
-      ui?.setStatusMessage("通信切断中", "#ffd7d7");
+      if (this._initialConnectionEstablished) {
+        // 対戦中に切断 — パーシステントな警告バーを表示
+        this._connectionErrorCount = 0;
+        ui?.clearCenterBanner?.();
+        ui?.clearStatusMessage?.();
+        ui?.showDisconnectBar?.(
+          "通信が切断されました — 再接続しています…",
+          "warning",
+        );
+      } else {
+        // 初回接続失敗 — バーは出さずステータステキストのみ
+        ui?.setStatusMessage("接続中…", "#d7e8ff");
+      }
+      return;
+    }
+
+    if (message.type === "client_error") {
+      this._connectionErrorCount = (this._connectionErrorCount ?? 0) + 1;
+      // 5回連続失敗したらエラーバーに昇格
+      if (this._connectionErrorCount >= 5) {
+        this.scene
+          .get("UIScene")
+          ?.showDisconnectBar?.(
+            "サーバーに接続できません — ネットワークを確認してください",
+            "error",
+          );
+      }
       return;
     }
 
     if (message.type === "client_open") {
+      this._connectionErrorCount = 0;
+      const isReconnect = this._initialConnectionEstablished;
+      this._initialConnectionEstablished = true;
       this.waitingForInitialSync = true;
       this.onlineInputLockUntil = this.time.now + 2500;
       this._requestRoomSync();
       const ui = this.scene.get("UIScene");
-      ui?.showCenterBanner(
-        "再接続完了",
-        0x9fd6ff,
-        "ルーム状態を同期しています",
-      );
-      ui?.setStatusMessage("再接続中...", "#d7e8ff");
+      if (isReconnect) {
+        // 再接続成功 — バーを「再接続完了」色に切り替え（同期完了で消える）
+        ui?.showDisconnectBar?.("再接続しました — 同期中…", "reconnected");
+      } else {
+        // 初回接続成功 — バーは不要、ステータスのみ小さく表示
+        ui?.clearDisconnectBar?.();
+        ui?.setStatusMessage("同期中…", "#d7e8ff");
+      }
       return;
     }
 
@@ -2967,6 +3043,7 @@ export class GameScene extends Phaser.Scene {
       phase === "final-phase" &&
       !!this.onlineFinalPhase;
     const shouldHandleAsEnded = ended || isOnlineFinalPhase;
+    this.scene.get("UIScene")?.clearDisconnectBar?.();
     this.scene.get("UIScene")?.clearStatusMessage?.();
 
     // 全フェーズ共通: stale な配置ペンディングをクリア

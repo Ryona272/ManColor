@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene.js";
 import { LobbyScene } from "./scenes/LobbyScene.js";
 import { FriendLobbyScene } from "./scenes/FriendLobbyScene.js";
+import { RandomLobbyScene } from "./scenes/RandomLobbyScene.js";
 import { GameScene } from "./scenes/GameScene.js";
 import { UIScene } from "./scenes/UIScene.js";
 
@@ -15,7 +16,14 @@ const config = {
     width: 1080,
     height: 1920,
   },
-  scene: [BootScene, LobbyScene, FriendLobbyScene, GameScene, UIScene],
+  scene: [
+    BootScene,
+    LobbyScene,
+    FriendLobbyScene,
+    RandomLobbyScene,
+    GameScene,
+    UIScene,
+  ],
 };
 
 export default new Phaser.Game(config);
