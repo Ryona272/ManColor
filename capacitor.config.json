@@ -1,0 +1,11 @@
+{
+  "appId": "com.mancolor.game",
+  "appName": "ManColor",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "minWebViewVersion": 60
+  }
+}
