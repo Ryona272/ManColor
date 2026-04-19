@@ -18,8 +18,8 @@
     "release:apk": "npm run build && npx cap sync && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
-    "@capacitor-firebase/authentication": "^6.3.1",
-    "firebase": "^12.12.0",
+    "@capacitor-firebase/authentication": "^7.0.0",
+    "firebase": "^11.2.0",
     "phaser": "^3.87.0",
     "ws": "^8.20.0"
   },
