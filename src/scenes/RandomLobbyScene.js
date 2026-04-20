@@ -74,6 +74,17 @@ export class RandomLobbyScene extends Phaser.Scene {
     this.unsubscribe = roomClient.subscribe((msg) => this._handleMessage(msg));
     roomClient.connect();
 
+    // roomClient がすでに接続済みの場合は client_open が発火しないため
+    // 直接マッチングリクエストを送る
+    if (roomClient.connected) {
+      this._setConnectionState("connected");
+      roomClient.send({
+        type: "join_matchmaking",
+        playerName: getPlayerName(),
+      });
+      this._refreshStatusText();
+    }
+
     this.events.once("shutdown", () => {
       this._cleanup();
     });
