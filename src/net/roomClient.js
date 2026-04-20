@@ -67,6 +67,7 @@ class RoomClient {
     this.reconnectTimer = null;
     this.listeners = new Set();
     this.guaranteedQueue = [];
+    this._pingTimer = null;
   }
 
   resolveUrl() {
@@ -101,11 +102,13 @@ class RoomClient {
     this.ws.addEventListener("open", () => {
       this.connected = true;
       this.flushGuaranteedQueue();
+      this._startPing();
       this.emit({ type: "client_open" });
     });
 
     this.ws.addEventListener("close", () => {
       this.connected = false;
+      this._stopPing();
       this.emit({ type: "client_close" });
       this.ws = null;
       if (!this.manualClose) {
@@ -124,6 +127,7 @@ class RoomClient {
 
   disconnect() {
     this.manualClose = true;
+    this._stopPing();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -133,6 +137,20 @@ class RoomClient {
       this.ws = null;
     }
     this.connected = false;
+  }
+
+  _startPing() {
+    this._stopPing();
+    this._pingTimer = window.setInterval(() => {
+      this.send({ type: "ping" });
+    }, 25000);
+  }
+
+  _stopPing() {
+    if (this._pingTimer) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
+    }
   }
 
   scheduleReconnect() {

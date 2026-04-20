@@ -292,8 +292,8 @@ export class LobbyScene extends Phaser.Scene {
 
     // 「✎ 名前を変更」ボタン
     const editBtn = this.add
-      .text(W / 2 - 280, panelY + 120, "✎ 名前を変更", {
-        fontSize: "26px",
+      .text(W / 2 - 280, panelY + 122, "✎ 名前を変更", {
+        fontSize: "34px",
         color: "#88aacc",
         fontFamily: UI_FONT,
       })

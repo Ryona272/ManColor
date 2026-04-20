@@ -14,12 +14,13 @@ export class FriendLobbyScene extends Phaser.Scene {
     this.isReady = false;
     this.noticeText = null;
     this.connectionText = null;
-    this.connectionMeterBg = null;
-    this.connectionMeterBar = null;
-    this.connectionMeterPosition = null;
     this.connectionState = "connecting";
-    this.connectionDots = 0;
-    this.connectionDotTimer = null;
+    this.spinGraphics = null;
+    this._spinTrack = null;
+    this.spinTween = null;
+    this.spinAngle = 0;
+    this.connectionStatusText = null;
+    this._everConnected = false;
     this.roomPanel = null;
     this.roomStatusText = null;
     this.memberCountText = null;
@@ -70,7 +71,7 @@ export class FriendLobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this._drawConnectionMeter(W);
+    this._drawConnectionSpinner(W);
     this._setConnectionState("connecting", "");
 
     this._restoreJoinCode();
@@ -650,93 +651,89 @@ export class FriendLobbyScene extends Phaser.Scene {
     roomClient.send({ type: "set_ready", ready: !this.isReady });
   }
 
-  _drawConnectionMeter(W) {
-    const x = W / 2 - 180;
-    const y = 1160;
-    const width = 360;
-    const height = 18;
+  _drawConnectionSpinner(W) {
+    const cx = W / 2;
+    const cy = 1245;
+    const r = 50;
 
-    this.connectionMeterBg = this.add.graphics();
-    this.connectionMeterBg.fillStyle(0x0a1829, 0.9);
-    this.connectionMeterBg.fillRoundedRect(x, y, width, height, 10);
-    this.connectionMeterBg.lineStyle(2, 0x608bbd, 0.55);
-    this.connectionMeterBg.strokeRoundedRect(x, y, width, height, 10);
+    const track = this.add.graphics();
+    track.lineStyle(8, 0x1e3456, 1);
+    track.strokeCircle(cx, cy, r);
+    this._spinTrack = track;
 
-    this.connectionMeterBar = this.add.graphics();
-    this.connectionMeterBar.fillStyle(0x5ea8ff, 0.95);
-    this.connectionMeterBar.fillRoundedRect(x + 2, y + 2, 0, height - 4, 8);
+    this.spinGraphics = this.add.graphics();
+    this._drawSpinnerArc(0);
 
-    this.connectionMeterPosition = { x, y, width, height };
+    this.spinTween = this.tweens.addCounter({
+      from: 0,
+      to: 360,
+      duration: 1100,
+      repeat: -1,
+      ease: "Linear",
+      onUpdate: (tween) => {
+        this.spinAngle = tween.getValue();
+        this._drawSpinnerArc(this.spinAngle);
+      },
+    });
+
+    this.connectionStatusText = this.add
+      .text(cx, cy + 76, "接続中...", {
+        fontSize: "36px",
+        color: "#8da7c7",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5);
   }
 
-  _refreshConnectionMeter(state) {
-    const bar = this.connectionMeterBar;
-    if (!bar || !this.connectionMeterPosition) return;
-
-    const { x, y, width, height } = this.connectionMeterPosition;
-    let ratio = 0;
-    switch (state) {
-      case "connected":
-        ratio = 1;
-        break;
-      case "connecting":
-        ratio = 0.5;
-        break;
-      case "reconnecting":
-        ratio = 0.25;
-        break;
-      case "error":
-      default:
-        ratio = 0.08;
-        break;
-    }
-
-    bar.clear();
-    bar.fillStyle(0x5ea8ff, 0.95);
-    bar.fillRoundedRect(
-      x + 2,
-      y + 2,
-      Math.max(8, (width - 4) * ratio),
-      height - 4,
-      8,
-    );
+  _drawSpinnerArc(angleDeg) {
+    const g = this.spinGraphics;
+    if (!g) return;
+    const cx = 1080 / 2;
+    const cy = 1245;
+    const r = 50;
+    g.clear();
+    g.lineStyle(8, 0x5ea8ff, 1);
+    const startRad = Phaser.Math.DegToRad(angleDeg - 90);
+    const endRad = Phaser.Math.DegToRad(angleDeg + 210);
+    g.beginPath();
+    g.arc(cx, cy, r, startRad, endRad, false);
+    g.strokePath();
   }
 
   _setConnectionState(state, label) {
     this.connectionState = state;
-    this._refreshConnectionMeter(state);
-    this._updateMeterVisibility(state);
 
-    if (state === "connecting" || state === "reconnecting") {
-      this._startConnectionDots();
-    } else {
-      this._stopConnectionDots();
+    if (state === "connected") {
+      this._everConnected = true;
     }
-  }
 
-  _updateMeterVisibility(state) {
-    const isConnecting = state === "connecting" || state === "reconnecting";
-    this.connectionMeterBg?.setVisible(isConnecting);
-    this.connectionMeterBar?.setVisible(isConnecting);
-  }
+    // スピナーは初回接続中のみ表示。一度つながったあとは出さない
+    const showSpinner = !this._everConnected && state === "connecting";
 
-  _startConnectionDots() {
-    if (this.connectionDotTimer) return;
-    this.connectionDots = 0;
-    this.connectionDotTimer = this.time.addEvent({
-      delay: 400,
-      loop: true,
-      callback: () => {
-        this.connectionDots = (this.connectionDots + 1) % 4;
-      },
-    });
-  }
+    this._spinTrack?.setVisible(showSpinner);
+    this.spinGraphics?.setVisible(showSpinner);
+    if (showSpinner) {
+      this.spinTween?.resume();
+    } else {
+      this.spinTween?.pause();
+    }
 
-  _stopConnectionDots() {
-    if (!this.connectionDotTimer) return;
-    this.connectionDotTimer.remove();
-    this.connectionDotTimer = null;
-    this.connectionDots = 0;
+    if (this.connectionStatusText) {
+      if (showSpinner) {
+        this.connectionStatusText.setText("接続中...");
+        this.connectionStatusText.setColor("#8da7c7");
+        this.connectionStatusText.setVisible(true);
+      } else {
+        this.connectionStatusText.setVisible(false);
+      }
+    }
+
+    // 再接続・エラーは通知テキストで控えめに知らせる
+    if (state === "reconnecting") {
+      this._showNotice("再接続中...");
+    } else if (state === "error" && this._everConnected) {
+      this._showNotice("接続が切れました");
+    }
   }
 
   _showMatchFoundOverlay(data) {

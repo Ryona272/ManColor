@@ -37,7 +37,25 @@ export async function signInWithGoogle() {
   if (!Capacitor.isNativePlatform()) {
     throw new Error("Google Sign-In はアプリ版のみ対応しています");
   }
-  const result = await FirebaseAuthentication.signInWithGoogle();
+  let result;
+  try {
+    result = await FirebaseAuthentication.signInWithGoogle();
+  } catch (e) {
+    const msg = String(e?.message ?? "");
+    console.error("[firebaseAuth] signInWithGoogle failed:", msg, e);
+    if (
+      msg.includes("No credential available") ||
+      msg.includes("no credential") ||
+      msg.includes("NoCredentialException")
+    ) {
+      // Play Store 内部テストの場合は Play App Signing の SHA 証明書フィンガープリントを
+      // Firebase コンソール → プロジェクト設定 → アプリ → SHA に登録する必要があります。
+      throw new Error(
+        "Googleログインに失敗しました。\nFirebaseコンソールに Play App Signing の SHA フィンガープリントが登録されているか確認してください。",
+      );
+    }
+    throw new Error(`Googleログインに失敗しました（${msg || "不明なエラー"}）`);
+  }
   _storeUser(result.user);
   // カスタム名未設定なら Google 名をデフォルトにする
   if (!localStorage.getItem(PLAYER_NAME_KEY) && result.user?.displayName) {

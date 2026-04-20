@@ -1654,6 +1654,11 @@ wss.on("connection", (ws, request) => {
       return;
     }
 
+    if (messageType === "ping") {
+      safeSend(ws, { type: "pong" });
+      return;
+    }
+
     safeSend(ws, { type: "error", message: `未対応のtype: ${messageType}` });
   });
 
