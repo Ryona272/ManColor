@@ -2045,8 +2045,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 強いAI: ターン開始時に相手の意図を更新
-    if (this.aiDifficulty === "hard") {
+    // 強い/鬼AI: ターン開始時に相手の意図を更新
+    if (
+      this.aiDifficulty === "hard" ||
+      this.aiDifficulty === "oni" ||
+      this.aiDifficulty === "oni-sente" ||
+      this.aiDifficulty === "oni-gote"
+    ) {
       this._aiUpdateMemo(state);
     }
 
@@ -2388,8 +2393,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 鬼AI: 強いAIのスコアリングに加え、2手先読み（プレイヤー応手ペナルティ）と
-   * くたくたセットアップボーナスを追加した撒き路選択
+   * 鬼AI: プレイヤーぐるぐる連鎖の積極的破壊、ちらちら優先度大幅強化、
+   * 占い色収集強化、2手先読みプレイヤー応手ペナルティ
    */
   _aiPickPitOni(validPits, state) {
     const inferred = this._aiMemo.inferredPlayerColor;
@@ -2407,6 +2412,12 @@ export class GameScene extends Phaser.Scene {
       if (state.pits[px].stones.length === 0) emptyPlayerPits.add(px);
     }
 
+    // プレイヤーが今すぐぐるぐるできる手数を事前計算
+    const playerGuruguruNow = [0, 1, 2, 3, 4].filter((q) => {
+      const cnt = state.pits[q].stones.length;
+      return cnt > 0 && (q + cnt) % 12 === 5;
+    }).length;
+
     let best = validPits[0];
     let bestScore = -Infinity;
 
@@ -2415,13 +2426,27 @@ export class GameScene extends Phaser.Scene {
       const lastPit = (p + count) % 12;
       let score = 0;
 
+      // 全手で盤面シミュレーション（ぐるぐる破壊評価に使う）
+      const { pits: pitsAfter } = this._aiSimulateSow(state.pits, p);
+
+      // ─── プレイヤーのぐるぐる連鎖を積極的に破壊するボーナス ───
+      if (playerGuruguruNow > 0) {
+        let playerGuruguruAfter = 0;
+        for (let q = 0; q <= 4; q++) {
+          const cnt = pitsAfter[q].stones.length;
+          if (cnt > 0 && (q + cnt) % 12 === 5) playerGuruguruAfter++;
+        }
+        const disrupted = playerGuruguruNow - playerGuruguruAfter;
+        if (disrupted > 0) score += disrupted * 22;
+      }
+
       // ─── ぐるぐる ───
       if (lastPit === 11) {
         score += 22;
-        const { pits: pitsAfter } = this._aiSimulateSow(state.pits, p);
         score += this._aiEvalFollowupOpp(pitsAfter) * 1.2;
-        // 2手先: プレイヤーの応手ペナルティ
-        score -= this._aiEvalFollowupSelf(pitsAfter) * 0.55;
+        // プレイヤー応手ペナルティ（現在の脅威レベルに応じて重みを増やす）
+        const playerThreatMult = 0.6 + playerGuruguruNow * 0.35;
+        score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
         // くたくたセットアップチェック
         const colorsAfter = new Set();
         for (let lIdx = 6; lIdx <= 10; lIdx++) {
@@ -2431,19 +2456,23 @@ export class GameScene extends Phaser.Scene {
       }
 
       // ─── pit5着地（ちらちら/ぽいぽい） ───
+      // ちらちらは情報収集として最重要。残り回数があるうちはぐるぐるより高優先
       if (lastPit === 5) {
         const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
-        if (peeksDone < 2) {
-          score += 14; // 情報収集フェーズ: ちらちらを重視
-        } else if (peeksDone === 2) {
-          score += 12; // 3回目: ぽいぽいも選択肢に
-        } else {
+        if (peeksDone === 0)
+          score += 32; // 1回目: 最優先
+        else if (peeksDone === 1)
+          score += 26; // 2回目
+        else if (peeksDone === 2)
+          score += 20; // 3回目
+        else {
+          // 3回消費済み → ぽいぽい価値を数値化
           const playerStoreHasFortune =
             inferred && state.pits[5].stones.some((s) => s.color === inferred);
           score += playerStoreHasFortune
-            ? 22
+            ? 26
             : state.pits[5].stones.length > 0
-              ? 8
+              ? 10
               : 3;
         }
       }
@@ -2461,10 +2490,9 @@ export class GameScene extends Phaser.Scene {
           if (ownFortune && s.color === ownFortune) score += 8;
           if (inferred && s.color === inferred) score += 6;
         }
-        const { pits: pitsAfterZaku } = this._aiSimulateSow(state.pits, p);
-        score += this._aiEvalFollowupOpp(pitsAfterZaku) * 0.8;
-        // 2手先ペナルティ
-        score -= this._aiEvalFollowupSelf(pitsAfterZaku) * 0.5;
+        score += this._aiEvalFollowupOpp(pitsAfter) * 0.8;
+        const playerThreatMult = 0.5 + playerGuruguruNow * 0.3;
+        score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
       }
 
       // ─── ざくざく防御 ───
@@ -2489,14 +2517,14 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // ─── 石の色評価 ───
+      // ─── 石の色評価（占い色重視・推測色妨害強化） ───
       for (let i = 0; i < count; i++) {
         const landingPit = (p + 1 + i) % 12;
         const stoneColor = state.pits[p].stones[i]?.color;
         if (!stoneColor) continue;
         if (landingPit === 11) {
-          if (ownFortune && stoneColor === ownFortune) score += 9;
-          if (inferred && stoneColor === inferred) score += 14;
+          if (ownFortune && stoneColor === ownFortune) score += 18; // 9 → 18
+          if (inferred && stoneColor === inferred) score += 24; // 14 → 24
           if (knownNeg && stoneColor === knownNeg) {
             const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
             if (matchInPlayerStore === 0) score -= 20;
@@ -2504,7 +2532,7 @@ export class GameScene extends Phaser.Scene {
           if ((playerStoreColorCount[stoneColor] ?? 0) > 0) score += 5;
         }
         if (inferred && stoneColor === inferred && landingPit === 5)
-          score -= 12;
+          score -= 18; // 12 → 18
         if (ownFortune && stoneColor === ownFortune && landingPit === 5)
           score -= 6;
       }
