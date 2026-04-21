@@ -2590,6 +2590,10 @@ export class GameScene extends Phaser.Scene {
     const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
     const knownNeg = this._aiKnownNegativeColor();
     const knownPos = this._aiKnownPositiveColors();
+    const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+    // 序盤フェーズ: ちらちら未実施かつ推測色不明 → 情報収集・相手色合わせに集中
+    // 中盤以降（inferred確定 or peeksDone≥2）: ぐるぐる重視・カラー評価フル活用
+    const isEarlyGame = peeksDone < 2 && !inferred && knownPos.length === 0;
 
     const playerStoreColorCount = {};
     for (const s of state.pits[5].stones) {
@@ -2630,10 +2634,11 @@ export class GameScene extends Phaser.Scene {
       }
 
       // ─── ぐるぐる ───
+      // 序盤は情報収集優先のため控えめ、中盤以降は積極的に狙う
       if (lastPit === 11) {
         const chainCount = this._aiCountGuruguruChain(pitsAfter);
-        score += 22 + chainCount * 14;
-        score += this._aiEvalFollowupOpp(pitsAfter) * 1.2;
+        score += isEarlyGame ? 14 + chainCount * 10 : 28 + chainCount * 16;
+        score += this._aiEvalFollowupOpp(pitsAfter) * (isEarlyGame ? 0.8 : 1.3);
         const playerThreatMult = 0.6 + playerGuruguruNow * 0.35;
         score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
         const colorsAfter = new Set();
@@ -2643,11 +2648,10 @@ export class GameScene extends Phaser.Scene {
         if (colorsAfter.size <= 2 && colorsAfter.size > 0) score += 18;
       }
 
-      // ─── pit5着地（ちらちら/ぽいぽい）─── 情報収集は最優先
+      // ─── pit5着地（ちらちら/ぽいぽい）─── 情報収集は最優先（序盤は特に重要）
       if (lastPit === 5) {
-        const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
-        if (peeksDone === 0) score += 36;
-        else if (peeksDone === 1) score += 30;
+        if (peeksDone === 0) score += isEarlyGame ? 50 : 36;
+        else if (peeksDone === 1) score += isEarlyGame ? 42 : 30;
         else if (peeksDone === 2) score += 24;
         else {
           const playerStoreHasFortune =
@@ -2708,24 +2712,25 @@ export class GameScene extends Phaser.Scene {
         if (!stoneColor) continue;
 
         if (landingPit === 11) {
-          // 自分の占い色: 最重要
-          if (ownFortune && stoneColor === ownFortune) score += 20;
-          // ちらちらで見たプラス色: 積極的に自賽壇へ収集
-          if (knownPos.includes(stoneColor)) score += 26;
-          // 推測したプレイヤーの占い色: キャンセル目的で入れる
-          if (inferred && stoneColor === inferred) score += 28;
-          // プレイヤー賽壇との枚数比例キャンセルボーナス
-          // 「相手が青を3枚入れてる → 自分も青を入れれば有効キャンセル」
-          const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
-          score += cancelCount * 9; // 1枚+9, 2枚+18, 3枚+27
-          // 否定色（ちらちら確認済み）: 相手も持っていなければ回避
-          if (knownNeg && stoneColor === knownNeg) {
-            const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
-            if (matchInPlayerStore === 0) score -= 22;
+          if (isEarlyGame) {
+            // 序盤: 相手賽壇と同じ色だけ自賽壇へ（確実なキャンセルのみ加点）
+            const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
+            if (cancelCount > 0) score += cancelCount * 14;
+            else score -= 8; // 情報なし色は微ペナルティ
+          } else {
+            // 中盤以降: フル評価
+            if (ownFortune && stoneColor === ownFortune) score += 20;
+            if (knownPos.includes(stoneColor)) score += 26;
+            if (inferred && stoneColor === inferred) score += 28;
+            const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
+            score += cancelCount * 9;
+            if (knownNeg && stoneColor === knownNeg) {
+              const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
+              if (matchInPlayerStore === 0) score -= 22;
+            }
+            if (playerAvoidedColor && stoneColor === playerAvoidedColor)
+              score -= 18;
           }
-          // プレイヤーが避けている色: おそらくマイナス色 → 自賽壇に入れない
-          if (playerAvoidedColor && stoneColor === playerAvoidedColor)
-            score -= 18;
         }
 
         // プレイヤー賽壇に推測占い色・ちらちらプラス色が流れ込まないようにする
