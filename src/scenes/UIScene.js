@@ -242,7 +242,7 @@ export class UIScene extends Phaser.Scene {
       "ゲーム開始時にお互いは手前の占い石を一つ確認する。",
       "この色の石を賽壇に入れると +3点。",
       "相手の見た色の石を賽壇に入れると +5点。",
-      "真ん中に並ぶ３つの占い石は、端の色 +1点・中央 −2点。",
+      "真ん中に並ぶ３つの占い石は、端の色 +1点・中央 −3点。",
       "この３つはちらちらで確認できる。",
     ].join("\n");
 
@@ -1720,6 +1720,7 @@ export class UIScene extends Phaser.Scene {
     const W = 1080;
     const H = 1920;
     const banner = this.add.container(W / 2, H / 2);
+    banner.setDepth(200); // 占い石(depth 0)より前面
     const bg = this.add.graphics();
     bg.fillStyle(0x1a2535, 0.93);
     bg.lineStyle(3, 0xe5d5b1, 0.7);

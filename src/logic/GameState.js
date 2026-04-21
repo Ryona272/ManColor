@@ -61,7 +61,7 @@ export class GameState {
       seenBy: [],
       selfPeekOrder: 0,
       oppPeekOrder: 0,
-      bonus: i === 1 ? -2 : +1, // 中央は-2、左右は+1
+      bonus: i === 1 ? -3 : +1, // 中央は-3、左右は+1
     }));
   }
 

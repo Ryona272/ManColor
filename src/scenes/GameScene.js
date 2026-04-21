@@ -2287,10 +2287,17 @@ export class GameScene extends Phaser.Scene {
           // 否定色が賽壇に入る場合: 相手も同色を持っていれば打ち消し合いでOK
           if (knownNeg && stoneColor === knownNeg) {
             const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
-            if (matchInPlayerStore === 0) score -= 20; // 一方的なマイナス → 回避
+            if (matchInPlayerStore === 0) score -= 26; // 確定マイナス色 → 強く回避
           }
           // 相手の賽壇と同じ色を入れる → 打ち消し合い戦法
-          if ((playerStoreColorCount[stoneColor] ?? 0) > 0) score += 5;
+          const cancelCountHard = playerStoreColorCount[stoneColor] ?? 0;
+          if (cancelCountHard > 0) score += 5;
+          // 情報未確定の色は危険（中央-3点石かもしれない）
+          const isConfirmedHard =
+            (ownFortune && stoneColor === ownFortune) ||
+            (inferred && stoneColor === inferred) ||
+            cancelCountHard > 0;
+          if (!isConfirmedHard) score -= 10;
         }
 
         // プレイヤー賽壇(pit5)に推測占い色が入らないようにする
@@ -2720,7 +2727,7 @@ export class GameScene extends Phaser.Scene {
             // 序盤: 相手賽壇と同じ色だけ自賽壇へ（確実なキャンセルのみ加点）
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if (cancelCount > 0) score += cancelCount * 14;
-            else score -= 8; // 情報なし色は微ペナルティ
+            else score -= 16; // 情報なし色は危険（中央-3点の可能性）
           } else {
             // 中盤以降: フル評価
             if (ownFortune && stoneColor === ownFortune) score += 20;
@@ -2730,10 +2737,17 @@ export class GameScene extends Phaser.Scene {
             score += cancelCount * 9;
             if (knownNeg && stoneColor === knownNeg) {
               const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
-              if (matchInPlayerStore === 0) score -= 22;
+              if (matchInPlayerStore === 0) score -= 32; // 確定マイナス色 → 強く回避
             }
             if (playerAvoidedColor && stoneColor === playerAvoidedColor)
               score -= 18;
+            // 情報未確定の色: 中央-3点石の可能性があり危険
+            const isConfirmedSafe =
+              (ownFortune && stoneColor === ownFortune) ||
+              knownPos.includes(stoneColor) ||
+              (inferred && stoneColor === inferred) ||
+              cancelCount > 0;
+            if (!isConfirmedSafe) score -= 14;
           }
         }
 
