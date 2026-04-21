@@ -2188,6 +2188,19 @@ export class GameScene extends Phaser.Scene {
     this._aiMemo.inferredPlayerColor = sorted[0]?.[0] ?? null;
     // playerAvoidedColor: 確認済みマイナス色（ちらちら情報）のみ使用 — 頻度推測は信頼性が低いため廃止
     this._aiMemo.playerAvoidedColor = this._aiKnownNegativeColor();
+
+    // 自賽壇(pit11)に入っている色で安全確認できていないもの
+    // → 相手が意図的に入れてきた疑いが高い（マイナスを仕込む戦術）
+    const ownFortuneNow = this.gameState.getFortuneColorForPlayer("opp");
+    const knownPosNow = this._aiKnownPositiveColors();
+    const suspiciousMyStoreColors = {};
+    for (const s of state.pits[11].stones) {
+      if (s.color !== ownFortuneNow && !knownPosNow.includes(s.color)) {
+        suspiciousMyStoreColors[s.color] =
+          (suspiciousMyStoreColors[s.color] ?? 0) + 1;
+      }
+    }
+    this._aiMemo.suspiciousMyStoreColors = suspiciousMyStoreColors;
   }
 
   /**
@@ -2608,6 +2621,7 @@ export class GameScene extends Phaser.Scene {
   _aiPickPitOniV2(validPits, state) {
     const inferred = this._aiMemo.inferredPlayerColor;
     const playerAvoidedColor = this._aiMemo.playerAvoidedColor;
+    const suspiciousMyStoreColors = this._aiMemo.suspiciousMyStoreColors ?? {};
     const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
     const knownNeg = this._aiKnownNegativeColor();
     const knownPos = this._aiKnownPositiveColors();
@@ -2691,7 +2705,8 @@ export class GameScene extends Phaser.Scene {
       if (lastPit === 5) {
         const playerStoreEmpty = state.pits[5].stones.length === 0;
         if (peeksDone === 0) score += isEarlyGame ? 34 : 37;
-        else if (peeksDone === 1) score += isEarlyGame ? 30 : 30;
+        else if (peeksDone === 1)
+          score += 44; // 2回目=マイナス色判明 → 最重要情報・最も高く評価
         else if (peeksDone === 2) score += 21;
         else {
           // ちらちら使い切り → ぽいぽい情報価値のみ
@@ -2718,11 +2733,28 @@ export class GameScene extends Phaser.Scene {
       ) {
         const mirrorPit = lastPit - 6;
         const mirrorStones = state.pits[mirrorPit].stones;
-        score += 5 + mirrorStones.length * 11;
+        // 奪う石の「実質価値」を計算してからざくざくスコアを決める
+        // knownNeg色 = 入れたら-3点確定 → 奪うのは罠に乗ること
+        let netCaptureValue = 5 + mirrorStones.length * 11;
         for (const s of mirrorStones) {
-          if (ownFortune && s.color === ownFortune) score += 6;
-          if (knownPos.includes(s.color)) score += 10; // ちらちら知識: プラス色を奪う
+          if (ownFortune && s.color === ownFortune) netCaptureValue += 6;
+          else if (knownPos.includes(s.color)) netCaptureValue += 10; // プラス色を奪う
+          // ---- ここが欠けていた ----
+          if (knownNeg && s.color === knownNeg) {
+            // マイナス確定色を奪うと自賽壇行きで-3点 → 罠
+            netCaptureValue -= 30;
+          } else if (!ownFortune || s.color !== ownFortune) {
+            if (!knownPos.includes(s.color)) {
+              // 安全確認なし = 相手が意図的に置いた可能性
+              // 相手がこの色を路に多く置いているほど罠の疑い強い
+              const timesPlayerPlacedHere = state.pits[mirrorPit].stones.filter(
+                (ms) => ms.color === s.color,
+              ).length;
+              if (timesPlayerPlacedHere >= 2) netCaptureValue -= 8;
+            }
+          }
         }
+        score += netCaptureValue;
         score += this._aiEvalFollowupOpp(pitsAfter) * 0.8;
         const playerThreatMult = 0.5 + playerGuruguruNow * 0.3;
         score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
@@ -2767,7 +2799,11 @@ export class GameScene extends Phaser.Scene {
               // 相手賽壇に2枚以上ある色 = 相手占い色候補(自分に入れれば+5期待値)
               const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
               if (cancelCount >= 2) score += cancelCount * 9;
-              else score -= 17; // 完全未知 = 中央-3点石の可能性
+              else {
+                // 既に自賽壇にある未確認色 = 相手が仕込んだ可能性 → 強いペナルティ
+                const suspCount = suspiciousMyStoreColors[stoneColor] ?? 0;
+                score -= 17 + suspCount * 8;
+              }
             }
           } else {
             // 中盤以降: 情報に基づくフル評価
@@ -2781,7 +2817,7 @@ export class GameScene extends Phaser.Scene {
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if ((!inferred || stoneColor !== inferred) && cancelCount >= 2)
               score += cancelCount * 7;
-            // 確定マイナス色 = 問答無用で回避（相手が持っていても自分の-3点は変わらない）
+            // 確定マイナス色 = 問答無用で回避
             if (knownNeg && stoneColor === knownNeg) score -= 42;
             // 相手が避けている色 = マイナス石の疑い
             if (playerAvoidedColor && stoneColor === playerAvoidedColor)
@@ -2793,6 +2829,12 @@ export class GameScene extends Phaser.Scene {
               (inferred && stoneColor === inferred) ||
               cancelCount >= 2;
             if (!isConfirmedSafe) score -= 12;
+            // 自賽壇に既にある未確認色 → 相手が意図的に入れた可能性大（マイナスを仕込む戦術）
+            // 枚数が多いほど意図が強い → 追加ペナルティ
+            if (!isConfirmedSafe) {
+              const suspCount = suspiciousMyStoreColors[stoneColor] ?? 0;
+              if (suspCount > 0) score -= suspCount * 10;
+            }
           }
         }
 
