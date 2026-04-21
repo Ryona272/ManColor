@@ -84,6 +84,11 @@ export class FriendLobbyScene extends Phaser.Scene {
     });
     roomClient.connect();
 
+    // すでに接続済みの場合は client_open が発火しないため即座に反映
+    if (roomClient.connected) {
+      this._setConnectionState("connected", "");
+    }
+
     this.events.once("shutdown", () => {
       if (this.unsubscribe) {
         this.unsubscribe();

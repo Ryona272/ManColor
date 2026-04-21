@@ -158,7 +158,7 @@ class RoomClient {
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, 1200);
+    }, 600);
   }
 
   send(payload) {

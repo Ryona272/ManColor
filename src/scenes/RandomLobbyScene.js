@@ -16,6 +16,7 @@ export class RandomLobbyScene extends Phaser.Scene {
     this.spinAngle = 0;
     this.spinGraphics = null;
     this.spinTween = null;
+    this.spinColor = 0xff3333;
   }
 
   create() {
@@ -42,8 +43,6 @@ export class RandomLobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Connection meter (same style as FriendLobbyScene)
-    this._drawConnectionMeter(W);
     this._setConnectionState("connecting");
 
     // Spinning wait animation
@@ -74,8 +73,7 @@ export class RandomLobbyScene extends Phaser.Scene {
     this.unsubscribe = roomClient.subscribe((msg) => this._handleMessage(msg));
     roomClient.connect();
 
-    // roomClient がすでに接続済みの場合は client_open が発火しないため
-    // 直接マッチングリクエストを送る
+    // roomClient がすでに接続済みの場合は client_open が発火しないため直接マッチングリクエストを送る
     if (roomClient.connected) {
       this._setConnectionState("connected");
       roomClient.send({
@@ -151,7 +149,7 @@ export class RandomLobbyScene extends Phaser.Scene {
     const cy = H / 2 - 30;
     const r = 120;
     g.clear();
-    g.lineStyle(10, 0xb07fff, 1);
+    g.lineStyle(10, this.spinColor, 1);
     const startRad = Phaser.Math.DegToRad(angleDeg - 90);
     const endRad = Phaser.Math.DegToRad(angleDeg + 220);
     g.beginPath();
@@ -159,52 +157,20 @@ export class RandomLobbyScene extends Phaser.Scene {
     g.strokePath();
   }
 
-  _drawConnectionMeter(W) {
-    const x = W / 2 - 180;
-    const y = 1160;
-    const width = 360;
-    const height = 18;
-
-    this.connectionMeterBg = this.add.graphics();
-    this.connectionMeterBg.fillStyle(0x0a1829, 0.9);
-    this.connectionMeterBg.fillRoundedRect(x, y, width, height, 10);
-    this.connectionMeterBg.lineStyle(2, 0x608bbd, 0.55);
-    this.connectionMeterBg.strokeRoundedRect(x, y, width, height, 10);
-
-    this.connectionMeterBar = this.add.graphics();
-    this.connectionMeterPos = { x, y, width, height };
-
-    this._refreshConnectionMeter("connecting");
-  }
-
-  _refreshConnectionMeter(state) {
-    const bar = this.connectionMeterBar;
-    if (!bar || !this.connectionMeterPos) return;
-    const { x, y, width, height } = this.connectionMeterPos;
-    const ratios = {
-      connected: 1,
-      connecting: 0.5,
-      reconnecting: 0.25,
-      error: 0.08,
-    };
-    const ratio = ratios[state] ?? 0.08;
-    bar.clear();
-    bar.fillStyle(0x9a70ff, 0.95);
-    bar.fillRoundedRect(
-      x + 2,
-      y + 2,
-      Math.max(8, (width - 4) * ratio),
-      height - 4,
-      8,
-    );
-  }
-
   _setConnectionState(state) {
     this.connectionState = state;
-    this._refreshConnectionMeter(state);
-    const isConnecting = state === "connecting" || state === "reconnecting";
-    this.connectionMeterBg?.setVisible(isConnecting);
-    this.connectionMeterBar?.setVisible(isConnecting);
+    // 接続中・再接続中・エラーは赤、接続済みはマッチング色（紫）
+    if (
+      state === "connecting" ||
+      state === "reconnecting" ||
+      state === "error"
+    ) {
+      this.spinColor = 0xff3333;
+    } else {
+      this.spinColor = 0xb07fff;
+    }
+    // 現在の角度で再描画して色を即時反映
+    this._drawSpinnerArc(this.spinAngle);
   }
 
   _refreshStatusText() {
