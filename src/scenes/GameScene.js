@@ -219,8 +219,8 @@ export class GameScene extends Phaser.Scene {
         normal: "普通",
         hard: "強い",
         oni: "鬼",
-        "oni-sente": "鬼(先手)",
-        "oni-gote": "鬼(後手)",
+        "oni-sente": "鬼",
+        "oni-gote": "鬼",
       };
       const diffColors = {
         easy: 0x3a9e66,
@@ -244,6 +244,13 @@ export class GameScene extends Phaser.Scene {
               : "あなたのターンから始まります",
           );
       });
+
+      // oni-gote: プレイヤーは後手 → バナー表示後にAIターンを起動
+      if (this.aiDifficulty === "oni-gote") {
+        this.time.delayedCall(1600, () => {
+          if (this.mode === "turn" && !this.playerTurn) this._aiTurn();
+        });
+      }
     }
 
     if (this._isOnlineRoomMode()) {
