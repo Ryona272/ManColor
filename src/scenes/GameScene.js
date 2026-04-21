@@ -1727,7 +1727,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this._announceTechnique("ぐるぐる！", 0x6ab4e8, "もう一度あなたのターン！");
-    this.scene.get("UIScene").updateTurnDisplay(this.playerTurn);
+    this.time.delayedCall(900, () => {
+      if (this.mode !== "turn") return;
+      this.scene.get("UIScene").updateTurnDisplay(this.playerTurn);
+    });
   }
 
   chooseKutakutaAction(action) {
@@ -3117,7 +3120,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this._renderStones();
-    if (this.playerTurn) {
+    if (this.playerTurn || shouldHandleAsEnded) {
       this.scene.get("UIScene")?.clearCenterBanner();
     }
     this.scene.get("UIScene")?.updateTurnDisplay(this.playerTurn, true);

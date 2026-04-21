@@ -1713,6 +1713,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   showResult(options = {}) {
+    this.clearCenterBanner();
     this.gameScene.enterFinalPhase();
     this._startFinalPredictionPhase(options);
   }
