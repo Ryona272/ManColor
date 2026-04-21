@@ -2503,16 +2503,18 @@ export class GameScene extends Phaser.Scene {
         score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
       }
 
-      // ─── ざくざく防御 ───
-      const playerMirrorOfP = p - 6;
-      if (state.pits[playerMirrorOfP].stones.length > 0) {
-        const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
-        score -= 10 + mirrorStoneCount * 3;
-        if (inferred) {
-          const inferredHere = state.pits[playerMirrorOfP].stones.filter(
-            (s) => s.color === inferred,
-          ).length;
-          score -= inferredHere * 9;
+      // ─── ざくざく防御 ─── ちらちら着地（pit5）は情報収集の意図的手なので免除
+      if (lastPit !== 5) {
+        const playerMirrorOfP = p - 6;
+        if (state.pits[playerMirrorOfP].stones.length > 0) {
+          const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
+          score -= 10 + mirrorStoneCount * 3;
+          if (inferred) {
+            const inferredHere = state.pits[playerMirrorOfP].stones.filter(
+              (s) => s.color === inferred,
+            ).length;
+            score -= inferredHere * 9;
+          }
         }
       }
 
@@ -2683,16 +2685,18 @@ export class GameScene extends Phaser.Scene {
         score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
       }
 
-      // ─── ざくざく防御 ───
-      const playerMirrorOfP = p - 6;
-      if (state.pits[playerMirrorOfP].stones.length > 0) {
-        const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
-        score -= 10 + mirrorStoneCount * 3;
-        if (inferred) {
-          const inferredHere = state.pits[playerMirrorOfP].stones.filter(
-            (s) => s.color === inferred,
-          ).length;
-          score -= inferredHere * 9;
+      // ─── ざくざく防御 ─── ちらちら着地（pit5）は情報収集の意図的手なので免除
+      if (lastPit !== 5) {
+        const playerMirrorOfP = p - 6;
+        if (state.pits[playerMirrorOfP].stones.length > 0) {
+          const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
+          score -= 10 + mirrorStoneCount * 3;
+          if (inferred) {
+            const inferredHere = state.pits[playerMirrorOfP].stones.filter(
+              (s) => s.color === inferred,
+            ).length;
+            score -= inferredHere * 9;
+          }
         }
       }
 

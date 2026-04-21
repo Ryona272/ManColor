@@ -1715,7 +1715,54 @@ export class UIScene extends Phaser.Scene {
   showResult(options = {}) {
     this.clearCenterBanner();
     this.gameScene.enterFinalPhase();
-    this._startFinalPredictionPhase(options);
+
+    // 「ゲーム終了！」バナーを表示してから予測フェーズへ
+    const W = 1080;
+    const H = 1920;
+    const banner = this.add.container(W / 2, H / 2);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a2535, 0.93);
+    bg.lineStyle(3, 0xe5d5b1, 0.7);
+    bg.fillRoundedRect(-320, -80, 640, 160, 20);
+    bg.strokeRoundedRect(-320, -80, 640, 160, 20);
+    banner.add(bg);
+    const t1 = this.add
+      .text(0, -22, "ゲーム終了！", {
+        fontSize: "60px",
+        color: "#f4deb1",
+        fontFamily: '"Yu Mincho","Hiragino Mincho ProN",serif',
+      })
+      .setOrigin(0.5);
+    banner.add(t1);
+    const t2 = this.add
+      .text(0, 38, "予測フェーズに移行します", {
+        fontSize: "30px",
+        color: "#b8c8de",
+        fontFamily: '"Yu Gothic UI","Hiragino Sans",sans-serif',
+      })
+      .setOrigin(0.5);
+    banner.add(t2);
+    banner.setAlpha(0);
+    this.tweens.add({
+      targets: banner,
+      alpha: 1,
+      duration: 300,
+      ease: "Sine.Out",
+      onComplete: () => {
+        this.time.delayedCall(1600, () => {
+          this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            duration: 300,
+            ease: "Sine.In",
+            onComplete: () => {
+              banner.destroy();
+              this._startFinalPredictionPhase(options);
+            },
+          });
+        });
+      },
+    });
   }
 
   _startFinalPredictionPhase(options = {}) {
