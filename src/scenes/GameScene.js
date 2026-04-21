@@ -2566,12 +2566,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * AIがちらちらで把握した -2 の中央色を返す（未判明なら null）
+   * AIがちらちらで把握したマイナスの中央色を返す（未判明なら null）
    */
   _aiKnownNegativeColor() {
     const center = this.gameState.getState().fortune.center;
     for (const fc of center) {
-      if (fc.bonus === -2 && fc.seenBy.includes("opp")) return fc.color;
+      if (fc.bonus < 0 && fc.seenBy.includes("opp")) return fc.color;
     }
     return null;
   }
@@ -3041,31 +3041,39 @@ export class GameScene extends Phaser.Scene {
                   : 6;
 
             if (poipoiValue > chirachiraValue) {
-              const targetStore = state.pits[5].stones.length > 0 ? 5 : 11;
-              if (state.pits[targetStore].stones.length > 0) {
-                const targetStones = state.pits[targetStore].stones;
+              // プレイヤー賽壇が空ならぽいぽい不可能（自分の賽壇には手を出さない）
+              if (state.pits[5].stones.length > 0) {
+                const targetStones = state.pits[5].stones;
                 let selectedIndex = 0;
                 let highestValue = -Infinity;
                 const ownFortune =
                   this.gameState.getFortuneColorForPlayer("opp");
+                const knownNegColor = this._aiKnownNegativeColor();
                 targetStones.forEach((stone, index) => {
-                  let val = STONE_COLORS[stone.color]?.value ?? 0;
-                  if (inferred && stone.color === inferred)
-                    val = Math.max(val, 7);
-                  if (ownFortune && stone.color === ownFortune)
-                    val = Math.max(val, 10);
+                  let val = 1; // デフォルト：ニュートラル予期値
+                  // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奁う)
+                  if (ownFortune && stone.color === ownFortune) val = 28;
+                  // 次優先: 推測したプレイヤー占い色 (+3点から奁う)
+                  else if (inferred && stone.color === inferred) val = 20;
+                  // ちらちら確認済み+1石 → 低優先（1点にすぎない）
+                  else if (knownPos.includes(stone.color)) val = 3;
+                  // 確定マイナス石 → 絶対に取らない（取るとプレイヤーの徇助になる）
+                  if (knownNegColor && stone.color === knownNegColor) val = -99;
                   if (val > highestValue) {
                     highestValue = val;
                     selectedIndex = index;
                   }
                 });
-                this.gameState.removeStoneFromPit(targetStore, selectedIndex);
-                this._announceTechnique(
-                  "ぽいぽい！",
-                  0xe87070,
-                  "相手が石を一つ排除！",
-                );
-                this._renderStones();
+                // 有効なターゲットがある場合のみ実行
+                if (highestValue > 0) {
+                  this.gameState.removeStoneFromPit(5, selectedIndex);
+                  this._announceTechnique(
+                    "ぽいぽい！",
+                    0xe87070,
+                    "相手が石を一つ排除！",
+                  );
+                  this._renderStones();
+                }
               }
               this.time.delayedCall(800, () => this._aiFinishTurn(false));
               return;
@@ -3099,10 +3107,9 @@ export class GameScene extends Phaser.Scene {
             this._renderStones();
           }
         } else if (this.aiDifficulty === "normal") {
-          // 普通: プレイヤーの賟壇から最もストーン値の高い石を排除
-          const targetStore = state.pits[5].stones.length > 0 ? 5 : 11;
-          if (state.pits[targetStore].stones.length > 0) {
-            const targetStones = state.pits[targetStore].stones;
+          // 普通: プレイヤーの賽壇から最もストーン値の高い石を排除
+          if (state.pits[5].stones.length > 0) {
+            const targetStones = state.pits[5].stones;
             let selectedIndex = 0;
             let highestValue = -Infinity;
             targetStones.forEach((stone, index) => {
@@ -3112,7 +3119,7 @@ export class GameScene extends Phaser.Scene {
                 selectedIndex = index;
               }
             });
-            this.gameState.removeStoneFromPit(targetStore, selectedIndex);
+            this.gameState.removeStoneFromPit(5, selectedIndex);
             this._announceTechnique(
               "ぽいぽい！",
               0xe87070,
@@ -3122,38 +3129,42 @@ export class GameScene extends Phaser.Scene {
           }
         } else {
           // 強い / 鬼: 推測したプレイヤーの占い色・ちらちらプラス色を優先排除
-          const targetStore = state.pits[5].stones.length > 0 ? 5 : 11;
-          if (state.pits[targetStore].stones.length > 0) {
-            const targetStones = state.pits[targetStore].stones;
+          if (state.pits[5].stones.length > 0) {
+            const targetStones = state.pits[5].stones;
             const inferred = this._aiMemo?.inferredPlayerColor;
             const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
             const isOni =
               this.aiDifficulty === "oni-sente" ||
               this.aiDifficulty === "oni-gote" ||
               this.aiDifficulty === "oni";
-            const knownPos = isOni ? this._aiKnownPositiveColors() : [];
+            const knownPosLocal = isOni ? this._aiKnownPositiveColors() : [];
+            const knownNegColor = this._aiKnownNegativeColor();
             let selectedIndex = 0;
             let highestValue = -Infinity;
             targetStones.forEach((stone, index) => {
-              let val = STONE_COLORS[stone.color]?.value ?? 0;
-              if (inferred && stone.color === inferred) val = Math.max(val, 7);
-              if (ownFortune && stone.color === ownFortune)
-                val = Math.max(val, 10);
-              // 鬼: ちらちらで確認したプラス色 → 相手の得点源なので最優先排除
-              if (isOni && knownPos.includes(stone.color))
-                val = Math.max(val, 14);
+              let val = 1; // デフォルト：ニュートラル
+              // AI占い色がプレイヤー賽壇にある (+5点から奁う)
+              if (ownFortune && stone.color === ownFortune) val = 30;
+              // プレイヤー占い色候補 (+3点から奁う)
+              else if (inferred && stone.color === inferred) val = 22;
+              // ちらちら確認済み+1石 → 低優先
+              else if (isOni && knownPosLocal.includes(stone.color)) val = 4;
+              // 確定マイナス石 → 絶対に取らない（取るとプレイヤーの徇助になる）
+              if (knownNegColor && stone.color === knownNegColor) val = -99;
               if (val > highestValue) {
                 highestValue = val;
                 selectedIndex = index;
               }
             });
-            this.gameState.removeStoneFromPit(targetStore, selectedIndex);
-            this._announceTechnique(
-              "ぽいぽい！",
-              0xe87070,
-              "相手が石を一つ排除！",
-            );
-            this._renderStones();
+            if (highestValue > 0) {
+              this.gameState.removeStoneFromPit(5, selectedIndex);
+              this._announceTechnique(
+                "ぽいぽい！",
+                0xe87070,
+                "相手が石を一つ排除！",
+              );
+              this._renderStones();
+            }
           }
         }
         this.time.delayedCall(800, () => this._aiFinishTurn(false));
