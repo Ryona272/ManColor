@@ -197,7 +197,7 @@ export class GameScene extends Phaser.Scene {
     // オンライン時は白(self)が先手、黒(opp)が後手
     this.playerTurn = this._isOnlineRoomMode()
       ? this.onlineSide === "self"
-      : true;
+      : this.aiDifficulty !== "oni-gote";
     this.mode = "turn";
     this.selectedPlacementStoneIndex = null;
     this.sowPending = [];
@@ -219,12 +219,16 @@ export class GameScene extends Phaser.Scene {
         normal: "普通",
         hard: "強い",
         oni: "鬼",
+        "oni-sente": "鬼(先手)",
+        "oni-gote": "鬼(後手)",
       };
       const diffColors = {
         easy: 0x3a9e66,
         normal: 0x4a7bbf,
         hard: 0xbf4a55,
         oni: 0x4a0e6e,
+        "oni-sente": 0x4a0e6e,
+        "oni-gote": 0x4a0e6e,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
       const color = diffColors[this.aiDifficulty] ?? 0x4a7bbf;
@@ -235,7 +239,9 @@ export class GameScene extends Phaser.Scene {
           .showCenterBanner(
             `AI難易度: ${label}`,
             color,
-            "あなたのターンから始まります",
+            this.aiDifficulty === "oni-gote"
+              ? "AIのターンから始まります"
+              : "あなたのターンから始まります",
           );
       });
     }
@@ -2051,7 +2057,11 @@ export class GameScene extends Phaser.Scene {
       // 強い: 相手の意図を読む高度なAI
       return this._aiPickPitExpert(validPits, state);
     }
-    if (this.aiDifficulty === "oni") {
+    if (
+      this.aiDifficulty === "oni" ||
+      this.aiDifficulty === "oni-sente" ||
+      this.aiDifficulty === "oni-gote"
+    ) {
       // 鬼: 2手先シミュレーション・くたくたセットアップ評価
       return this._aiPickPitOni(validPits, state);
     }
@@ -2707,10 +2717,19 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(900, () => {
       if (this.gameState.canUseChirachira("opp")) {
         // 強いAI / 鬼: ぽいぽいの方が価値が高い場合はぽいぽいを優先する
-        if (this.aiDifficulty === "hard" || this.aiDifficulty === "oni") {
+        if (
+          this.aiDifficulty === "hard" ||
+          this.aiDifficulty === "oni" ||
+          this.aiDifficulty === "oni-sente" ||
+          this.aiDifficulty === "oni-gote"
+        ) {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           // 鬼: 最初の2回は必ずちらちら（情報収集優先）
-          const forceChirachira = this.aiDifficulty === "oni" && peeksDone < 2;
+          const forceChirachira =
+            (this.aiDifficulty === "oni" ||
+              this.aiDifficulty === "oni-sente" ||
+              this.aiDifficulty === "oni-gote") &&
+            peeksDone < 2;
 
           if (!forceChirachira) {
             const inferred = this._aiMemo?.inferredPlayerColor;
@@ -2727,7 +2746,9 @@ export class GameScene extends Phaser.Scene {
               3 - (this.gameState.getState().centerPeekProgress?.opp ?? 0);
             // 鬼: ぽいぽいの閾値を低め（より積極的にぽいぽい）
             const chirachiraValue =
-              this.aiDifficulty === "oni"
+              this.aiDifficulty === "oni" ||
+              this.aiDifficulty === "oni-sente" ||
+              this.aiDifficulty === "oni-gote"
                 ? chirachiraRemaining >= 2
                   ? 10
                   : 4
@@ -2862,7 +2883,11 @@ export class GameScene extends Phaser.Scene {
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
       // 鬼: 2石差まで許容して積極的にくたくた（わずかに劣勢でも発動）
       const kutakutaThreshold =
-        this.aiDifficulty === "oni" ? selfStoreCount - 2 : selfStoreCount;
+        this.aiDifficulty === "oni" ||
+        this.aiDifficulty === "oni-sente" ||
+        this.aiDifficulty === "oni-gote"
+          ? selfStoreCount - 2
+          : selfStoreCount;
       if (oppStoreCount >= kutakutaThreshold) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
         this.time.delayedCall(450, () =>

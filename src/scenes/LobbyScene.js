@@ -158,8 +158,8 @@ export class LobbyScene extends Phaser.Scene {
     const panelG = this.add.graphics();
     panelG.fillStyle(0x1a2535, 0.97);
     panelG.lineStyle(2, 0xe5d5b1, 0.55);
-    panelG.fillRoundedRect(W / 2 - 360, 520, 720, 1020, 30);
-    panelG.strokeRoundedRect(W / 2 - 360, 520, 720, 1020, 30);
+    panelG.fillRoundedRect(W / 2 - 360, 520, 720, 1380, 30);
+    panelG.strokeRoundedRect(W / 2 - 360, 520, 720, 1380, 30);
     objs.push(panelG);
 
     const titleT = this.add
@@ -173,32 +173,46 @@ export class LobbyScene extends Phaser.Scene {
 
     const items = [
       {
-        y: 760,
+        y: 730,
         label: "弱い",
         sub: "のんびり楽しめます",
         fill: 0x3a6e4a,
         diff: "easy",
       },
       {
-        y: 950,
+        y: 910,
         label: "普通",
         sub: "バランスのよい相手",
         fill: 0x2e4f7a,
         diff: "normal",
       },
       {
-        y: 1140,
+        y: 1090,
         label: "強い",
         sub: "手強い相手に挑戦！",
         fill: 0x7a3f45,
         diff: "hard",
       },
       {
-        y: 1330,
+        y: 1270,
         label: "鬼",
         sub: "最強の相手。勝てるか？",
         fill: 0x2a1a2e,
         diff: "oni",
+      },
+      {
+        y: 1450,
+        label: "鬼（先手）",
+        sub: "あなたが必ず先手で鬼と戦う",
+        fill: 0x2a1a2e,
+        diff: "oni-sente",
+      },
+      {
+        y: 1630,
+        label: "鬼（後手）",
+        sub: "あなたが必ず後手で鬼と戦う",
+        fill: 0x2a1a2e,
+        diff: "oni-gote",
       },
     ];
 
@@ -242,7 +256,7 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     const cancelT = this.add
-      .text(W / 2, 1470, "キャンセル", {
+      .text(W / 2, 1810, "キャンセル", {
         fontSize: "30px",
         color: "#8899bb",
         fontFamily: UI_FONT,
