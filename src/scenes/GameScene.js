@@ -101,7 +101,7 @@ export class GameScene extends Phaser.Scene {
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
     // 強いAI用: プレイヤー行動の観察メモ
-    this._aiMemo = { playerColorFreq: {}, inferredPlayerColor: null };
+    this._aiMemo = { playerColorFreq: {}, inferredPlayerColor: null, playerAvoidedColor: null };
     // プレイヤー名 (オンライン対戦用)
     this.selfPlayerName = data?.playerName ?? null;
     this.oppPlayerName = data?.oppPlayerName ?? null;
@@ -2066,16 +2066,16 @@ export class GameScene extends Phaser.Scene {
       return validPits[Math.floor(Math.random() * validPits.length)];
     }
     if (this.aiDifficulty === "hard") {
-      // 強い: 相手の意図を読む高度なAI
-      return this._aiPickPitExpert(validPits, state);
+      // 強い: 鬼相当のAI（旧鬼ロジックを流用）
+      return this._aiPickPitOni(validPits, state);
     }
     if (
       this.aiDifficulty === "oni" ||
       this.aiDifficulty === "oni-sente" ||
       this.aiDifficulty === "oni-gote"
     ) {
-      // 鬼: 2手先シミュレーション・くたくたセットアップ評価
-      return this._aiPickPitOni(validPits, state);
+      // 鬼: さらに強化された2段階上位AI
+      return this._aiPickPitOniV2(validPits, state);
     }
     // 普通: スコア評価（ぐるぐる/ざくざく優先）
     return this._aiPickPitNormal(validPits, state);
@@ -2169,6 +2169,8 @@ export class GameScene extends Phaser.Scene {
       (a, b) => b[1] - a[1],
     );
     this._aiMemo.inferredPlayerColor = sorted[0]?.[0] ?? null;
+    // 最も頻度の低い色を「プレイヤーが避けている色」として推測（おそらくマイナス色）
+    this._aiMemo.playerAvoidedColor = sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
   }
 
   /**
@@ -2560,6 +2562,196 @@ export class GameScene extends Phaser.Scene {
     return null;
   }
 
+   * AIがちらちらで把握した -2 の中央色を返す（未判明なら null）
+   */
+  _aiKnownNegativeColor() {
+    const center = this.gameState.getState().fortune.center;
+    for (const fc of center) {
+      if (fc.bonus === -2 && fc.seenBy.includes("opp")) return fc.color;
+    }
+    return null;
+  }
+
+  /**
+   * AIがちらちらで把握した +bonus の中央色一覧を返す（見ていない色は含まない）
+   */
+  _aiKnownPositiveColors() {
+    const center = this.gameState.getState().fortune.center;
+    return center
+      .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("opp"))
+      .map((fc) => fc.color);
+  }
+
+  /**
+   * 鬼V2 AI: ちらちら情報・プレイヤー色パターン読み・プレイヤーぐるぐる連鎖破壊を統合した最強評価
+   * - ちらちらで見たプラス色を積極的に自賽壇へ収集
+   * - プレイヤーが蓄積している色を自賽壇にも入れてキャンセル（枚数比例ボーナス）
+   * - プレイヤーが避けている色（おそらくマイナス）は自賽壇に入れない
+   * - プレイヤーのぐるぐる連鎖を積極的に破壊
+   */
+  _aiPickPitOniV2(validPits, state) {
+    const inferred = this._aiMemo.inferredPlayerColor;
+    const playerAvoidedColor = this._aiMemo.playerAvoidedColor;
+    const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+    const knownNeg = this._aiKnownNegativeColor();
+    const knownPos = this._aiKnownPositiveColors();
+
+    const playerStoreColorCount = {};
+    for (const s of state.pits[5].stones) {
+      playerStoreColorCount[s.color] =
+        (playerStoreColorCount[s.color] ?? 0) + 1;
+    }
+
+    const emptyPlayerPits = new Set();
+    for (let px = 0; px <= 4; px++) {
+      if (state.pits[px].stones.length === 0) emptyPlayerPits.add(px);
+    }
+
+    // プレイヤーが今すぐぐるぐるできる手数
+    const playerGuruguruNow = [0, 1, 2, 3, 4].filter((q) => {
+      const cnt = state.pits[q].stones.length;
+      return cnt > 0 && (q + cnt) % 12 === 5;
+    }).length;
+
+    let best = validPits[0];
+    let bestScore = -Infinity;
+
+    for (const p of validPits) {
+      const count = state.pits[p].stones.length;
+      const lastPit = (p + count) % 12;
+      let score = 0;
+
+      const { pits: pitsAfter } = this._aiSimulateSow(state.pits, p);
+
+      // ─── プレイヤーのぐるぐる連鎖を積極的に破壊 ───
+      if (playerGuruguruNow > 0) {
+        let playerGuruguruAfter = 0;
+        for (let q = 0; q <= 4; q++) {
+          const cnt = pitsAfter[q].stones.length;
+          if (cnt > 0 && (q + cnt) % 12 === 5) playerGuruguruAfter++;
+        }
+        const disrupted = playerGuruguruNow - playerGuruguruAfter;
+        if (disrupted > 0) score += disrupted * 26;
+      }
+
+      // ─── ぐるぐる ───
+      if (lastPit === 11) {
+        const chainCount = this._aiCountGuruguruChain(pitsAfter);
+        score += 22 + chainCount * 14;
+        score += this._aiEvalFollowupOpp(pitsAfter) * 1.2;
+        const playerThreatMult = 0.6 + playerGuruguruNow * 0.35;
+        score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
+        const colorsAfter = new Set();
+        for (let lIdx = 6; lIdx <= 10; lIdx++) {
+          for (const s of pitsAfter[lIdx].stones) colorsAfter.add(s.color);
+        }
+        if (colorsAfter.size <= 2 && colorsAfter.size > 0) score += 18;
+      }
+
+      // ─── pit5着地（ちらちら/ぽいぽい）─── 情報収集は最優先
+      if (lastPit === 5) {
+        const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+        if (peeksDone === 0) score += 36;
+        else if (peeksDone === 1) score += 30;
+        else if (peeksDone === 2) score += 24;
+        else {
+          const playerStoreHasFortune =
+            inferred && state.pits[5].stones.some((s) => s.color === inferred);
+          score += playerStoreHasFortune
+            ? 30
+            : state.pits[5].stones.length > 0
+              ? 12
+              : 3;
+        }
+      }
+
+      // ─── ざくざく ───
+      if (
+        lastPit >= 6 &&
+        lastPit <= 10 &&
+        state.pits[lastPit].stones.length === 0
+      ) {
+        const mirrorPit = lastPit - 6;
+        const mirrorStones = state.pits[mirrorPit].stones;
+        score += 10 + mirrorStones.length * 4;
+        for (const s of mirrorStones) {
+          if (ownFortune && s.color === ownFortune) score += 8;
+          if (inferred && s.color === inferred) score += 6;
+          if (knownPos.includes(s.color)) score += 10; // ちらちら知識: プラス色を奪う
+        }
+        score += this._aiEvalFollowupOpp(pitsAfter) * 0.8;
+        const playerThreatMult = 0.5 + playerGuruguruNow * 0.3;
+        score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
+      }
+
+      // ─── ざくざく防御 ───
+      const playerMirrorOfP = p - 6;
+      if (state.pits[playerMirrorOfP].stones.length > 0) {
+        const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
+        score -= 10 + mirrorStoneCount * 3;
+        if (inferred) {
+          const inferredHere = state.pits[playerMirrorOfP].stones.filter(
+            (s) => s.color === inferred,
+          ).length;
+          score -= inferredHere * 9;
+        }
+      }
+
+      // ─── 石の着地先がプレイヤー空き路のミラーなら脅威強化 ───
+      for (let i = 0; i < count; i++) {
+        const landingPit = (p + 1 + i) % 12;
+        if (landingPit >= 6 && landingPit <= 10) {
+          const landedMirrorPlayer = landingPit - 6;
+          if (emptyPlayerPits.has(landedMirrorPlayer)) score -= 10;
+        }
+      }
+
+      // ─── 石の色評価（カラー戦略の核心） ───
+      for (let i = 0; i < count; i++) {
+        const landingPit = (p + 1 + i) % 12;
+        const stoneColor = state.pits[p].stones[i]?.color;
+        if (!stoneColor) continue;
+
+        if (landingPit === 11) {
+          // 自分の占い色: 最重要
+          if (ownFortune && stoneColor === ownFortune) score += 20;
+          // ちらちらで見たプラス色: 積極的に自賽壇へ収集
+          if (knownPos.includes(stoneColor)) score += 26;
+          // 推測したプレイヤーの占い色: キャンセル目的で入れる
+          if (inferred && stoneColor === inferred) score += 28;
+          // プレイヤー賽壇との枚数比例キャンセルボーナス
+          // 「相手が青を3枚入れてる → 自分も青を入れれば有効キャンセル」
+          const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
+          score += cancelCount * 9; // 1枚+9, 2枚+18, 3枚+27
+          // 否定色（ちらちら確認済み）: 相手も持っていなければ回避
+          if (knownNeg && stoneColor === knownNeg) {
+            const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
+            if (matchInPlayerStore === 0) score -= 22;
+          }
+          // プレイヤーが避けている色: おそらくマイナス色 → 自賽壇に入れない
+          if (playerAvoidedColor && stoneColor === playerAvoidedColor)
+            score -= 18;
+        }
+
+        // プレイヤー賽壇に推測占い色・ちらちらプラス色が流れ込まないようにする
+        if (inferred && stoneColor === inferred && landingPit === 5)
+          score -= 20;
+        if (knownPos.includes(stoneColor) && landingPit === 5) score -= 14;
+        if (ownFortune && stoneColor === ownFortune && landingPit === 5)
+          score -= 6;
+      }
+
+      score += count * 0.1 + Math.random() * 0.06;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = p;
+      }
+    }
+
+    return best;
+  }
+
   // ─── AI フェーズ処理（撒き → 配置 → 技） ───────────────────────────
 
   _aiStartSowing(pitIndex) {
@@ -2689,10 +2881,16 @@ export class GameScene extends Phaser.Scene {
         const pendingNow = this.gameState.getPendingPlacement();
         const stone = pendingNow[0];
         const inferred = this._aiMemo?.inferredPlayerColor;
+        const playerAvoidedColor = this._aiMemo?.playerAvoidedColor;
         const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
         const knownNeg = this._aiKnownNegativeColor();
+        const isOni =
+          this.aiDifficulty === "oni-sente" ||
+          this.aiDifficulty === "oni-gote" ||
+          this.aiDifficulty === "oni";
+        const knownPos = isOni ? this._aiKnownPositiveColors() : [];
 
-        // プレイヤーの賽壇(pit5)の各色の数（打ち消し合い評価用）
+        // プレイヤーの賽壇(pit5)の各色の数（キャンセル評価用）
         const playerStoreColorCount = {};
         for (const s of st.pits[5].stones) {
           playerStoreColorCount[s.color] =
@@ -2709,15 +2907,25 @@ export class GameScene extends Phaser.Scene {
           // ぐるぐるセットアップ: この路から撒くとpit11に落ちる
           if (targetPit === 11) {
             s += 18;
-            if (inferred && stone?.color === inferred) s += 16;
             if (ownFortune && stone?.color === ownFortune) s += 12;
-            // 否定色が賽壇に流れ込む場合: 相手も同色を持っていれば打ち消し合いでOK
+            if (inferred && stone?.color === inferred) s += 16;
+            // 鬼V2: ちらちらプラス色 → 積極的に自賽壇設定レーンへ
+            if (isOni && knownPos.includes(stone?.color)) s += 22;
+            // 鬼V2: プレイヤーの蓄積色を枚数比例でキャンセルボーナス
+            if (isOni && stone?.color) {
+              const cancelCount = playerStoreColorCount[stone.color] ?? 0;
+              s += cancelCount * 9;
+            }
+            // 否定色対策
             if (knownNeg && stone?.color === knownNeg) {
               const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
-              if (matchInPlayerStore === 0) s -= 22; // 一方的な否定色流入を防ぐ
+              if (matchInPlayerStore === 0) s -= 22;
             }
-            // 相手の賽壇と同じ色 → 打ち消し合い戦法
-            if (stone?.color && (playerStoreColorCount[stone.color] ?? 0) > 0) {
+            // プレイヤーが避けている色: おそらくマイナス → 自賽壇設定レーンに避ける
+            if (isOni && playerAvoidedColor && stone?.color === playerAvoidedColor)
+              s -= 18;
+            // 相手の賽壇と同じ色 → 打ち消し合い（hard向け）
+            if (!isOni && stone?.color && (playerStoreColorCount[stone.color] ?? 0) > 0) {
               s += 6;
             }
           }
@@ -2725,7 +2933,7 @@ export class GameScene extends Phaser.Scene {
           // 空きプレイヤー路のミラーに石を積むとざくざく脅威を強化するので減点
           const playerMirror = q - 6;
           if (st.pits[playerMirror].stones.length === 0) s -= 8;
-          else s += 4; // プレイヤー路に石がある場合はざくざくされないので安全
+          else s += 4;
           s += Math.random() * 0.1;
           if (s > bestS) {
             bestS = s;
@@ -2878,12 +3086,17 @@ export class GameScene extends Phaser.Scene {
             this._renderStones();
           }
         } else {
-          // 強い / 鬼: 推測したプレイヤーの占い色を優先排除して得点源を搂う
+          // 強い / 鬼: 推測したプレイヤーの占い色・ちらちらプラス色を優先排除
           const targetStore = state.pits[5].stones.length > 0 ? 5 : 11;
           if (state.pits[targetStore].stones.length > 0) {
             const targetStones = state.pits[targetStore].stones;
             const inferred = this._aiMemo?.inferredPlayerColor;
             const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+            const isOni =
+              this.aiDifficulty === "oni-sente" ||
+              this.aiDifficulty === "oni-gote" ||
+              this.aiDifficulty === "oni";
+            const knownPos = isOni ? this._aiKnownPositiveColors() : [];
             let selectedIndex = 0;
             let highestValue = -Infinity;
             targetStones.forEach((stone, index) => {
@@ -2891,6 +3104,9 @@ export class GameScene extends Phaser.Scene {
               if (inferred && stone.color === inferred) val = Math.max(val, 7);
               if (ownFortune && stone.color === ownFortune)
                 val = Math.max(val, 10);
+              // 鬼: ちらちらで確認したプラス色 → 相手の得点源なので最優先排除
+              if (isOni && knownPos.includes(stone.color))
+                val = Math.max(val, 14);
               if (val > highestValue) {
                 highestValue = val;
                 selectedIndex = index;
