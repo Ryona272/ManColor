@@ -101,7 +101,11 @@ export class GameScene extends Phaser.Scene {
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
     // 強いAI用: プレイヤー行動の観察メモ
-    this._aiMemo = { playerColorFreq: {}, inferredPlayerColor: null, playerAvoidedColor: null };
+    this._aiMemo = {
+      playerColorFreq: {},
+      inferredPlayerColor: null,
+      playerAvoidedColor: null,
+    };
     // プレイヤー名 (オンライン対戦用)
     this.selfPlayerName = data?.playerName ?? null;
     this.oppPlayerName = data?.oppPlayerName ?? null;
@@ -2170,7 +2174,8 @@ export class GameScene extends Phaser.Scene {
     );
     this._aiMemo.inferredPlayerColor = sorted[0]?.[0] ?? null;
     // 最も頻度の低い色を「プレイヤーが避けている色」として推測（おそらくマイナス色）
-    this._aiMemo.playerAvoidedColor = sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
+    this._aiMemo.playerAvoidedColor =
+      sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
   }
 
   /**
@@ -2562,16 +2567,6 @@ export class GameScene extends Phaser.Scene {
     return null;
   }
 
-   * AIがちらちらで把握した -2 の中央色を返す（未判明なら null）
-   */
-  _aiKnownNegativeColor() {
-    const center = this.gameState.getState().fortune.center;
-    for (const fc of center) {
-      if (fc.bonus === -2 && fc.seenBy.includes("opp")) return fc.color;
-    }
-    return null;
-  }
-
   /**
    * AIがちらちらで把握した +bonus の中央色一覧を返す（見ていない色は含まない）
    */
@@ -2922,10 +2917,18 @@ export class GameScene extends Phaser.Scene {
               if (matchInPlayerStore === 0) s -= 22;
             }
             // プレイヤーが避けている色: おそらくマイナス → 自賽壇設定レーンに避ける
-            if (isOni && playerAvoidedColor && stone?.color === playerAvoidedColor)
+            if (
+              isOni &&
+              playerAvoidedColor &&
+              stone?.color === playerAvoidedColor
+            )
               s -= 18;
             // 相手の賽壇と同じ色 → 打ち消し合い（hard向け）
-            if (!isOni && stone?.color && (playerStoreColorCount[stone.color] ?? 0) > 0) {
+            if (
+              !isOni &&
+              stone?.color &&
+              (playerStoreColorCount[stone.color] ?? 0) > 0
+            ) {
               s += 6;
             }
           }
