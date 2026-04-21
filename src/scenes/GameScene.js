@@ -240,7 +240,7 @@ export class GameScene extends Phaser.Scene {
             `AI難易度: ${label}`,
             color,
             this.aiDifficulty === "oni-gote"
-              ? "AIのターンから始まります"
+              ? "鬼の手番です。"
               : "あなたのターンから始まります",
           );
       });
