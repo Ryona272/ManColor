@@ -444,16 +444,18 @@ export function decideSpecialAction(
   peeksDone,
   isOni = true,
   role = "opp",
+  params = null,
 ) {
+  const p = params || {};
   const oppStoreIndex = role === "opp" ? 5 : 11; // ぽいぽいで狙う相手の賽壇
 
   if (peeksDone >= 3) {
     // ちらちら回数なし → ぽいぽいのみ
-    return _resolvePoipoi(state, memo, fortune, role);
+    return _resolvePoipoi(state, memo, fortune, role, p);
   }
 
-  if (isOni && peeksDone < 2) {
-    // 鬼: 最初の2回は強制ちらちら
+  if (isOni && peeksDone < (p.earlyGamePeekThreshold ?? 2)) {
+    // 鬼: 最初の強制ちらちら
     return { action: "chirachira" };
   }
 
@@ -463,40 +465,43 @@ export function decideSpecialAction(
     inferred &&
     state.pits[oppStoreIndex].stones.some((s) => s.color === inferred);
   const poipoiValue = playerHasInferred
-    ? 20
+    ? (p.poipoiWithFortune ?? 20)
     : state.pits[oppStoreIndex].stones.length >= 2
-      ? 8
+      ? (p.poipoiGeneral ?? 8)
       : 0;
   const chirachiraRemaining = 3 - peeksDone;
   const chirachiraValue = isOni
     ? chirachiraRemaining >= 2
-      ? 10
-      : 4
+      ? (p.chirachiraThresholdHigh ?? 10)
+      : (p.chirachiraThresholdLow ?? 4)
     : chirachiraRemaining >= 2
       ? 12
       : 6;
 
   if (poipoiValue > chirachiraValue) {
-    return _resolvePoipoi(state, memo, fortune, role);
+    return _resolvePoipoi(state, memo, fortune, role, p);
   }
   return { action: "chirachira" };
 }
 
-function _resolvePoipoi(state, memo, fortune, role = "opp") {
+function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   const oppStoreIndex = role === "opp" ? 5 : 11;
   if (state.pits[oppStoreIndex].stones.length === 0) return { action: "none" };
   const inferred = memo.inferredPlayerColor;
   const ownFortune = role === "opp" ? fortune.opp.color : fortune.self.color;
   const knownNeg = knownNegativeColor(fortune, role);
   const knownPos = knownPositiveColors(fortune, role);
+  const vOwnFortune = params.poipoiStoneOwnFortune ?? 30;
+  const vInferred = params.poipoiStoneInferred ?? 22;
+  const vKnownPos = params.poipoiStoneKnownPos ?? 4;
 
   let bestIdx = -1;
   let bestVal = 0; // 0以下なら実行しない
   state.pits[oppStoreIndex].stones.forEach((stone, index) => {
     let val = 1;
-    if (ownFortune && stone.color === ownFortune) val = 30;
-    else if (inferred && stone.color === inferred) val = 22;
-    else if (knownPos.includes(stone.color)) val = 4;
+    if (ownFortune && stone.color === ownFortune) val = vOwnFortune;
+    else if (inferred && stone.color === inferred) val = vInferred;
+    else if (knownPos.includes(stone.color)) val = vKnownPos;
     if (knownNeg && stone.color === knownNeg) val = -99;
     if (val > bestVal) {
       bestVal = val;

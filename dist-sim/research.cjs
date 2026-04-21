@@ -28,11 +28,21 @@ var DEFAULT_PARAMS = {
   chirachira3rd: 24,
   // 3回目
   poipoiWithFortune: 30,
-  // ぽいぽい: inferred色が相手賽壇にある
+  // ぽいぽい判断: inferred色が相手賽壇にある
   poipoiGeneral: 12,
-  // ぽいぽい: 石が1個以上ある
+  // ぽいぽい判断: 石が1個以上ある
   poipoiEmpty: 3,
-  // ぽいぽい: 相手賽壇が空
+  // ぽいぽい判断: 相手賽壇が空
+  chirachiraThresholdHigh: 10,
+  // ちらちら比較値: 残り回数≥2 (鬼)
+  chirachiraThresholdLow: 4,
+  // ちらちら比較値: 残り回数<2 (鬼)
+  poipoiStoneOwnFortune: 30,
+  // ぽいぽい石選択: 自占い色
+  poipoiStoneInferred: 22,
+  // ぽいぽい石選択: 推測プレイヤー占い色
+  poipoiStoneKnownPos: 4,
+  // ぽいぽい石選択: ちらちら確認済み+色
   // ─── ざくざく ───
   zakuzakuBase: 10,
   // ざくざく奪取基本点
@@ -466,7 +476,7 @@ function countGuruguruChain(pits, storeIndex = 11, depth = 0) {
   if (depth >= 4) return 0;
   const laneMin = storeIndex === 11 ? 6 : 0;
   const laneMax = storeIndex === 11 ? 10 : 4;
-  let best2 = 0;
+  let best = 0;
   for (let q = laneMin; q <= laneMax; q++) {
     if (pits[q].stones.length === 0) continue;
     const count = pits[q].stones.length;
@@ -474,10 +484,10 @@ function countGuruguruChain(pits, storeIndex = 11, depth = 0) {
     if (last === storeIndex) {
       const { pits: pitsAfter } = simulateSow(pits, q);
       const chain = 1 + countGuruguruChain(pitsAfter, storeIndex, depth + 1);
-      if (chain > best2) best2 = chain;
+      if (chain > best) best = chain;
     }
   }
-  return best2;
+  return best;
 }
 function evalFollowupOpp(pits) {
   let bonus = 0;
@@ -585,7 +595,7 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
     return cnt > 0 && (q + cnt) % 12 === oppStoreIndex;
   }).length;
   const isEarlyGame = peeksDone < params.earlyGamePeekThreshold && !inferred && knownPos.length === 0;
-  let best2 = validPits[0];
+  let best = validPits[0];
   let bestScore = -Infinity;
   for (const p of validPits) {
     const count = state.pits[p].stones.length;
@@ -706,10 +716,10 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
     score += count * 0.1 + Math.random() * 0.06;
     if (score > bestScore) {
       bestScore = score;
-      best2 = p;
+      best = p;
     }
   }
-  return best2;
+  return best;
 }
 function decidePlacements(stones, state, memo, fortune, params = DEFAULT_PARAMS, role = "opp") {
   const isOpp = role === "opp";
@@ -761,38 +771,42 @@ function decidePlacements(stones, state, memo, fortune, params = DEFAULT_PARAMS,
   }
   return result;
 }
-function decideSpecialAction(state, memo, fortune, peeksDone, isOni = true, role = "opp") {
+function decideSpecialAction(state, memo, fortune, peeksDone, isOni = true, role = "opp", params = null) {
+  const p = params || {};
   const oppStoreIndex = role === "opp" ? 5 : 11;
   if (peeksDone >= 3) {
-    return _resolvePoipoi(state, memo, fortune, role);
+    return _resolvePoipoi(state, memo, fortune, role, p);
   }
-  if (isOni && peeksDone < 2) {
+  if (isOni && peeksDone < (p.earlyGamePeekThreshold ?? 2)) {
     return { action: "chirachira" };
   }
   const inferred = memo.inferredPlayerColor;
   const playerHasInferred = inferred && state.pits[oppStoreIndex].stones.some((s) => s.color === inferred);
-  const poipoiValue = playerHasInferred ? 20 : state.pits[oppStoreIndex].stones.length >= 2 ? 8 : 0;
+  const poipoiValue = playerHasInferred ? p.poipoiWithFortune ?? 20 : state.pits[oppStoreIndex].stones.length >= 2 ? p.poipoiGeneral ?? 8 : 0;
   const chirachiraRemaining = 3 - peeksDone;
-  const chirachiraValue = isOni ? chirachiraRemaining >= 2 ? 10 : 4 : chirachiraRemaining >= 2 ? 12 : 6;
+  const chirachiraValue = isOni ? chirachiraRemaining >= 2 ? p.chirachiraThresholdHigh ?? 10 : p.chirachiraThresholdLow ?? 4 : chirachiraRemaining >= 2 ? 12 : 6;
   if (poipoiValue > chirachiraValue) {
-    return _resolvePoipoi(state, memo, fortune, role);
+    return _resolvePoipoi(state, memo, fortune, role, p);
   }
   return { action: "chirachira" };
 }
-function _resolvePoipoi(state, memo, fortune, role = "opp") {
+function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   const oppStoreIndex = role === "opp" ? 5 : 11;
   if (state.pits[oppStoreIndex].stones.length === 0) return { action: "none" };
   const inferred = memo.inferredPlayerColor;
   const ownFortune = role === "opp" ? fortune.opp.color : fortune.self.color;
   const knownNeg = knownNegativeColor(fortune, role);
   const knownPos = knownPositiveColors(fortune, role);
+  const vOwnFortune = params.poipoiStoneOwnFortune ?? 30;
+  const vInferred = params.poipoiStoneInferred ?? 22;
+  const vKnownPos = params.poipoiStoneKnownPos ?? 4;
   let bestIdx = -1;
   let bestVal = 0;
   state.pits[oppStoreIndex].stones.forEach((stone, index) => {
     let val = 1;
-    if (ownFortune && stone.color === ownFortune) val = 30;
-    else if (inferred && stone.color === inferred) val = 22;
-    else if (knownPos.includes(stone.color)) val = 4;
+    if (ownFortune && stone.color === ownFortune) val = vOwnFortune;
+    else if (inferred && stone.color === inferred) val = vInferred;
+    else if (knownPos.includes(stone.color)) val = vKnownPos;
     if (knownNeg && stone.color === knownNeg) val = -99;
     if (val > bestVal) {
       bestVal = val;
@@ -879,7 +893,8 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
           fortune,
           peeksDone,
           true,
-          "self"
+          "self",
+          paramsA
         );
         if (specialAction.action === "chirachira") {
           gs.revealNextCenterForPlayer("self");
@@ -894,7 +909,7 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       if (gs.canActivateKutakuta("self")) {
         const selfStore = gs.getState().pits[5].stones.length;
         const oppStore = gs.getState().pits[11].stones.length;
-        if (selfStore > oppStore - 2) {
+        if (selfStore > oppStore + (paramsA.kutakutaThresholdOffset ?? -2)) {
           _applyKutakuta(gs, "self");
         }
       }
@@ -959,7 +974,8 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
           fortune,
           peeksDone,
           true,
-          "opp"
+          "opp",
+          paramsB
         );
         if (specialAction.action === "chirachira") {
           gs.revealNextCenterForPlayer("opp");
@@ -974,7 +990,7 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       if (gs.canActivateKutakuta("opp")) {
         const selfStore = gs.getState().pits[5].stones.length;
         const oppStore = gs.getState().pits[11].stones.length;
-        if (oppStore > selfStore - 2) {
+        if (oppStore > selfStore + (paramsB.kutakutaThresholdOffset ?? -2)) {
           _applyKutakuta(gs, "opp");
         }
       }
@@ -1067,173 +1083,96 @@ function _applyKutakuta(gs, player) {
 }
 
 // src/sim/research.js
-var N_AB = 600;
-var N_GRID = 400;
-var N_EVO = 200;
-var EVO_GENS = 10;
-var EVO_POP = 20;
-function printSep(title) {
-  console.log("\n" + "\u2550".repeat(60));
-  console.log("  " + title);
-  console.log("\u2550".repeat(60));
-}
-function printStats(label, stats) {
-  console.log(`  ${label}`);
-  console.log(
-    `    self\u52DD\u7387: ${stats.selfWinRate}  opp\u52DD\u7387: ${stats.oppWinRate}  \u5F15\u5206: ${(stats.draws / stats.n * 100).toFixed(1)}%`
-  );
-  console.log(
-    `    avg\u70B9\u5DEE(self-opp): ${stats.avgScoreDiff}  \u4E2D\u592E\u5024: ${stats.medianScoreDiff}`
-  );
-  console.log(
-    `    avg self\u70B9: ${stats.avgSelfScore}  avg opp\u70B9: ${stats.avgOppScore}`
-  );
-  console.log(
-    `    avg\u30BF\u30FC\u30F3: ${stats.avgTurns}  self \u3050\u308B\u3050\u308B: ${stats.avgSelfGuru}  opp \u3050\u308B\u3050\u308B: ${stats.avgOppGuru}`
-  );
-}
-function gridSearch(paramKey, values, baseParams, n) {
-  const results = [];
-  for (const v of values) {
-    const params = mergeParams({ ...baseParams, [paramKey]: v });
-    const s = runMany(params, DEFAULT_PARAMS, n);
-    results.push({
-      value: v,
-      selfWinRate: s.selfWinRate,
-      avgDiff: parseFloat(s.avgScoreDiff)
-    });
-  }
-  results.sort((a, b) => b.avgDiff - a.avgDiff);
-  return results;
-}
-function evolve(gens, popSize, n, mutRate, mutScale, seed) {
-  let pop = Array.from(
-    { length: popSize },
-    () => mutate(seed, mutRate, mutScale)
-  );
-  let bestEver = { params: seed, score: -Infinity };
-  for (let g = 0; g < gens; g++) {
-    const scored = pop.map((params) => {
-      const s = runMany(params, DEFAULT_PARAMS, n);
-      return { params, score: parseFloat(s.avgScoreDiff) };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    if (scored[0].score > bestEver.score) bestEver = scored[0];
-    const avg = scored.reduce((sum, e) => sum + e.score, 0) / scored.length;
-    console.log(
-      `  \u4E16\u4EE3 ${g + 1}/${gens}: \u6700\u9AD8=${scored[0].score.toFixed(2)} \u5E73\u5747=${avg.toFixed(2)}`
-    );
-    const survivors = scored.slice(0, Math.floor(popSize / 2));
-    pop = [
-      ...survivors.map((s) => s.params),
-      ...Array.from(
-        { length: popSize - survivors.length },
-        () => mutate(
-          survivors[Math.floor(Math.random() * survivors.length)].params,
-          mutRate,
-          mutScale
-        )
-      )
-    ];
-  }
-  return bestEver;
-}
-function mutate(params, rate, scale) {
-  const r = { ...params };
-  for (const k of Object.keys(r)) {
-    if (Math.random() < rate) {
-      const d = r[k] * scale * (Math.random() * 2 - 1);
-      r[k] = Number.isInteger(params[k]) ? Math.round(r[k] + d) : r[k] + d;
-    }
-  }
-  return r;
-}
-printSep("STEP 1: \u30D9\u30FC\u30B9\u30E9\u30A4\u30F3 DEFAULT vs DEFAULT");
-var baseline = runMany(DEFAULT_PARAMS, DEFAULT_PARAMS, N_AB);
-printStats("DEFAULT(self) vs DEFAULT(opp)", baseline);
-var guruguruHeavy = mergeParams({
-  guruguruBase: 40,
-  guruguruChainMult: 22,
-  guruguruFollowupMult: 1.6,
-  guruguruBaseEarly: 22,
-  chirachira1st: 38,
-  chirachira2nd: 30
+var N_AB = 800;
+var N_GRID = 500;
+var EVO_BEST = mergeParams({
+  guruguruBaseEarly: 30,
+  guruguruChainMultEarly: 9,
+  guruguruBase: 71,
+  guruguruChainMult: 28,
+  guruguruFollowupMult: 1.725,
+  guruguruDisrupt: 28,
+  chirachira1st: 34,
+  chirachira2nd: 30,
+  chirachira1stMid: 37,
+  chirachira2ndMid: 30,
+  chirachira3rd: 21,
+  poipoiWithFortune: 27,
+  poipoiGeneral: 7,
+  poipoiEmpty: 3,
+  chirachiraThresholdHigh: 10,
+  chirachiraThresholdLow: 4,
+  poipoiStoneOwnFortune: 30,
+  poipoiStoneInferred: 22,
+  poipoiStoneKnownPos: 4,
+  zakuzakuBase: 8,
+  zakuzakuStoneMult: 4,
+  zakuzakuOwnFortune: 6,
+  zakuzakuInferred: 7,
+  zakuzakuKnownPos: 10,
+  earlyOwnFortune: 28,
+  earlyCancelMult: 9,
+  earlyCancelThreshold: 2,
+  earlyUnknownPenalty: -17,
+  midInferred: 41,
+  midOwnFortune: 18,
+  midKnownPos: 10,
+  midKnownNeg: -42,
+  midAvoidedColor: -21,
+  midUnknownPenalty: -12,
+  midCancelMult: 7,
+  midCancelThreshold: 2
 });
-printSep("STEP 2: guruguruHeavy(self) vs DEFAULT(opp)");
-var guruS = runMany(guruguruHeavy, DEFAULT_PARAMS, N_AB);
-printStats("guruguruHeavy vs DEFAULT", guruS);
-printSep("STEP 3: \u30B0\u30EA\u30C3\u30C9\u30B5\u30FC\u30C1 \u2014 guruguruBase");
-var gridBase = gridSearch(
-  "guruguruBase",
-  [16, 24, 32, 40, 48, 56, 64],
-  DEFAULT_PARAMS,
-  N_GRID
-);
-console.log("  guruguruBase \u30B0\u30EA\u30C3\u30C9\u7D50\u679C\uFF08\u70B9\u5DEE\u964D\u9806\uFF09:");
-gridBase.forEach(
-  (r) => console.log(
-    `    ${r.value}: selfWin=${r.selfWinRate}  avgDiff=${r.avgDiff.toFixed(2)}`
-  )
-);
-printSep("STEP 4: \u30B0\u30EA\u30C3\u30C9\u30B5\u30FC\u30C1 \u2014 guruguruChainMult");
-var gridChain = gridSearch(
-  "guruguruChainMult",
-  [8, 12, 16, 20, 26, 32],
-  DEFAULT_PARAMS,
-  N_GRID
-);
-console.log("  guruguruChainMult \u30B0\u30EA\u30C3\u30C9\u7D50\u679C:");
-gridChain.forEach(
-  (r) => console.log(
-    `    ${r.value}: selfWin=${r.selfWinRate}  avgDiff=${r.avgDiff.toFixed(2)}`
-  )
-);
-printSep("STEP 5: \u30B0\u30EA\u30C3\u30C9\u30B5\u30FC\u30C1 \u2014 guruguruDisrupt");
-var gridDisrupt = gridSearch(
-  "guruguruDisrupt",
-  [10, 18, 26, 34, 42, 50],
-  DEFAULT_PARAMS,
-  N_GRID
-);
-console.log("  guruguruDisrupt \u30B0\u30EA\u30C3\u30C9\u7D50\u679C:");
-gridDisrupt.forEach(
-  (r) => console.log(
-    `    ${r.value}: selfWin=${r.selfWinRate}  avgDiff=${r.avgDiff.toFixed(2)}`
-  )
-);
-var bestBase = gridBase[0].value;
-var bestChain = gridChain[0].value;
-var bestDisrupt = gridDisrupt[0].value;
-var optimizedV1 = mergeParams({
-  guruguruBase: bestBase,
-  guruguruChainMult: bestChain,
-  guruguruDisrupt: bestDisrupt
-});
-printSep(
-  `STEP 6: \u30B0\u30EA\u30C3\u30C9\u6700\u826F\u7D44\u307F\u5408\u308F\u305B(base=${bestBase},chain=${bestChain},disrupt=${bestDisrupt}) vs DEFAULT`
-);
-var optV1S = runMany(optimizedV1, DEFAULT_PARAMS, N_AB);
-printStats("optimizedV1 vs DEFAULT", optV1S);
-printSep(
-  "STEP 7: \u9032\u5316\u7684\u63A2\u7D22 (guruguruHeavy \u30B7\u30FC\u30C9, " + EVO_GENS + "\u4E16\u4EE3\xD7" + EVO_POP + "\u500B\u4F53\xD7" + N_EVO + "\u8A66\u5408)"
-);
-var best = evolve(EVO_GENS, EVO_POP, N_EVO, 0.3, 0.25, guruguruHeavy);
-console.log(`
-  \u2605 \u9032\u5316\u6700\u7D42\u30D9\u30B9\u30C8 (avg\u70B9\u5DEE: ${best.score.toFixed(2)}):`);
-console.log(JSON.stringify(best.params, null, 2));
-printSep("STEP 8: \u9032\u5316\u30D9\u30B9\u30C8 vs DEFAULT (\u6700\u7D42\u691C\u8A3C)");
-var finalS = runMany(best.params, DEFAULT_PARAMS, N_AB);
-printStats("\u9032\u5316\u30D9\u30B9\u30C8(self) vs DEFAULT(opp)", finalS);
-printSep("STEP 9: \u5148\u5F8C\u5BFE\u79F0\u30C1\u30A7\u30C3\u30AF (DEFAULT(self) vs \u9032\u5316\u30D9\u30B9\u30C8(opp))");
-var symS = runMany(DEFAULT_PARAMS, best.params, N_AB);
-printStats("DEFAULT(self) vs \u9032\u5316\u30D9\u30B9\u30C8(opp)", symS);
-printSep("\u6700\u7D42\u30B5\u30DE\u30EA\u30FC");
-console.log("  DEFAULT\u57FA\u6E96\u70B9\u5DEE:        " + baseline.avgScoreDiff);
-console.log("  guruguruHeavy\u70B9\u5DEE:      " + guruS.avgScoreDiff);
-console.log("  \u30B0\u30EA\u30C3\u30C9\u6700\u826F\u7D44\u307F\u5408\u308F\u305B: " + optV1S.avgScoreDiff);
-console.log("  \u9032\u5316\u30D9\u30B9\u30C8(\u5148\u624B):       " + finalS.avgScoreDiff);
-console.log(
-  "  \u9032\u5316\u30D9\u30B9\u30C8(\u5F8C\u624B):       " + (parseFloat(symS.avgScoreDiff) * -1).toFixed(2) + " (DEFAULT\u3068\u3057\u3066\u63DB\u7B97)"
-);
-console.log("\n  \u63A8\u5968\u30D1\u30E9\u30E1\u30FC\u30BF\uFF08GameScene _aiPickPitOniV2 \u306B\u9069\u7528\u53EF\u80FD\uFF09:");
-console.log(JSON.stringify(best.params, null, 2));
+function sep(t) {
+  console.log("\n" + "=".repeat(60) + "\n  " + t + "\n" + "=".repeat(60));
+}
+function pr(label, s) {
+  console.log("  " + label);
+  console.log("    win: " + s.selfWinRate + " / " + s.oppWinRate + "  avgDiff: " + s.avgScoreDiff + "  med: " + s.medianScoreDiff);
+  console.log("    guru self:" + s.avgSelfGuru + " opp:" + s.avgOppGuru + "  peeks self:" + s.avgSelfPeeks + " opp:" + s.avgOppPeeks + "  turns:" + s.avgTurns);
+}
+function grid(key, values, base) {
+  const rows = values.map((v) => {
+    const s = runMany(mergeParams({ ...base, [key]: v }), DEFAULT_PARAMS, N_GRID);
+    return { v, win: s.selfWinRate, diff: parseFloat(s.avgScoreDiff) };
+  });
+  rows.sort((a, b) => b.diff - a.diff);
+  rows.forEach((r) => console.log("    " + key + "=" + r.v + "  win=" + r.win + "  avgDiff=" + r.diff.toFixed(2)));
+  return rows[0].v;
+}
+sep("0. baseline: EVO_BEST(self) vs DEFAULT(opp)");
+pr("EVO_BEST vs DEFAULT", runMany(EVO_BEST, DEFAULT_PARAMS, N_AB));
+sep("1a. poipoi-decision: poipoiWithFortune (inferred color in store)");
+grid("poipoiWithFortune", [10, 16, 22, 27, 34, 42, 55], EVO_BEST);
+sep("1b. poipoi-decision: poipoiGeneral (stones present, color unknown)");
+grid("poipoiGeneral", [0, 4, 7, 10, 14, 20], EVO_BEST);
+sep("1c. chirachira compare val: chirachiraThresholdHigh (remaining>=2)");
+grid("chirachiraThresholdHigh", [4, 7, 10, 14, 18, 25], EVO_BEST);
+sep("1d. chirachira compare val: chirachiraThresholdLow (remaining<2)");
+grid("chirachiraThresholdLow", [1, 3, 4, 6, 8, 12], EVO_BEST);
+sep("1e. poipoi stone select: poipoiStoneOwnFortune (take AI fortune color)");
+grid("poipoiStoneOwnFortune", [15, 22, 28, 35, 45, 60], EVO_BEST);
+sep("1f. poipoi stone select: poipoiStoneInferred (take inferred player fortune)");
+grid("poipoiStoneInferred", [10, 16, 22, 28, 36, 45], EVO_BEST);
+sep("2. forced chirachira count: earlyGamePeekThreshold");
+grid("earlyGamePeekThreshold", [0, 1, 2, 3], EVO_BEST);
+sep("3a. zakuzakuBase");
+grid("zakuzakuBase", [2, 5, 8, 12, 16, 22], EVO_BEST);
+sep("3b. zakuzakuStoneMult");
+grid("zakuzakuStoneMult", [2, 4, 6, 8, 11], EVO_BEST);
+sep("3c. zakuzakuInferred");
+grid("zakuzakuInferred", [0, 4, 7, 11, 16, 22], EVO_BEST);
+sep("4a. midInferred");
+grid("midInferred", [28, 34, 41, 48, 56, 64], EVO_BEST);
+sep("4b. midOwnFortune");
+grid("midOwnFortune", [8, 12, 18, 24, 30], EVO_BEST);
+sep("4c. midUnknownPenalty");
+grid("midUnknownPenalty", [-4, -8, -12, -18, -24, -32], EVO_BEST);
+sep("4d. midKnownNeg");
+grid("midKnownNeg", [-24, -32, -42, -55, -70], EVO_BEST);
+sep("5. kutakutaThresholdOffset");
+grid("kutakutaThresholdOffset", [-6, -4, -2, 0, 2, 4], EVO_BEST);
+sep("6. symmetry: DEFAULT(self) vs EVO_BEST(opp)");
+pr("DEFAULT vs EVO_BEST", runMany(DEFAULT_PARAMS, EVO_BEST, N_AB));
+sep("7. mirror: EVO_BEST(self) vs EVO_BEST(opp)");
+pr("EVO_BEST vs EVO_BEST", runMany(EVO_BEST, EVO_BEST, N_AB));

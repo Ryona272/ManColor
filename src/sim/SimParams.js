@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SimParams.js
  * シミュレーター用チューニングパラメータ定義
  * 各 AI インスタンスに個別パラメータを渡してヘッドレス対戦させる
@@ -10,48 +10,53 @@ export const DEFAULT_PARAMS = {
   earlyGamePeekThreshold: 2, // peeksDone < X && inferredなし && knownPosなし → 序盤
 
   // ─── ぐるぐる ───
-  guruguruBaseEarly: 14, // 序盤のぐるぐるベース
-  guruguruChainMultEarly: 10, // 序盤の連鎖ボーナス乗数
-  guruguruBase: 28, // 中盤以降のぐるぐるベース
-  guruguruChainMult: 16, // 中盤以降の連鎖ボーナス乗数
-  guruguruFollowupMult: 1.3, // 2手先読み乗数
-  guruguruDisrupt: 26, // プレイヤーぐるぐる破壊ボーナス/手
+  guruguruBaseEarly: 30, // 序盤のぐるぐるベース
+  guruguruChainMultEarly: 9, // 序盤の連鎖ボーナス乗数
+  guruguruBase: 71, // 中盤以降のぐるぐるベース
+  guruguruChainMult: 28, // 中盤以降の連鎖ボーナス乗数
+  guruguruFollowupMult: 1.725, // 2手先読み乗数
+  guruguruDisrupt: 28, // プレイヤーぐるぐる破壊ボーナス/手
 
   // ─── ちらちら（pit5着地）───
-  chirachira1st: 50, // 1回目（序盤）
-  chirachira2nd: 42, // 2回目（序盤）
-  chirachira1stMid: 36, // 1回目（中盤以降）
+  chirachira1st: 34, // 1回目（序盤）
+  chirachira2nd: 30, // 2回目（序盤）
+  chirachira1stMid: 37, // 1回目（中盤以降）
   chirachira2ndMid: 30, // 2回目（中盤以降）
-  chirachira3rd: 24, // 3回目
-  poipoiWithFortune: 30, // ぽいぽい: inferred色が相手賽壇にある
-  poipoiGeneral: 12, // ぽいぽい: 石が1個以上ある
-  poipoiEmpty: 3, // ぽいぽい: 相手賽壇が空
+  chirachira3rd: 21, // 3回目
+  poipoiWithFortune: 22, // ぽいぽい判断: inferred色が相手賽壇にある
+  poipoiGeneral: 4, // ぽいぽい判断: 石が1個以上ある
+  poipoiEmpty: 3, // ぽいぽい判断: 相手賽壇が空
+  chirachiraThresholdHigh: 25, // ちらちら比較値: 残り回数≥2 (鬼)
+  chirachiraThresholdLow: 6, // ちらちら比較値: 残り回数<2 (鬼)
+  poipoiStoneOwnFortune: 45, // ぽいぽい石選択: 自占い色
+  poipoiStoneInferred: 28, // ぽいぽい石選択: 推測プレイヤー占い色
+  poipoiStoneKnownPos: 4, // ぽいぽい石選択: ちらちら確認済み+色
 
   // ─── ざくざく ───
-  zakuzakuBase: 10, // ざくざく奪取基本点
-  zakuzakuStoneMult: 4, // ざくざく石1個あたり
+  zakuzakuBase: 5, // ざくざく奪取基本点
+  zakuzakuStoneMult: 11, // ざくざく石1個あたり
   zakuzakuOwnFortune: 8, // 奪う石が自占い色
-  zakuzakuInferred: 6, // 奪う石がinferred色
+  zakuzakuInferred: 0, // 奪う石がinferred色
   zakuzakuKnownPos: 10, // 奪う石がknownPos色
 
   // ─── 石の色評価（pit11着地）─ 序盤 ───
-  earlyOwnFortune: 22, // 自分の占い色（+3確実）
-  earlyCancelMult: 10, // 相手賽壇にN枚以上 → N×この値
+  earlyOwnFortune: 28, // 自分の占い色（+3確実）
+  earlyCancelMult: 9, // 相手賽壇にN枚以上 → N×この値
   earlyCancelThreshold: 2, // キャンセルが有効になる枚数下限
-  earlyUnknownPenalty: -18, // 未知色ペナルティ
+  earlyUnknownPenalty: -17, // 未知色ペナルティ
 
   // ─── 石の色評価（pit11着地）─ 中盤以降 ───
-  midInferred: 38, // 相手占い色（+5）
-  midOwnFortune: 20, // 自分占い色（+3）
-  midKnownPos: 8, // ちらちら確認済み+1石
+  midInferred: 34, // 相手占い色（+5）
+  midOwnFortune: 24, // 自分占い色（+3）
+  midKnownPos: 10, // ちらちら確認済み+1石
   midKnownNeg: -42, // 確定マイナス石（絶対回避）
-  midAvoidedColor: -22, // プレイヤーが避けている色
-  midUnknownPenalty: -16, // 未確定色ペナルティ
-  midCancelMult: 8, // 相手賽壇にN枚 → N×この値
+  midAvoidedColor: -21, // プレイヤーが避けている色
+  midUnknownPenalty: -12, // 未確定色ペナルティ
+  midCancelMult: 7, // 相手賽壇にN枚 → N×この値
   midCancelThreshold: 2, // キャンセルが有効になる枚数下限
 
   // ─── くたくた ───
-  kutakutaThresholdOffset: -2, // kutakuta発動: oppStore > selfStore + offset
+  kutakutaThresholdOffset: -6, // kutakuta発動: oppStore > selfStore + offset
 };
 
 /**

@@ -2667,9 +2667,9 @@ export class GameScene extends Phaser.Scene {
           const playerStoreHasFortune =
             inferred && state.pits[5].stones.some((s) => s.color === inferred);
           score += playerStoreHasFortune
-            ? 27
+            ? 22
             : state.pits[5].stones.length > 0
-              ? 7
+              ? 4
               : 3;
         }
       }
@@ -2682,10 +2682,9 @@ export class GameScene extends Phaser.Scene {
       ) {
         const mirrorPit = lastPit - 6;
         const mirrorStones = state.pits[mirrorPit].stones;
-        score += 8 + mirrorStones.length * 4;
+        score += 5 + mirrorStones.length * 11;
         for (const s of mirrorStones) {
           if (ownFortune && s.color === ownFortune) score += 6;
-          if (inferred && s.color === inferred) score += 7;
           if (knownPos.includes(s.color)) score += 10; // ちらちら知識: プラス色を奪う
         }
         score += this._aiEvalFollowupOpp(pitsAfter) * 0.8;
@@ -2737,9 +2736,9 @@ export class GameScene extends Phaser.Scene {
           } else {
             // 中盤以降: 情報に基づくフル評価
             // 相手の占い色が自賽壇に入ると+5点（最高点！キャンセルでなく最高導入）
-            if (inferred && stoneColor === inferred) score += 41;
+            if (inferred && stoneColor === inferred) score += 34;
             // 自分の占い色 = +3点確実
-            else if (ownFortune && stoneColor === ownFortune) score += 18;
+            else if (ownFortune && stoneColor === ownFortune) score += 24;
             // ちらちら確認済みプラス中央石 = +1点
             if (knownPos.includes(stoneColor)) score += 10;
             // 相手賽壇に多い色 = 相手占い色候補(+5期待値)
@@ -3023,9 +3022,9 @@ export class GameScene extends Phaser.Scene {
               inferred &&
               state.pits[5].stones.some((s) => s.color === inferred);
             const poipoiValue = playerHasInferredInStore
-              ? 20
+              ? 22
               : playerStoreCount >= 2
-                ? 8
+                ? 4
                 : 0;
             const chirachiraRemaining =
               3 - (this.gameState.getState().centerPeekProgress?.opp ?? 0);
@@ -3035,8 +3034,8 @@ export class GameScene extends Phaser.Scene {
               this.aiDifficulty === "oni-sente" ||
               this.aiDifficulty === "oni-gote"
                 ? chirachiraRemaining >= 2
-                  ? 10
-                  : 4
+                  ? 25
+                  : 6
                 : chirachiraRemaining >= 2
                   ? 12
                   : 6;
@@ -3050,12 +3049,13 @@ export class GameScene extends Phaser.Scene {
                 const ownFortune =
                   this.gameState.getFortuneColorForPlayer("opp");
                 const knownNegColor = this._aiKnownNegativeColor();
+                const knownPos = this._aiKnownPositiveColors();
                 targetStones.forEach((stone, index) => {
                   let val = 1; // デフォルト：ニュートラル予期値
                   // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奁う)
-                  if (ownFortune && stone.color === ownFortune) val = 28;
+                  if (ownFortune && stone.color === ownFortune) val = 45;
                   // 次優先: 推測したプレイヤー占い色 (+3点から奁う)
-                  else if (inferred && stone.color === inferred) val = 20;
+                  else if (inferred && stone.color === inferred) val = 28;
                   // ちらちら確認済み+1石 → 低優先（1点にすぎない）
                   else if (knownPos.includes(stone.color)) val = 3;
                   // 確定マイナス石 → 絶対に取らない（取るとプレイヤーの徇助になる）
@@ -3190,7 +3190,7 @@ export class GameScene extends Phaser.Scene {
         this.aiDifficulty === "oni" ||
         this.aiDifficulty === "oni-sente" ||
         this.aiDifficulty === "oni-gote"
-          ? selfStoreCount - 2
+          ? selfStoreCount - 6
           : selfStoreCount;
       if (oppStoreCount >= kutakutaThreshold) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");

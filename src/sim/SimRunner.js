@@ -127,6 +127,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
           peeksDone,
           true,
           "self",
+          paramsA,
         );
         if (specialAction.action === "chirachira") {
           gs.revealNextCenterForPlayer("self");
@@ -144,7 +145,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       if (gs.canActivateKutakuta("self")) {
         const selfStore = gs.getState().pits[5].stones.length;
         const oppStore = gs.getState().pits[11].stones.length;
-        if (selfStore > oppStore - 2) {
+        if (selfStore > oppStore + (paramsA.kutakutaThresholdOffset ?? -2)) {
           _applyKutakuta(gs, "self");
         }
       }
@@ -219,6 +220,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
           peeksDone,
           true,
           "opp",
+          paramsB,
         );
         if (specialAction.action === "chirachira") {
           gs.revealNextCenterForPlayer("opp");
@@ -235,7 +237,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       if (gs.canActivateKutakuta("opp")) {
         const selfStore = gs.getState().pits[5].stones.length;
         const oppStore = gs.getState().pits[11].stones.length;
-        if (oppStore > selfStore - 2) {
+        if (oppStore > selfStore + (paramsB.kutakutaThresholdOffset ?? -2)) {
           _applyKutakuta(gs, "opp");
         }
       }
