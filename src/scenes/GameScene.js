@@ -2639,15 +2639,16 @@ export class GameScene extends Phaser.Scene {
           if (cnt > 0 && (q + cnt) % 12 === 5) playerGuruguruAfter++;
         }
         const disrupted = playerGuruguruNow - playerGuruguruAfter;
-        if (disrupted > 0) score += disrupted * 26;
+        if (disrupted > 0) score += disrupted * 28;
       }
 
       // ─── ぐるぐる ───
       // 序盤は情報収集優先のため控えめ、中盤以降は積極的に狙う
       if (lastPit === 11) {
         const chainCount = this._aiCountGuruguruChain(pitsAfter);
-        score += isEarlyGame ? 14 + chainCount * 10 : 28 + chainCount * 16;
-        score += this._aiEvalFollowupOpp(pitsAfter) * (isEarlyGame ? 0.8 : 1.3);
+        score += isEarlyGame ? 30 + chainCount * 9 : 71 + chainCount * 28;
+        score +=
+          this._aiEvalFollowupOpp(pitsAfter) * (isEarlyGame ? 0.8 : 1.725);
         const playerThreatMult = 0.6 + playerGuruguruNow * 0.35;
         score -= this._aiEvalFollowupSelf(pitsAfter) * playerThreatMult;
         const colorsAfter = new Set();
@@ -2659,16 +2660,16 @@ export class GameScene extends Phaser.Scene {
 
       // ─── pit5着地（ちらちら/ぽいぽい）─── 情報収集は最優先（序盤は特に重要）
       if (lastPit === 5) {
-        if (peeksDone === 0) score += isEarlyGame ? 50 : 36;
-        else if (peeksDone === 1) score += isEarlyGame ? 42 : 30;
-        else if (peeksDone === 2) score += 24;
+        if (peeksDone === 0) score += isEarlyGame ? 34 : 37;
+        else if (peeksDone === 1) score += isEarlyGame ? 30 : 30;
+        else if (peeksDone === 2) score += 21;
         else {
           const playerStoreHasFortune =
             inferred && state.pits[5].stones.some((s) => s.color === inferred);
           score += playerStoreHasFortune
-            ? 30
+            ? 27
             : state.pits[5].stones.length > 0
-              ? 12
+              ? 7
               : 3;
         }
       }
@@ -2681,10 +2682,10 @@ export class GameScene extends Phaser.Scene {
       ) {
         const mirrorPit = lastPit - 6;
         const mirrorStones = state.pits[mirrorPit].stones;
-        score += 10 + mirrorStones.length * 4;
+        score += 8 + mirrorStones.length * 4;
         for (const s of mirrorStones) {
-          if (ownFortune && s.color === ownFortune) score += 8;
-          if (inferred && s.color === inferred) score += 6;
+          if (ownFortune && s.color === ownFortune) score += 6;
+          if (inferred && s.color === inferred) score += 7;
           if (knownPos.includes(s.color)) score += 10; // ちらちら知識: プラス色を奪う
         }
         score += this._aiEvalFollowupOpp(pitsAfter) * 0.8;
@@ -2726,37 +2727,37 @@ export class GameScene extends Phaser.Scene {
           if (isEarlyGame) {
             // 序盤: 自分の占い色(+3確実)は積極的に。それ以外は危険
             if (ownFortune && stoneColor === ownFortune) {
-              score += 22; // 常に+3点
+              score += 28; // 常に+3点
             } else {
               // 相手賽壇に2枚以上ある色 = 相手占い色候補(自分に入れれば+5期待値)
               const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
-              if (cancelCount >= 2) score += cancelCount * 10;
-              else score -= 18; // 完全未知 = 中央-3点石の可能性
+              if (cancelCount >= 2) score += cancelCount * 9;
+              else score -= 17; // 完全未知 = 中央-3点石の可能性
             }
           } else {
             // 中盤以降: 情報に基づくフル評価
             // 相手の占い色が自賽壇に入ると+5点（最高点！キャンセルでなく最高導入）
-            if (inferred && stoneColor === inferred) score += 38;
+            if (inferred && stoneColor === inferred) score += 41;
             // 自分の占い色 = +3点確実
-            else if (ownFortune && stoneColor === ownFortune) score += 20;
+            else if (ownFortune && stoneColor === ownFortune) score += 18;
             // ちらちら確認済みプラス中央石 = +1点
-            if (knownPos.includes(stoneColor)) score += 8;
+            if (knownPos.includes(stoneColor)) score += 10;
             // 相手賽壇に多い色 = 相手占い色候補(+5期待値)
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if ((!inferred || stoneColor !== inferred) && cancelCount >= 2)
-              score += cancelCount * 8;
+              score += cancelCount * 7;
             // 確定マイナス色 = 問答無用で回避（相手が持っていても自分の-3点は変わらない）
             if (knownNeg && stoneColor === knownNeg) score -= 42;
             // 相手が避けている色 = マイナス石の疑い
             if (playerAvoidedColor && stoneColor === playerAvoidedColor)
-              score -= 22;
+              score -= 21;
             // 確認済み安全属性なし = リスク
             const isConfirmedSafe =
               (ownFortune && stoneColor === ownFortune) ||
               knownPos.includes(stoneColor) ||
               (inferred && stoneColor === inferred) ||
               cancelCount >= 2;
-            if (!isConfirmedSafe) score -= 16;
+            if (!isConfirmedSafe) score -= 12;
           }
         }
 

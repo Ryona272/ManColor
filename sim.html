@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>ManColor AI シミュレーター</title>
+  <style>
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 20px; }
+    h1 { color: #a8d8ea; margin-bottom: 4px; }
+    .subtitle { color: #888; margin-bottom: 20px; font-size: 13px; }
+    .card { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    h2 { color: #e94560; margin: 0 0 12px 0; font-size: 15px; }
+    label { color: #aaa; font-size: 13px; }
+    select, input[type=number] { background: #0f3460; color: #e0e0e0; border: 1px solid #e94560; border-radius: 4px; padding: 4px 8px; font-family: monospace; }
+    button { background: #e94560; color: white; border: none; border-radius: 6px; padding: 10px 20px; cursor: pointer; font-size: 14px; font-family: monospace; }
+    button:hover { background: #c73652; }
+    button:disabled { background: #555; cursor: not-allowed; }
+    #log { background: #0a0a1a; border: 1px solid #333; border-radius: 6px; padding: 12px; height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.6; }
+    .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .tag-good { color: #4ecca3; }
+    .tag-bad { color: #e94560; }
+    .tag-info { color: #a8d8ea; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th { background: #0f3460; color: #a8d8ea; padding: 6px 10px; text-align: left; }
+    td { padding: 4px 10px; border-bottom: 1px solid #1a2a4a; }
+    tr:hover td { background: #1e2e4e; }
+    .progress { color: #e94560; }
+    #resultTable { margin-top: 10px; display: none; }
+  </style>
+</head>
+<body>
+  <h1>ManColor AI シミュレーター</h1>
+  <p class="subtitle">ヘッドレスゲームシミュレーションで AI パラメータをチューニング</p>
+
+  <div class="card">
+    <h2>▶ A/B 対戦テスト</h2>
+    <div class="row">
+      <label>パラメータ A: <select id="presetA">
+        <option value="DEFAULT">デフォルト（現在値）</option>
+        <option value="guruguruHeavy">ぐるぐる重視</option>
+        <option value="chirachiraHeavy">ちらちら重視</option>
+        <option value="fearHeavy">防御重視</option>
+        <option value="cancelHeavy">打ち消し重視</option>
+      </select></label>
+      <label>パラメータ B: <select id="presetB">
+        <option value="DEFAULT">デフォルト（現在値）</option>
+        <option value="guruguruHeavy">ぐるぐる重視</option>
+        <option value="chirachiraHeavy">ちらちら重視</option>
+        <option value="fearHeavy">防御重視</option>
+        <option value="cancelHeavy">打ち消し重視</option>
+      </select></label>
+      <label>試合数: <input type="number" id="abN" value="500" min="10" max="5000" style="width:80px" /></label>
+      <button id="btnAB" onclick="runAB()">A/B 対戦開始</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>▶ グリッドサーチ</h2>
+    <div class="row">
+      <label>パラメータキー: <select id="gridKey">
+        <option value="guruguruBase">ぐるぐる基本点</option>
+        <option value="guruguruChainMult">ぐるぐる連鎖倍率</option>
+        <option value="chirachira1st">ちらちら1回目</option>
+        <option value="midInferred">中盤・推測占い色ボーナス</option>
+        <option value="midOwnFortune">中盤・自占い色ボーナス</option>
+        <option value="midKnownNeg">中盤・確定マイナス石ペナルティ</option>
+        <option value="midKnownPos">中盤・確定プラス石ボーナス</option>
+        <option value="zakuzakuBase">ざくざく基本点</option>
+        <option value="earlyOwnFortune">序盤・自占い色ボーナス</option>
+        <option value="guruguruDisrupt">相手ぐるぐる妨害ボーナス</option>
+      </select></label>
+      <label>値（カンマ区切り）: <input type="text" id="gridValues" value="10,20,28,36,44,52" style="width:200px" /></label>
+      <label>試合数: <input type="number" id="gridN" value="300" min="10" max="2000" style="width:80px" /></label>
+      <button id="btnGrid" onclick="runGrid()">グリッドサーチ開始</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>▶ 進化的探索</h2>
+    <div class="row">
+      <label>世代数: <input type="number" id="evoGens" value="8" min="1" max="50" style="width:60px" /></label>
+      <label>個体数: <input type="number" id="evoPop" value="16" min="4" max="100" style="width:60px" /></label>
+      <label>試合数/個体: <input type="number" id="evoN" value="150" min="50" max="1000" style="width:80px" /></label>
+      <label>突然変異率: <input type="number" id="evoMutRate" value="0.3" min="0.05" max="1" step="0.05" style="width:60px" /></label>
+      <label>変異幅: <input type="number" id="evoMutScale" value="0.25" min="0.05" max="1" step="0.05" style="width:60px" /></label>
+      <button id="btnEvo" onclick="runEvo()">進化的探索開始</button>
+    </div>
+    <p style="color:#888;font-size:12px;margin:4px 0 0">
+      ※ 世代×個体×試合 が多いほど精度が上がりますが時間がかかります（例: 8×16×150 ≈ 19,200試合）
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>▶ ログ出力</h2>
+    <div class="row">
+      <button onclick="clearLog()">クリア</button>
+      <button onclick="copyLog()">ログをコピー</button>
+      <button id="btnCopyTable" onclick="copyTable()" style="display:none">テーブルをコピー（TSV）</button>
+    </div>
+    <div id="log">ログがここに表示されます。\nシミュレーターを開始してください。</div>
+    <div id="resultTable"></div>
+    <textarea id="tsvArea" readonly style="display:none;width:100%;height:120px;margin-top:10px;background:#0a0a1a;color:#4ecca3;border:1px solid #4ecca3;border-radius:6px;padding:8px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+  </div>
+
+  <script type="module">
+    import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./src/sim/SimParams.js";
+    import { abTest, gridSearch, evolve } from "./src/sim/Optimizer.js";
+
+    // console.log / console.table をページに表示
+    const logEl = document.getElementById("log");
+    const origLog = console.log.bind(console);
+    const origTable = console.table.bind(console);
+    const origError = console.error.bind(console);
+
+    function appendLog(text, cls = "") {
+      const span = document.createElement("span");
+      if (cls) span.className = cls;
+      span.textContent = text + "\n";
+      logEl.appendChild(span);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    console.log = (...args) => {
+      origLog(...args);
+      appendLog(args.map(a => typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)).join(" "));
+    };
+    console.error = (...args) => {
+      origError(...args);
+      appendLog("[ERROR] " + args.join(" "), "tag-bad");
+    };
+    // TSV テキストを保持する変数
+    let lastTableTsv = "";
+
+    console.table = (data) => {
+      origTable(data);
+      const container = document.getElementById("resultTable");
+      container.style.display = "block";
+      const tableData = Array.isArray(data) ? data : Object.entries(data).map(([k, v]) => ({ 項目: k, 値: v }));
+      if (tableData.length === 0) return;
+      const keys = Object.keys(tableData[0]);
+
+      // HTML テーブル
+      let html = "<table><thead><tr>";
+      for (const k of keys) html += `<th>${k}</th>`;
+      html += "</tr></thead><tbody>";
+      for (const row of tableData) {
+        html += "<tr>";
+        for (const k of keys) {
+          const val = row[k];
+          const cls = typeof val === "string" && val.includes("%") && parseFloat(val) > 52 ? " class='tag-good'" : "";
+          html += `<td${cls}>${val ?? "-"}</td>`;
+        }
+        html += "</tr>";
+      }
+      html += "</tbody></table>";
+      container.innerHTML = html;
+
+      // TSV テキスト生成
+      const tsv = [keys.join("\t"),
+        ...tableData.map(row => keys.map(k => row[k] ?? "").join("\t"))
+      ].join("\n");
+      lastTableTsv = tsv;
+
+      // テキストエリアに表示
+      const tsvArea = document.getElementById("tsvArea");
+      tsvArea.style.display = "block";
+      tsvArea.value = tsv;
+      document.getElementById("btnCopyTable").style.display = "";
+    };
+
+    function getPreset(id) {
+      const val = document.getElementById(id).value;
+      if (val === "DEFAULT") return DEFAULT_PARAMS;
+      return PRESETS[val] ?? DEFAULT_PARAMS;
+    }
+
+    function setRunning(running) {
+      for (const id of ["btnAB", "btnGrid", "btnEvo"]) {
+        document.getElementById(id).disabled = running;
+      }
+    }
+
+    window.runAB = async function () {
+      setRunning(true);
+      const presetA = getPreset("presetA");
+      const presetB = getPreset("presetB");
+      const n = parseInt(document.getElementById("abN").value) || 500;
+      const labelA = document.getElementById("presetA").value;
+      const labelB = document.getElementById("presetB").value;
+      document.getElementById("resultTable").style.display = "none";
+      appendLog(`\n▶ A/B テスト開始: ${labelA} vs ${labelB} (${n}試合)...`, "tag-info");
+      await yieldFrame();
+      try {
+        abTest(presetA, presetB, n, labelA, labelB);
+      } catch (e) {
+        console.error(e.message);
+      }
+      setRunning(false);
+    };
+
+    window.runGrid = async function () {
+      setRunning(true);
+      const key = document.getElementById("gridKey").value;
+      const rawVals = document.getElementById("gridValues").value;
+      const values = rawVals.split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+      const n = parseInt(document.getElementById("gridN").value) || 300;
+      document.getElementById("resultTable").style.display = "none";
+      appendLog(`\n▶ グリッドサーチ開始: ${key} = [${values.join(", ")}] (各${n}試合)...`, "tag-info");
+      await yieldFrame();
+      try {
+        gridSearch(key, values, DEFAULT_PARAMS, n);
+      } catch (e) {
+        console.error(e.message);
+      }
+      setRunning(false);
+    };
+
+    window.runEvo = async function () {
+      setRunning(true);
+      const gens = parseInt(document.getElementById("evoGens").value) || 8;
+      const pop = parseInt(document.getElementById("evoPop").value) || 16;
+      const n = parseInt(document.getElementById("evoN").value) || 150;
+      const mutRate = parseFloat(document.getElementById("evoMutRate").value) || 0.3;
+      const mutScale = parseFloat(document.getElementById("evoMutScale").value) || 0.25;
+      document.getElementById("resultTable").style.display = "none";
+      appendLog(`\n▶ 進化的探索開始: ${gens}世代 × ${pop}個体 × ${n}試合...`, "tag-info");
+      await yieldFrame();
+      try {
+        evolve(gens, pop, n, mutRate, mutScale, DEFAULT_PARAMS);
+      } catch (e) {
+        console.error(e.message);
+      }
+      setRunning(false);
+    };
+
+    window.clearLog = function () {
+      logEl.textContent = "";
+      document.getElementById("resultTable").style.display = "none";
+      document.getElementById("tsvArea").style.display = "none";
+      document.getElementById("btnCopyTable").style.display = "none";
+      lastTableTsv = "";
+    };
+
+    window.copyLog = function () {
+      navigator.clipboard.writeText(logEl.textContent).then(
+        () => appendLog("ログをクリップボードにコピーしました", "tag-good"),
+        () => appendLog("コピーに失敗しました", "tag-bad")
+      );
+    };
+
+    window.copyTable = function () {
+      if (!lastTableTsv) return;
+      navigator.clipboard.writeText(lastTableTsv).then(
+        () => appendLog("テーブル（TSV）をクリップボードにコピーしました。Excelや分析ツールに貼り付け可能です。", "tag-good"),
+        () => appendLog("コピーに失敗しました", "tag-bad")
+      );
+    };
+
+    // UI を凍らせないための1フレーム譲渡
+    function yieldFrame() {
+      return new Promise(r => setTimeout(r, 0));
+    }
+
+    appendLog("シミュレーター準備完了。上のボタンで開始してください。", "tag-good");
+  </script>
+</body>
+</html>
