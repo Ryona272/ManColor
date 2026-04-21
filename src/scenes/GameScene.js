@@ -2540,7 +2540,11 @@ export class GameScene extends Phaser.Scene {
         const playerMirrorOfP = p - 6;
         if (state.pits[playerMirrorOfP].stones.length > 0) {
           const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
-          score -= 10 + mirrorStoneCount * 3;
+          // 5枚以上は大量失点リスク → 非線形で急激にペナルティを上げる
+          // 1枚:-13, 2枚:-19, 3枚:-28, 4枚:-40, 5枚:-60, 6枚:-88
+          const zakuPenalty =
+            10 + mirrorStoneCount * mirrorStoneCount * 2 + mirrorStoneCount;
+          score -= zakuPenalty;
           if (inferred) {
             const inferredHere = state.pits[playerMirrorOfP].stones.filter(
               (s) => s.color === inferred,
@@ -2647,6 +2651,22 @@ export class GameScene extends Phaser.Scene {
       return cnt > 0 && (q + cnt) % 12 === 5;
     }).length;
 
+    // 相手のちらちら準備路（(q + cnt) % 12 === 11）からAI路への流入石を予測
+    // 相手がちらちらを撒くとAI路 pit6-10 に石が1個ずつ追加される
+    const expectedIncomingAI = {};
+    for (let q = 0; q <= 4; q++) {
+      const cnt = state.pits[q].stones.length;
+      if (cnt > 0 && (q + cnt) % 12 === 11) {
+        for (let i = 1; i <= cnt; i++) {
+          const landing = (q + i) % 12;
+          if (landing >= 6 && landing <= 10) {
+            expectedIncomingAI[landing] =
+              (expectedIncomingAI[landing] ?? 0) + 1;
+          }
+        }
+      }
+    }
+
     let best = validPits[0];
     let bestScore = -Infinity;
 
@@ -2666,11 +2686,32 @@ export class GameScene extends Phaser.Scene {
         const target = chirachiraTarget[p];
         const shortage = target - count;
         if (shortage > 0) {
-          // 目標直前（残り1-2石）ほど崩すのが惜しい → 強いペナルティ
           const basePenalty = shortage <= 2 ? 32 : 20;
-          // 相手連続ぐるぐるが強い → 妨害のため崩すことを許容（ペナルティ軽減）
           const guruException = Math.min(playerGuruguruNow * 12, 20);
-          score -= Math.max(0, basePenalty - guruException);
+          // 相手がちらちら撒きでこの路に石が来る予定 → 自然に埋まるので使うのは特に損
+          const incomingBonus = (expectedIncomingAI[p] ?? 0) > 0 ? 14 : 0;
+          score -= Math.max(0, basePenalty - guruException + incomingBonus);
+        } else if (shortage < 0) {
+          // オーバーシュート: 目標超過 → ちらちら不能、保護を外して積極的に使う
+          const overshot = -shortage;
+          const canZakuzaku = [6, 7, 8, 9, 10].some(
+            (lp) => state.pits[lp].stones.length === 0,
+          );
+          // ざくざく一周が狙えるなら少し待つ余地あり、そうでなければ妨害に使う
+          score += canZakuzaku ? 8 : 14;
+          if (overshot >= 2) score += 6; // 大幅超過ほど早く処理すべき
+        }
+      }
+
+      // ─── ぐるぐる路の保護 ───
+      // 相手ちらちら後にぐるぐる可能になる路は今崩すと機会損失
+      // (pit q + guruTarget) % 12 === 11 → guruTarget = (11 - q + 12) % 12
+      {
+        const guruTarget = (11 - p + 12) % 12;
+        const shortage = guruTarget - count;
+        if (shortage === 1 && (expectedIncomingAI[p] ?? 0) > 0) {
+          // あと1石でぐるぐる、かつ相手の撒きで1石入る → 今使うと次のぐるぐる機会を逃す
+          score -= 22;
         }
       }
 
@@ -2723,6 +2764,14 @@ export class GameScene extends Phaser.Scene {
                 : 3;
           }
         }
+        // 最後に着地する石がマイナス確定色 or 不審色なら相手賽壇に送り込む価値あり
+        const lastStone = state.pits[p].stones[count - 1];
+        if (lastStone?.color) {
+          if (knownNeg && lastStone.color === knownNeg)
+            score += 18; // 確定-3石を相手に押し付ける
+          else if ((suspiciousMyStoreColors[lastStone.color] ?? 0) > 0)
+            score += 8; // 不審色も有利
+        }
       }
 
       // ─── ざくざく ───
@@ -2765,7 +2814,11 @@ export class GameScene extends Phaser.Scene {
         const playerMirrorOfP = p - 6;
         if (state.pits[playerMirrorOfP].stones.length > 0) {
           const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
-          score -= 10 + mirrorStoneCount * 3;
+          // 5枚以上は大量失点リスク → 非線形で急激にペナルティを上げる
+          // 1枚:-13, 2枚:-19, 3枚:-28, 4枚:-40, 5枚:-60, 6枚:-88
+          const zakuPenalty =
+            10 + mirrorStoneCount * mirrorStoneCount * 2 + mirrorStoneCount;
+          score -= zakuPenalty;
           if (inferred) {
             const inferredHere = state.pits[playerMirrorOfP].stones.filter(
               (s) => s.color === inferred,
@@ -3168,12 +3221,12 @@ export class GameScene extends Phaser.Scene {
                   let val = 0; // デフォルト：情報なし → 取る価値なし
                   // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奪う)
                   if (ownFortune && stone.color === ownFortune) val = 45;
-                  // 次優先: 自分が見た確認済み+1石（確実な情報）
-                  else if (knownPos.includes(stone.color)) val = 22;
-                  // 次: 相手が見た確認済み+1石（相手が意図的に収集中）
-                  else if (playerSeenPositive.includes(stone.color)) val = 16;
-                  // 次: 推測したプレイヤー占い色（+3点、ただし推測）
-                  else if (inferred && stone.color === inferred) val = 12;
+                  // 次優先: 推測したプレイヤー占い色 (+3点を奪う → 最も価値高い)
+                  else if (inferred && stone.color === inferred) val = 30;
+                  // 次: 自分が見た確認済み+1石 (+1点を奪う)
+                  else if (knownPos.includes(stone.color)) val = 15;
+                  // 次: 相手が見た確認済み+1石 (相手が意図的に収集中)
+                  else if (playerSeenPositive.includes(stone.color)) val = 10;
                   // 確定マイナス石 → 絶対に取らない（取るとプレイヤーのマイナスが消えて損）
                   if (knownNegColor && stone.color === knownNegColor) val = -99;
                   if (val > highestValue) {
@@ -3234,12 +3287,12 @@ export class GameScene extends Phaser.Scene {
             let val = 0; // デフォルト：情報なし → 取る価値なし
             // 優先1: AI占い色 → 相手にとって+5点の石（最も除去価値が高い）
             if (ownFortune && stone.color === ownFortune) val = 45;
-            // 優先2: 自分が見た確認済み+1石（確実な情報）
-            else if (knownPosLocal.includes(stone.color)) val = 22;
-            // 優先3: 相手が見た確認済み+1石（相手が意図的に収集中）
-            else if (playerSeenPositiveLocal.includes(stone.color)) val = 16;
-            // 優先4: 推測プレイヤー占い色（+3点、ただし推測）
-            else if (inferred && stone.color === inferred) val = 12;
+            // 優先2: 推測プレイヤー占い色 → +3点を奪う（価値高）
+            else if (inferred && stone.color === inferred) val = 30;
+            // 優先3: 自分が見た確認済み+1石（+1点を奪う）
+            else if (knownPosLocal.includes(stone.color)) val = 15;
+            // 優先4: 相手が見た確認済み+1石（相手が意図的に収集中）
+            else if (playerSeenPositiveLocal.includes(stone.color)) val = 10;
             // 絶対に取らない: ちらちら確認済み-3石（取ると相手のマイナスが消えて損）
             if (knownNegColor && stone.color === knownNegColor) val = -99;
             if (val > highestValue) {
