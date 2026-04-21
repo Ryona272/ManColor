@@ -3165,7 +3165,7 @@ export class GameScene extends Phaser.Scene {
                   .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
                   .map((fc) => fc.color);
                 targetStones.forEach((stone, index) => {
-                  let val = 1; // デフォルト：ニュートラル予期値
+                  let val = 0; // デフォルト：情報なし → 取る価値なし
                   // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奪う)
                   if (ownFortune && stone.color === ownFortune) val = 45;
                   // 次優先: 自分が見た確認済み+1石（確実な情報）
@@ -3231,7 +3231,7 @@ export class GameScene extends Phaser.Scene {
           let selectedIndex = 0;
           let highestValue = -Infinity;
           targetStones.forEach((stone, index) => {
-            let val = 1; // デフォルト：ニュートラル
+            let val = 0; // デフォルト：情報なし → 取る価値なし
             // 優先1: AI占い色 → 相手にとって+5点の石（最も除去価値が高い）
             if (ownFortune && stone.color === ownFortune) val = 45;
             // 優先2: 自分が見た確認済み+1石（確実な情報）
