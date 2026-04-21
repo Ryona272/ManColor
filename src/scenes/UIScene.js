@@ -1846,14 +1846,29 @@ export class UIScene extends Phaser.Scene {
       selfPrediction = allColors[Math.floor(Math.random() * allColors.length)];
     }
     if (!oppPrediction) {
-      // 強いAI: ゲーム中に機累した推測色を使う
+      // 強いAI/鬼: ゲーム中に蓄積した推測色を使う
       const gs = this.gameScene;
-      if (
+      const isSmartAi =
         gs.matchMode === "solo" &&
-        gs.aiDifficulty === "hard" &&
-        gs._aiMemo?.inferredPlayerColor
-      ) {
-        oppPrediction = gs._aiMemo.inferredPlayerColor;
+        (gs.aiDifficulty === "hard" ||
+          gs.aiDifficulty === "oni" ||
+          gs.aiDifficulty === "oni-sente" ||
+          gs.aiDifficulty === "oni-gote");
+      if (isSmartAi) {
+        // 1. ゲーム中の観察から推測した色を優先
+        if (gs._aiMemo?.inferredPlayerColor) {
+          oppPrediction = gs._aiMemo.inferredPlayerColor;
+        } else {
+          // 2. fallback: プレイヤー賽壇(pit5)で最も多い色
+          const storeFreq = {};
+          for (const s of gs.gameState.getState().pits[5].stones) {
+            storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
+          }
+          const sorted = Object.entries(storeFreq).sort((a, b) => b[1] - a[1]);
+          oppPrediction =
+            sorted[0]?.[0] ??
+            allColors[Math.floor(Math.random() * allColors.length)];
+        }
       } else {
         oppPrediction = allColors[Math.floor(Math.random() * allColors.length)];
       }

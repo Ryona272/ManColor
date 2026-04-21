@@ -2202,9 +2202,10 @@ export class GameScene extends Phaser.Scene {
 
       // ─── ぐるぐる: AI賽壇(pit11)に落ちる → もう1ターン ───
       if (lastPit === 11) {
-        score += 22;
         // ぐるぐる後の盤面をシミュレートして連鎖手を評価
         const { pits: pitsAfter } = this._aiSimulateSow(state.pits, p);
+        const chainCount = this._aiCountGuruguruChain(pitsAfter);
+        score += 22 + chainCount * 14;
         score += this._aiEvalFollowupOpp(pitsAfter) * 1.2;
       }
 
@@ -2677,8 +2678,13 @@ export class GameScene extends Phaser.Scene {
       const oppLanes = [6, 7, 8, 9, 10];
       let pitIndex;
 
-      if (this.aiDifficulty === "hard") {
-        // 強い: 各置き先路をスコア評価して最強の路を選ぶ
+      if (
+        this.aiDifficulty === "hard" ||
+        this.aiDifficulty === "oni" ||
+        this.aiDifficulty === "oni-sente" ||
+        this.aiDifficulty === "oni-gote"
+      ) {
+        // 強い/鬼: 各置き先路をスコア評価して最強の路を選ぶ
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
         const stone = pendingNow[0];
