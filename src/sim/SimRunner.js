@@ -116,10 +116,14 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
         }
       }
 
-      // ぐるぐる（余分ターン）
+      // ぐるぐる（余分ターン）- pit5 着地 = 自賽壇 → 追加ターンのみ
       if (lastPit === 5) {
         selfGuruCount++;
-        // ちらちら/ぽいぽい
+        continue;
+      }
+
+      // ちらちら/ぽいぽい - pit11 着地 = 相手賽壇 → 特殊行動のみ（追加ターンなし）
+      if (lastPit === 11) {
         const specialAction = decideSpecialAction(
           gs.getState(),
           memoSelf,
@@ -137,8 +141,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
             specialAction.removeStoneIndex,
           );
         }
-        // ぐるぐる = extra turn → selfTurn は変えない
-        continue;
+        // 追加ターンなし → fall through to selfTurn = false
       }
 
       // くたくた チェック
@@ -210,9 +213,14 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
         }
       }
 
-      // ぐるぐる
+      // ぐるぐる（余分ターン）- pit11 着地 = 自賽壇 → 追加ターンのみ
       if (lastPit === 11) {
         oppGuruCount++;
+        continue;
+      }
+
+      // ちらちら/ぽいぽい - pit5 着地 = 相手賽壇 → 特殊行動のみ（追加ターンなし）
+      if (lastPit === 5) {
         const specialAction = decideSpecialAction(
           gs.getState(),
           memoOpp,
@@ -230,7 +238,7 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
             specialAction.removeStoneIndex,
           );
         }
-        continue; // extra turn
+        // 追加ターンなし → fall through to selfTurn = true
       }
 
       // くたくた
