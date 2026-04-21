@@ -3074,6 +3074,38 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * ぽいぽいフォールバック: 相手賽壇に取る価値がないとき自賽壇のマイナス・不審石を捨てる
+   * 優先: knownNeg確定 → suspicious（相手が入れてきた疑い）→ 未確認色
+   */
+  _aiPoipoiOwnStore(state, ownFortune, knownNegColor, knownPos) {
+    const ownStoreStones = state.pits[11].stones;
+    if (ownStoreStones.length === 0) return;
+    const suspiciousColors = this._aiMemo?.suspiciousMyStoreColors ?? {};
+    let worstIndex = -1;
+    let worstVal = Infinity;
+    ownStoreStones.forEach((stone, index) => {
+      let val = 0; // デフォルト：取り除く価値なし
+      if (knownNegColor && stone.color === knownNegColor)
+        val = -50; // 確定マイナス → 最優先で捨てる
+      else if (suspiciousColors[stone.color] > 0)
+        val = -20 - suspiciousColors[stone.color] * 5; // 不審色（相手が入れた疑い）
+      else if (!ownFortune || stone.color !== ownFortune) {
+        if (!knownPos.includes(stone.color)) val = -5; // 未確認色 → 低優先で捨てる
+      }
+      // ownFortune・knownPosは捨てない（安全確認済み）
+      if (val < worstVal) {
+        worstVal = val;
+        worstIndex = index;
+      }
+    });
+    if (worstIndex >= 0 && worstVal < -4) {
+      this.gameState.removeStoneFromPit(11, worstIndex);
+      this._announceTechnique("ぽいぽい！", 0xe87070, "相手が自分の石を排除！");
+      this._renderStones();
+    }
+  }
+
   _aiHandleSpecialChoice() {
     const state = this.gameState.getState();
     this.time.delayedCall(900, () => {
@@ -3128,15 +3160,21 @@ export class GameScene extends Phaser.Scene {
                   this.gameState.getFortuneColorForPlayer("opp");
                 const knownNegColor = this._aiKnownNegativeColor();
                 const knownPos = this._aiKnownPositiveColors();
+                // 相手がちらちらで確認した+1色（相手が意図的に収集中）
+                const playerSeenPositive = state.fortune.center
+                  .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
+                  .map((fc) => fc.color);
                 targetStones.forEach((stone, index) => {
                   let val = 1; // デフォルト：ニュートラル予期値
-                  // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奁う)
+                  // 最高優先: AIの占い色をプレイヤーが持っている (+5点から奪う)
                   if (ownFortune && stone.color === ownFortune) val = 45;
-                  // 次優先: 推測したプレイヤー占い色 (+3点から奁う)
-                  else if (inferred && stone.color === inferred) val = 28;
-                  // ちらちら確認済み+1石 → 低優先（1点にすぎない）
-                  else if (knownPos.includes(stone.color)) val = 3;
-                  // 確定マイナス石 → 絶対に取らない（取るとプレイヤーの徇助になる）
+                  // 次優先: 自分が見た確認済み+1石（確実な情報）
+                  else if (knownPos.includes(stone.color)) val = 22;
+                  // 次: 相手が見た確認済み+1石（相手が意図的に収集中）
+                  else if (playerSeenPositive.includes(stone.color)) val = 16;
+                  // 次: 推測したプレイヤー占い色（+3点、ただし推測）
+                  else if (inferred && stone.color === inferred) val = 12;
+                  // 確定マイナス石 → 絶対に取らない（取るとプレイヤーのマイナスが消えて損）
                   if (knownNegColor && stone.color === knownNegColor) val = -99;
                   if (val > highestValue) {
                     highestValue = val;
@@ -3152,6 +3190,14 @@ export class GameScene extends Phaser.Scene {
                     "相手が石を一つ排除！",
                   );
                   this._renderStones();
+                } else {
+                  // pit5に取る価値がない → 自賽壇(pit11)のマイナス・不審な石を捨てる
+                  this._aiPoipoiOwnStore(
+                    state,
+                    ownFortune,
+                    knownNegColor,
+                    knownPos,
+                  );
                 }
               }
               this.time.delayedCall(800, () => this._aiFinishTurn(false));
@@ -3169,24 +3215,31 @@ export class GameScene extends Phaser.Scene {
         this.time.delayedCall(800, () => this._aiFinishTurn(false));
       } else {
         // ちらちら使い切り → 全難易度共通のぽいぽい優先選択
-        // 優先1: AI占い色（相手にとって+5）、優先2: 推測プレイヤー占い色（+3）
-        // 優先3: ちらちら確認+1石、絶対回避: 確認-3石（取ると相手のマイナスが消えて損）
+        // 優先1: AI占い色（相手にとって+5）
+        // 優先2: 自分が見た確認済み+1石、優先3: 相手が見た+1石、優先4: 推測プレイヤー占い色
+        // 絶対回避: 確認-3石（取ると相手のマイナスが消えて損）
         if (state.pits[5].stones.length > 0) {
           const targetStones = state.pits[5].stones;
           const inferred = this._aiMemo?.inferredPlayerColor;
           const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
           const knownPosLocal = this._aiKnownPositiveColors();
           const knownNegColor = this._aiKnownNegativeColor();
+          // 相手がちらちらで確認した+1色
+          const playerSeenPositiveLocal = state.fortune.center
+            .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
+            .map((fc) => fc.color);
           let selectedIndex = 0;
           let highestValue = -Infinity;
           targetStones.forEach((stone, index) => {
             let val = 1; // デフォルト：ニュートラル
             // 優先1: AI占い色 → 相手にとって+5点の石（最も除去価値が高い）
             if (ownFortune && stone.color === ownFortune) val = 45;
-            // 優先2: 推測プレイヤー占い色 → 相手にとって+3点の石
-            else if (inferred && stone.color === inferred) val = 28;
-            // 優先3: ちらちら確認済み+1石 → 低優先
-            else if (knownPosLocal.includes(stone.color)) val = 3;
+            // 優先2: 自分が見た確認済み+1石（確実な情報）
+            else if (knownPosLocal.includes(stone.color)) val = 22;
+            // 優先3: 相手が見た確認済み+1石（相手が意図的に収集中）
+            else if (playerSeenPositiveLocal.includes(stone.color)) val = 16;
+            // 優先4: 推測プレイヤー占い色（+3点、ただし推測）
+            else if (inferred && stone.color === inferred) val = 12;
             // 絶対に取らない: ちらちら確認済み-3石（取ると相手のマイナスが消えて損）
             if (knownNegColor && stone.color === knownNegColor) val = -99;
             if (val > highestValue) {
@@ -3202,6 +3255,14 @@ export class GameScene extends Phaser.Scene {
               "相手が石を一つ排除！",
             );
             this._renderStones();
+          } else {
+            // pit5に取る価値がない → 自賽壇(pit11)のマイナス・不審な石を捨てる
+            this._aiPoipoiOwnStore(
+              state,
+              ownFortune,
+              knownNegColor,
+              knownPosLocal,
+            );
           }
         }
         this.time.delayedCall(800, () => this._aiFinishTurn(false));
