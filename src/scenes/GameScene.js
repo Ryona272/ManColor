@@ -2051,9 +2051,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 強い/鬼AI: ターン開始時に相手の意図を更新
+    // 強い/普通/鬼AI: ターン開始時に相手の意図を更新
     if (
       this.aiDifficulty === "hard" ||
+      this.aiDifficulty === "normal" ||
       this.aiDifficulty === "oni" ||
       this.aiDifficulty === "oni-sente" ||
       this.aiDifficulty === "oni-gote"
@@ -2072,8 +2073,8 @@ export class GameScene extends Phaser.Scene {
       return validPits[Math.floor(Math.random() * validPits.length)];
     }
     if (this.aiDifficulty === "hard") {
-      // 強い: 鬼相当のAI（旧鬼ロジックを流用）
-      return this._aiPickPitOni(validPits, state);
+      // 強い: エキスパートAI
+      return this._aiPickPitExpert(validPits, state);
     }
     if (
       this.aiDifficulty === "oni" ||
@@ -2083,7 +2084,11 @@ export class GameScene extends Phaser.Scene {
       // 鬼: さらに強化された2段階上位AI
       return this._aiPickPitOniV2(validPits, state);
     }
-    // 普通: スコア評価（ぐるぐる/ざくざく優先）
+    if (this.aiDifficulty === "normal") {
+      // 普通: 旧強いロジック
+      return this._aiPickPitOni(validPits, state);
+    }
+    // easy fallthrough（ランダム済み）
     return this._aiPickPitNormal(validPits, state);
   }
 
@@ -2695,7 +2700,15 @@ export class GameScene extends Phaser.Scene {
     };
     const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
 
-    return simPickPit("opp", validPits, state, memo, fortune, peeksDone, params);
+    return simPickPit(
+      "opp",
+      validPits,
+      state,
+      memo,
+      fortune,
+      peeksDone,
+      params,
+    );
   }
 
   // ─── AI フェーズ処理（撒き → 配置 → 技） ───────────────────────────
@@ -2818,11 +2831,12 @@ export class GameScene extends Phaser.Scene {
 
       if (
         this.aiDifficulty === "hard" ||
+        this.aiDifficulty === "normal" ||
         this.aiDifficulty === "oni" ||
         this.aiDifficulty === "oni-sente" ||
         this.aiDifficulty === "oni-gote"
       ) {
-        // 強い/鬼: 各置き先路をスコア評価して最強の路を選ぶ
+        // 強い/普通/鬼: 各置き先路をスコア評価して最強の路を選ぶ
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
         const stone = pendingNow[0];
@@ -2951,9 +2965,10 @@ export class GameScene extends Phaser.Scene {
     const state = this.gameState.getState();
     this.time.delayedCall(900, () => {
       if (this.gameState.canUseChirachira("opp")) {
-        // 強いAI / 鬼: ぽいぽいの方が価値が高い場合はぽいぽいを優先する
+        // 強いAI / 普通AI / 鬼: ぽいぽいの方が価値が高い場合はぽいぽいを優先する
         if (
           this.aiDifficulty === "hard" ||
+          this.aiDifficulty === "normal" ||
           this.aiDifficulty === "oni" ||
           this.aiDifficulty === "oni-sente" ||
           this.aiDifficulty === "oni-gote"

@@ -265,10 +265,13 @@ export function pickPit(
       const chainCount = countGuruguruChain(pitsAfter, storeIndex);
       if (isEarlyGame) {
         score +=
-          params.guruguruBaseEarly + chainCount * params.guruguruChainMultEarly;
+          params.guruguruBaseEarly +
+          chainCount * chainCount * params.guruguruChainMultEarly;
         score += evalOwnFollowup(pitsAfter) * 0.8;
       } else {
-        score += params.guruguruBase + chainCount * params.guruguruChainMult;
+        score +=
+          params.guruguruBase +
+          chainCount * chainCount * params.guruguruChainMult;
         score += evalOwnFollowup(pitsAfter) * params.guruguruFollowupMult;
       }
       const playerThreatMult = 0.6 + playerGuruguruNow * 0.35;
@@ -377,6 +380,19 @@ export function pickPit(
       }
     }
 
+    // ─── 路の色品質評価（知識ベース: 占い/推測/確定情報を活用）───
+    for (const s of state.pits[p].stones) {
+      if (ownFortune && s.color === ownFortune)
+        score += params.pitColorOwnFortune ?? 2;
+      if (inferred && s.color === inferred)
+        score += params.pitColorInferred ?? 2.5;
+      if (knownPos.includes(s.color)) score += params.pitColorKnownPos ?? 1.5;
+      if (knownNeg && s.color === knownNeg)
+        score -= params.pitColorKnownNeg ?? 6;
+      if (playerAvoidedColor && s.color === playerAvoidedColor)
+        score -= params.pitColorAvoided ?? 3;
+    }
+
     // ─── 石の色評価 ───
     for (let i = 0; i < count; i++) {
       const landingPit = (p + 1 + i) % 12;
@@ -439,6 +455,9 @@ export function pickPit(
         // 確定マイナス石が自路に残ると将来-3点確定
         if (knownNeg && stoneColor === knownNeg)
           score -= params.laneKnownNegPenalty ?? 8;
+        // 相手が避けている色（推定マイナス）を自路に貯めない
+        if (playerAvoidedColor && stoneColor === playerAvoidedColor)
+          score -= params.laneAvoidedPenalty ?? 5;
       }
 
       // 確定マイナス石を相手路・相手賽壇に送り込めたらボーナス

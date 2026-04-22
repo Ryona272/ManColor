@@ -1899,6 +1899,7 @@ export class UIScene extends Phaser.Scene {
       const isSmartAi =
         gs.matchMode === "solo" &&
         (gs.aiDifficulty === "hard" ||
+          gs.aiDifficulty === "normal" ||
           gs.aiDifficulty === "oni" ||
           gs.aiDifficulty === "oni-sente" ||
           gs.aiDifficulty === "oni-gote");

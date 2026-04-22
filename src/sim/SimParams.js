@@ -57,11 +57,19 @@ export const DEFAULT_PARAMS = {
   midCancelThreshold: 2, // キャンセルが有効になる枚数下限
 
   // ─── 自路の石の色品質 ───
-  laneOwnFortune: 3,
-  laneInferred: 4,
-  laneKnownPos: 2,
-  laneKnownNegPenalty: 8,
-  sendKnownNegToOpp: 12,
+  laneOwnFortune: 8,
+  laneInferred: 10,
+  laneKnownPos: 6,
+  laneKnownNegPenalty: 16,
+  laneAvoidedPenalty: 6,
+  sendKnownNegToOpp: 18,
+
+  // ─── 路の色品質評価（路全体の色構成を事前評価）───
+  pitColorOwnFortune: 2,
+  pitColorInferred: 2.5,
+  pitColorKnownPos: 1.5,
+  pitColorKnownNeg: 6,
+  pitColorAvoided: 3,
 
   // ─── 先後手制御 ───
   forceChirachiraThreshold: 2, // 強制ちらちら回数（先手=2、後手=1、通常=2）
