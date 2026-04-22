@@ -55,8 +55,19 @@ export const DEFAULT_PARAMS = {
   midCancelMult: 7, // 相手賽壇にN枚 → N×この値
   midCancelThreshold: 2, // キャンセルが有効になる枚数下限
 
+  // ─── 自路の石の色品質 ───
+  laneOwnFortune: 3,
+  laneInferred: 4,
+  laneKnownPos: 2,
+  laneKnownNegPenalty: 8,
+  sendKnownNegToOpp: 12,
+
+  // ─── 先後手制御 ───
+  forceChirachiraThreshold: 2, // 強制ちらちら回数（先手=2、後手=1、通常=2）
+  forceChirachiraMinLane: 3, // 強制ちらちら発動に必要な自陣の最低石数（これ未満なら点数稼ぎ優先）
+
   // ─── くたくた ───
-  kutakutaThresholdOffset: -6, // kutakuta発動: oppStore > selfStore + offset
+  kutakutaThresholdOffset: -6,
 };
 
 /**
@@ -92,6 +103,60 @@ export const PRESETS = {
     chirachira2ndMid: 42,
     guruguruBase: 20,
     guruguruChainMult: 12,
+  }),
+
+  // AI先手特化（座標降下法最適化済み v2）
+  senteStrategy: mergeParams({
+    forceChirachiraThreshold: 2,
+    guruguruBaseEarly: 29,
+    guruguruBase: 68,
+    guruguruFollowupMult: 1.675,
+    guruguruChainMult: 27,
+    guruguruDisrupt: 29,
+    chirachira1st: 53,
+    chirachira2nd: 48,
+    chirachira1stMid: 51,
+    chirachira2ndMid: 47,
+    chirachira3rd: 41,
+    chirachiraThresholdHigh: 24,
+    poipoiWithFortune: 26,
+    poipoiEmpty: 2,
+    poipoiStoneOwnFortune: 44,
+    zakuzakuBase: 4,
+    zakuzakuOwnFortune: 44,
+    zakuzakuKnownPos: 11,
+    earlyOwnFortune: 26,
+    earlyCancelThreshold: 0,
+    midInferred: 32,
+    midKnownNeg: -50,
+    midAvoidedColor: -20,
+    midUnknownPenalty: -13,
+    midCancelMult: 5,
+    sendKnownNegToOpp: 18,
+  }),
+
+  // AI後手特化（座標降下法最適化済み）
+  goteStrategy: mergeParams({
+    forceChirachiraThreshold: 1,
+    guruguruBaseEarly: 35,
+    guruguruChainMultEarly: 7,
+    guruguruBase: 77,
+    guruguruChainMult: 34,
+    guruguruFollowupMult: 1.525,
+    guruguruDisrupt: 31,
+    chirachira1st: 54,
+    chirachira2nd: 18,
+    chirachira3rd: 12,
+    chirachira1stMid: 55,
+    chirachira2ndMid: 19,
+    poipoiWithFortune: 21,
+    poipoiGeneral: 3,
+    chirachiraThresholdHigh: 26,
+    zakuzakuBase: 4,
+    zakuzakuOwnFortune: 9,
+    midInferred: 41,
+    midKnownPos: 11,
+    midCancelMult: 9,
   }),
 
   // 恐怖心強化: 未確定色ペナルティを大きく、マイナス色回避を最強に

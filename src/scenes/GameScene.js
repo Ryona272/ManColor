@@ -2742,17 +2742,37 @@ export class GameScene extends Phaser.Scene {
         if (colorsAfter.size <= 2 && colorsAfter.size > 0) score += 18;
       }
 
-      // ─── pit5着地（ちらちら/ぽいぽい）─── 情報収集は最優先（序盤は特に重要）
+      // ─── pit5着地（ちらちら/ぽいぽい）─── 先手/後手で評価値を変える
       if (lastPit === 5) {
         const playerStoreEmpty = state.pits[5].stones.length === 0;
-        if (peeksDone === 0) score += isEarlyGame ? 34 : 37;
-        else if (peeksDone === 1)
-          score += 44; // 2回目=マイナス色判明 → 最重要情報・最も高く評価
-        else if (peeksDone === 2) score += 21;
-        else {
+        // oni-gote = プレイヤーが後手 = AIが先手、oni-sente = プレイヤーが先手 = AIが後手
+        const isAiSente = this.aiDifficulty === "oni-gote";
+        const isAiGote = this.aiDifficulty === "oni-sente";
+
+        if (peeksDone < 3) {
+          if (isAiSente) {
+            // AI先手: 全3回を積極的に取りに行く。マイナス色まで確定させる
+            if (peeksDone === 0) score += 50;
+            else if (peeksDone === 1)
+              score += 48; // 2回目: マイナス色確定 → 最重要情報
+            else score += 40; // 3回目: 全情報確定 → 積極追求
+          } else if (isAiGote) {
+            // AI後手: 1回目に全賭け、2・3回目は期待薄
+            if (peeksDone === 0)
+              score += 55; // 1回目は超高評価（貴重なチャンス）
+            else if (peeksDone === 1)
+              score += 18; // 2回目は諦め気味
+            else score += 12; // 3回目はほぼ諦め
+          } else {
+            // oni（先後指定なし）
+            if (peeksDone === 0) score += isEarlyGame ? 34 : 37;
+            else if (peeksDone === 1) score += 44;
+            else score += 21;
+          }
+        } else {
           // ちらちら使い切り → ぽいぽい情報価値のみ
           if (playerStoreEmpty) {
-            score -= 5; // 相手賽壇が空 → ぽいぽいできないので減点
+            score -= 5;
           } else {
             const playerStoreHasFortune =
               inferred &&
@@ -2767,10 +2787,9 @@ export class GameScene extends Phaser.Scene {
         // 最後に着地する石がマイナス確定色 or 不審色なら相手賽壇に送り込む価値あり
         const lastStone = state.pits[p].stones[count - 1];
         if (lastStone?.color) {
-          if (knownNeg && lastStone.color === knownNeg)
-            score += 18; // 確定-3石を相手に押し付ける
+          if (knownNeg && lastStone.color === knownNeg) score += 18;
           else if ((suspiciousMyStoreColors[lastStone.color] ?? 0) > 0)
-            score += 8; // 不審色も有利
+            score += 8;
         }
       }
 
@@ -2897,6 +2916,24 @@ export class GameScene extends Phaser.Scene {
         if (knownPos.includes(stoneColor) && landingPit === 5) score -= 14;
         if (ownFortune && stoneColor === ownFortune && landingPit === 5)
           score -= 6;
+
+        // 自路に着地する石の色評価（将来の賽壇入り品質）
+        if (landingPit >= 6 && landingPit <= 10) {
+          if (ownFortune && stoneColor === ownFortune) score += 3;
+          else if (inferred && stoneColor === inferred) score += 4;
+          else if (knownPos.includes(stoneColor)) score += 2;
+          // 確定マイナス石が自路に残ると将来-3点確定
+          if (knownNeg && stoneColor === knownNeg) score -= 8;
+        }
+
+        // 確定マイナス石を相手路・相手賽壇に送り込めたらボーナス
+        if (
+          knownNeg &&
+          stoneColor === knownNeg &&
+          ((landingPit >= 0 && landingPit <= 4) || landingPit === 5)
+        ) {
+          score += 12;
+        }
       }
 
       score += count * 0.1 + Math.random() * 0.06;
@@ -3171,12 +3208,20 @@ export class GameScene extends Phaser.Scene {
           this.aiDifficulty === "oni-gote"
         ) {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
-          // 鬼: 最初の2回は必ずちらちら（情報収集優先）
+          // 先手/後手で強制ちらちら回数を変える
+          // oni-gote = AI先手: 2回強制
+          // oni-sente = AI後手: 1回目のみ強制
+          // oni: 2回強制
+          // 自陣(pit6-10)の石が少ない場合は強制解除（点数稼ぎを優先）
+          const selfLaneStones = state.pits
+            .slice(6, 11)
+            .reduce((sum, p) => sum + p.stones.length, 0);
+          const laneRich = selfLaneStones >= 3;
           const forceChirachira =
-            (this.aiDifficulty === "oni" ||
-              this.aiDifficulty === "oni-sente" ||
-              this.aiDifficulty === "oni-gote") &&
-            peeksDone < 2;
+            laneRich &&
+            ((this.aiDifficulty === "oni" && peeksDone < 2) ||
+              (this.aiDifficulty === "oni-gote" && peeksDone < 2) ||
+              (this.aiDifficulty === "oni-sente" && peeksDone < 1));
 
           if (!forceChirachira) {
             const inferred = this._aiMemo?.inferredPlayerColor;

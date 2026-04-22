@@ -348,6 +348,29 @@ export function pickPit(
         landingPit === oppStoreIndex
       )
         score -= 6;
+
+      // 自路に着地する石の色評価（将来の賽壇入り品質）
+      if (landingPit >= laneMin && landingPit <= laneMax) {
+        if (ownFortune && stoneColor === ownFortune)
+          score += params.laneOwnFortune ?? 3;
+        else if (inferred && stoneColor === inferred)
+          score += params.laneInferred ?? 4;
+        else if (knownPos.includes(stoneColor))
+          score += params.laneKnownPos ?? 2;
+        // 確定マイナス石が自路に残ると将来-3点確定
+        if (knownNeg && stoneColor === knownNeg)
+          score -= params.laneKnownNegPenalty ?? 8;
+      }
+
+      // 確定マイナス石を相手路・相手賽壇に送り込めたらボーナス
+      if (
+        knownNeg &&
+        stoneColor === knownNeg &&
+        ((landingPit >= oppLaneMin && landingPit <= oppLaneMax) ||
+          landingPit === oppStoreIndex)
+      ) {
+        score += params.sendKnownNegToOpp ?? 12;
+      }
     }
 
     score += count * 0.1 + Math.random() * 0.06;
@@ -454,8 +477,15 @@ export function decideSpecialAction(
     return _resolvePoipoi(state, memo, fortune, role, p);
   }
 
-  if (isOni && peeksDone < (p.earlyGamePeekThreshold ?? 2)) {
-    // 鬼: 最初の強制ちらちら
+  // 自陣の石が少ない場合は強制ちらちらを解除（点数稼ぎ優先）
+  const ownLaneMin = role === "opp" ? 6 : 0;
+  const ownLaneMax = role === "opp" ? 10 : 4;
+  const selfLaneStones = state.pits
+    .slice(ownLaneMin, ownLaneMax + 1)
+    .reduce((sum, pit) => sum + pit.stones.length, 0);
+  const laneRich = selfLaneStones >= (p.forceChirachiraMinLane ?? 3);
+  if (isOni && laneRich && peeksDone < (p.forceChirachiraThreshold ?? 2)) {
+    // 鬼: 自陣に石がある間だけ強制ちらちら
     return { action: "chirachira" };
   }
 

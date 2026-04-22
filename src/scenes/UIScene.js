@@ -2004,16 +2004,8 @@ export class UIScene extends Phaser.Scene {
   _runOppPoipoiThenSelf() {
     const st = this.finalPhaseState;
     const gs = this.gameScene;
-    const isHardAI = gs.matchMode === "solo" && gs.aiDifficulty === "hard";
-
     while (st.oppPoipoiRemaining > 0) {
-      if (isHardAI) {
-        this._oppPoipoiSmartRemove(st);
-      } else {
-        const targetStore = this._chooseStoreForOppPoipoi();
-        if (targetStore == null) break;
-        gs.gameState.removeRandomStoneFromStore(targetStore);
-      }
+      this._oppPoipoiSmartRemove(st);
       st.oppPoipoiRemaining--;
     }
 
