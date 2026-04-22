@@ -89,6 +89,44 @@ function evalFollowupSelf(pits) {
 
 // ─── メモ管理 ──────────────────────────────────────────────────
 
+/**
+ * プレイヤーの最善応手を予測して撒き後盤面を返す
+ * ぐるぐる連鎖 > ちらちら > ざくざく の優先度でシミュレート
+ * role="opp" 視点なので self（pit0-4）が相手（プレイヤー）
+ */
+function predictPlayerResponse(pits) {
+  let bestPit = -1;
+  let bestScore = -Infinity;
+  for (let q = 0; q <= 4; q++) {
+    const cnt = pits[q].stones.length;
+    if (cnt === 0) continue;
+    const last = (q + cnt) % 12;
+    let s = 0;
+    const { pits: p2 } = simulateSow(pits, q);
+    // ぐるぐる: 連鎖深度²で評価
+    if (last === 5) {
+      const depth = countGuruguruChain(p2, 5, 1);
+      s += 50 + (1 + depth) * (1 + depth) * 18;
+      s += evalFollowupSelf(p2) * 1.2;
+    }
+    // ちらちら準備 (pit11 着地)
+    if (last === 11) s += 36;
+    // ざくざく
+    if (last >= 0 && last <= 4 && pits[last].stones.length === 0) {
+      const mirror = pits[last + 6]?.stones.length ?? 0;
+      s += 15 + mirror * 4;
+    }
+    // 撒き後の次手脅威
+    s += evalFollowupSelf(p2) * 0.4;
+    if (s > bestScore) {
+      bestScore = s;
+      bestPit = q;
+    }
+  }
+  if (bestPit === -1) return pits;
+  return simulateSow(pits, bestPit).pits;
+}
+
 export function createMemo() {
   return {
     playerColorFreq: {},
@@ -253,6 +291,15 @@ export function pickPit(
     let defPenalty = 0;
 
     const { pits: pitsAfter } = simulateSow(state.pits, p);
+
+    // ─── 2手先読み: プレイヤーの最善応手後の盤面を評価 ───
+    const pitsAfterResponse = predictPlayerResponse(pitsAfter);
+    // 応手後にAIが取れる行動の質
+    const lookaheadOwnThreat = evalOwnFollowup(pitsAfterResponse);
+    // 応手後にプレイヤーが取れる行動の質（2手先の脅威）
+    const lookaheadPlayerThreat = evalOppThreat(pitsAfterResponse);
+    score += lookaheadOwnThreat * (params.lookaheadOwnMult ?? 0.35);
+    score -= lookaheadPlayerThreat * (params.lookaheadPlayerMult ?? 0.55);
 
     // ─── 全手共通: 撒いた後のプレイヤー脅威増加を硬ペナルティとして適用───
     // 通常手で相手路に石が流れ込んでグルグル連鎖が増える場合も送んない

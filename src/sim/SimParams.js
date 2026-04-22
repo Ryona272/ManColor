@@ -83,14 +83,16 @@ export const DEFAULT_PARAMS = {
   defensiveTiebreakWindow: 8, // この点差以内の手の中でのみ防御ペナルティを比較
   oppGuruguruCreate: 15, // （互換性用に残存）
   oppChirachiraCreate: 12, // 撒いた結果相手路にちらちら可能穴が増えたときのペナルティ/個
-  ownChirachiraLost: 20, // 撒いた結果自分のちらちら準備路が崩れたときのペナルティ/個
+  ownChirachiraLost: 5, // 撒いた結果自分のちらちら準備路が崩れたときのペナルティ/個
   playerThreatGrowthMult: 1.2, // 全手共通: 撒き後にプレイヤー脅威度が増加した場合の硬ペナルティ乗数
+
+  // ─── 2手先読み ───
+  lookaheadOwnMult: 0.35, // 応手後にAIが取れる行動の価値乗数（ボーナス）
+  lookaheadPlayerMult: 0.55, // 応手後にプレイヤーが取れる行動の脅威乗数（ペナルティ）← grid最適値
   kutakutaLanePenalty: 6, // 相手がくたくた発動可能な時に相手路に石を送るペナルティ/石
-  // ─── 被ざくざく露出ペナルティ ───
-  // 撒き後に自陣高石穴が相手ざくざく可能状態になる場合: base + stones^2 * mult
-  // 3石→-39, 4石→-60, 5石→-87, 6石→-120
-  zakuzakuExposedBase: 12,
-  zakuzakuExposedMult: 3,
+  // ─── 被ざくざく露出ペナルティ（無効化: 後手時に過剰ペナルティが発生するため）───
+  zakuzakuExposedBase: 0,
+  zakuzakuExposedMult: 0,
 };
 
 /**
@@ -212,4 +214,7 @@ export const PRESETS = {
     earlyCancelMult: 18,
     earlyCancelThreshold: 1,
   }),
+
+  // 改善版鬼: 2手先読み + 脅威成長ペナルティ + 気分システム
+  kai: DEFAULT_PARAMS,
 };
