@@ -151,10 +151,7 @@ var PRESETS = {
     midAvoidedColor: -20,
     midUnknownPenalty: -13,
     midCancelMult: 5,
-    sendKnownNegToOpp: 18,
-    oppGuruguruCreate: 36,
-    oppChirachiraCreate: 8,
-    kutakutaLanePenalty: 12
+    sendKnownNegToOpp: 18
   }),
   // AI後手特化（座標降下法最適化済み）
   goteStrategy: mergeParams({
@@ -1209,34 +1206,76 @@ function _applyKutakuta(gs, player) {
   }
 }
 
-// src/sim/sente_gote_check.js
-var N = 1e3;
+// src/sim/grid_defense_params.js
+var N = 500;
+var GOTE = PRESETS.goteStrategy;
+var BASE = PRESETS.senteStrategy;
 function pr(label, s) {
   const draw = (100 - parseFloat(s.selfWinRate) - parseFloat(s.oppWinRate)).toFixed(1);
-  console.log(`  ${label}`);
   console.log(
-    `    self win: ${s.selfWinRate}  opp win: ${s.oppWinRate}  draw: ${draw}%  avgDiff: ${s.avgScoreDiff}  med: ${s.medianScoreDiff}`
-  );
-  console.log(`    guru  self:${s.avgSelfGuru} opp:${s.avgOppGuru}`);
-  console.log(
-    `    peeks self:${s.avgSelfPeeks} opp:${s.avgOppPeeks}  turns:${s.avgTurns}`
+    `  ${label.padEnd(52)}  self:${s.selfWinRate}  opp:${s.oppWinRate}  diff:${s.avgScoreDiff}`
   );
 }
-function sep(title) {
-  console.log("\n" + "=".repeat(60));
-  console.log("  " + title);
-  console.log("=".repeat(60));
+function sep(t) {
+  console.log("\n" + "\u2500".repeat(72) + "\n  " + t + "\n" + "\u2500".repeat(72));
 }
-var SENTE = PRESETS.senteStrategy;
-var GOTE = PRESETS.goteStrategy;
-var DEF = DEFAULT_PARAMS;
-sep("1. senteStrategy(\u5148\u624B=self) vs DEFAULT(\u5F8C\u624B=opp)");
-pr("senteStrategy vs DEFAULT", runMany(SENTE, DEF, N));
-sep("2. DEFAULT(\u5148\u624B=self) vs goteStrategy(\u5F8C\u624B=opp)");
-pr("DEFAULT vs goteStrategy", runMany(DEF, GOTE, N));
-sep("3. senteStrategy(\u5148\u624B) vs goteStrategy(\u5F8C\u624B)  \u76F4\u63A5\u5BFE\u6C7A");
-pr("senteStrategy vs goteStrategy", runMany(SENTE, GOTE, N));
-sep("4. DEFAULT(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)  \u30D9\u30FC\u30B9\u30E9\u30A4\u30F3\u5BFE\u79F0\u30C1\u30A7\u30C3\u30AF");
-pr("DEFAULT vs DEFAULT", runMany(DEF, DEF, N));
-sep("5. goteStrategy(\u5148\u624B) vs senteStrategy(\u5F8C\u624B)  \u9006\u30ED\u30FC\u30EB");
-pr("goteStrategy(\u5148\u624B) vs senteStrategy(\u5F8C\u624B)", runMany(GOTE, SENTE, N));
+sep("\u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
+pr("BASE vs GOTE", runMany(BASE, GOTE, N));
+sep("1. oppGuruguruCreate (\u76F8\u624B\u3050\u308B\u3050\u308B\u65B0\u898F\u751F\u6210\u30DA\u30CA\u30EB\u30C6\u30A3)");
+for (const v of [0, 5, 10, 15, 20, 28, 36]) {
+  const p = mergeParams({ ...BASE, oppGuruguruCreate: v });
+  pr(`oppGuruguruCreate = ${v}`, runMany(p, GOTE, N));
+}
+sep("2. oppChirachiraCreate (\u3061\u3089\u3061\u3089\u88AB\u5F3E\u9632\u6B62\u30DA\u30CA\u30EB\u30C6\u30A3)");
+for (const v of [0, 5, 8, 12, 18, 25, 35]) {
+  const p = mergeParams({ ...BASE, oppChirachiraCreate: v });
+  pr(`oppChirachiraCreate = ${v}`, runMany(p, GOTE, N));
+}
+sep("3. kutakutaLanePenalty (\u304F\u305F\u304F\u305F\u59A8\u5BB3\u30DA\u30CA\u30EB\u30C6\u30A3)");
+for (const v of [0, 4, 8, 12, 16, 24]) {
+  const p = mergeParams({ ...BASE, kutakutaLanePenalty: v });
+  pr(`kutakutaLanePenalty = ${v}`, runMany(p, GOTE, N));
+}
+sep("4. \u7D44\u307F\u5408\u308F\u305B\u6700\u826F\u5019\u88DC");
+var combos = [
+  {
+    label: "guru=20, chira=18",
+    overrides: { oppGuruguruCreate: 20, oppChirachiraCreate: 18 }
+  },
+  {
+    label: "guru=28, chira=18",
+    overrides: { oppGuruguruCreate: 28, oppChirachiraCreate: 18 }
+  },
+  {
+    label: "guru=20, chira=25",
+    overrides: { oppGuruguruCreate: 20, oppChirachiraCreate: 25 }
+  },
+  {
+    label: "guru=28, chira=25",
+    overrides: { oppGuruguruCreate: 28, oppChirachiraCreate: 25 }
+  },
+  {
+    label: "guru=36, chira=25, kuta=12",
+    overrides: {
+      oppGuruguruCreate: 36,
+      oppChirachiraCreate: 25,
+      kutakutaLanePenalty: 12
+    }
+  },
+  {
+    label: "guru=28, chira=18, kuta=8",
+    overrides: {
+      oppGuruguruCreate: 28,
+      oppChirachiraCreate: 18,
+      kutakutaLanePenalty: 8
+    }
+  },
+  {
+    label: "guru=36, chira=35",
+    overrides: { oppGuruguruCreate: 36, oppChirachiraCreate: 35 }
+  }
+];
+for (const { label, overrides } of combos) {
+  const p = mergeParams({ ...BASE, ...overrides });
+  pr(label, runMany(p, GOTE, N));
+}

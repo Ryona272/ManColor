@@ -2458,6 +2458,16 @@ export class GameScene extends Phaser.Scene {
       return cnt > 0 && (q + cnt) % 12 === 5;
     }).length;
 
+    // ちらちら被弾数（撒く前）: 相手路のうち自AI賽壇(pit11)に着地できる穴
+    const chirachiraNow = [0, 1, 2, 3, 4].filter((q) => {
+      const cnt = state.pits[q].stones.length;
+      return cnt > 0 && (q + cnt) % 12 === 11;
+    }).length;
+
+    // くたくた発動判定: 相手賽壇 > 自賽壇 + threshold
+    const playerCanKutakuta =
+      state.pits[5].stones.length > state.pits[11].stones.length - 6;
+
     let best = validPits[0];
     let bestScore = -Infinity;
 
@@ -2469,8 +2479,8 @@ export class GameScene extends Phaser.Scene {
       // 全手で盤面シミュレーション（ぐるぐる破壊評価に使う）
       const { pits: pitsAfter } = this._aiSimulateSow(state.pits, p);
 
-      // ─── プレイヤーのぐるぐる連鎖を積極的に破壊するボーナス ───
-      if (playerGuruguruNow > 0) {
+      // ─── プレイヤーぐるぐる変化（破壊ボーナス + 新規生成ペナルティ）───
+      {
         let playerGuruguruAfter = 0;
         for (let q = 0; q <= 4; q++) {
           const cnt = pitsAfter[q].stones.length;
@@ -2478,6 +2488,26 @@ export class GameScene extends Phaser.Scene {
         }
         const disrupted = playerGuruguruNow - playerGuruguruAfter;
         if (disrupted > 0) score += disrupted * 22;
+        if (disrupted < 0) score -= -disrupted * 15;
+      }
+
+      // ─── ちらちら被弾防止 ───
+      {
+        let chirachiraAfter = 0;
+        for (let q = 0; q <= 4; q++) {
+          const cnt = pitsAfter[q].stones.length;
+          if (cnt > 0 && (q + cnt) % 12 === 11) chirachiraAfter++;
+        }
+        const newChirachira = chirachiraAfter - chirachiraNow;
+        if (newChirachira > 0) score -= newChirachira * 12;
+      }
+
+      // ─── くたくた妨害: 発動可能状態なら相手路への着地を避ける ───
+      if (playerCanKutakuta) {
+        for (let i = 0; i < count; i++) {
+          const lp = (p + 1 + i) % 12;
+          if (lp >= 0 && lp <= 4) score -= 6;
+        }
       }
 
       // ─── ぐるぐる ───
@@ -2651,6 +2681,22 @@ export class GameScene extends Phaser.Scene {
       return cnt > 0 && (q + cnt) % 12 === 5;
     }).length;
 
+    // ちらちら被弾数（撒く前）
+    const chirachiraNowV2 = [0, 1, 2, 3, 4].filter((q) => {
+      const cnt = state.pits[q].stones.length;
+      return cnt > 0 && (q + cnt) % 12 === 11;
+    }).length;
+
+    // くたくた発動判定: 相手路の色を2色以下 + 賽壇差条件
+    const playerLaneColorsV2 = new Set();
+    for (let q = 0; q <= 4; q++) {
+      for (const s of state.pits[q].stones) playerLaneColorsV2.add(s.color);
+    }
+    const playerCanKutakutaV2 =
+      playerLaneColorsV2.size > 0 &&
+      playerLaneColorsV2.size <= 2 &&
+      state.pits[5].stones.length > state.pits[11].stones.length - 6;
+
     // 相手のちらちら準備路（(q + cnt) % 12 === 11）からAI路への流入石を予測
     // 相手がちらちらを撒くとAI路 pit6-10 に石が1個ずつ追加される
     const expectedIncomingAI = {};
@@ -2715,8 +2761,8 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // ─── プレイヤーのぐるぐる連鎖を積極的に破壊 ───
-      if (playerGuruguruNow > 0) {
+      // ─── プレイヤーぐるぐる変化（破壊ボーナス + 新規生成ペナルティ）───
+      {
         let playerGuruguruAfter = 0;
         for (let q = 0; q <= 4; q++) {
           const cnt = pitsAfter[q].stones.length;
@@ -2724,6 +2770,26 @@ export class GameScene extends Phaser.Scene {
         }
         const disrupted = playerGuruguruNow - playerGuruguruAfter;
         if (disrupted > 0) score += disrupted * 28;
+        if (disrupted < 0) score -= -disrupted * 15;
+      }
+
+      // ─── ちらちら被弾防止 ───
+      {
+        let chirachiraAfter = 0;
+        for (let q = 0; q <= 4; q++) {
+          const cnt = pitsAfter[q].stones.length;
+          if (cnt > 0 && (q + cnt) % 12 === 11) chirachiraAfter++;
+        }
+        const newChirachira = chirachiraAfter - chirachiraNowV2;
+        if (newChirachira > 0) score -= newChirachira * 12;
+      }
+
+      // ─── くたくた妨害: 発動可能状態なら相手路への着地を避ける ───
+      if (playerCanKutakutaV2) {
+        for (let i = 0; i < count; i++) {
+          const lp = (p + 1 + i) % 12;
+          if (lp >= 0 && lp <= 4) score -= 6;
+        }
       }
 
       // ─── ぐるぐる ───

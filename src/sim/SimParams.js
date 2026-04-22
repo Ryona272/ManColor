@@ -68,6 +68,11 @@ export const DEFAULT_PARAMS = {
 
   // ─── くたくた ───
   kutakutaThresholdOffset: -6,
+
+  // ─── 防御的ペナルティ ───
+  oppGuruguruCreate: 15, // 撒いた結果相手路にぐるぐる待機が増えたときのペナルティ/個
+  oppChirachiraCreate: 12, // 撒いた結果相手路にちらちら可能穴が増えたときのペナルティ/個
+  kutakutaLanePenalty: 6, // 相手がくたくた発動可能な時に相手路に石を送るペナルティ/石
 };
 
 /**
@@ -133,6 +138,9 @@ export const PRESETS = {
     midUnknownPenalty: -13,
     midCancelMult: 5,
     sendKnownNegToOpp: 18,
+    oppGuruguruCreate: 36,
+    oppChirachiraCreate: 8,
+    kutakutaLanePenalty: 12,
   }),
 
   // AI後手特化（座標降下法最適化済み）

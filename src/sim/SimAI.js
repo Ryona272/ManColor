@@ -183,6 +183,28 @@ export function pickPit(
     return cnt > 0 && (q + cnt) % 12 === oppStoreIndex;
   }).length;
 
+  // ちらちら被弾数（撒く前）: 相手路のうち自賽壇に着地できる穴の数
+  const chirachiraNow = Array.from(
+    { length: oppLaneMax - oppLaneMin + 1 },
+    (_, i) => oppLaneMin + i,
+  ).filter((q) => {
+    const cnt = state.pits[q].stones.length;
+    return cnt > 0 && (q + cnt) % 12 === storeIndex;
+  }).length;
+
+  // くたくた発動判定: 相手路の色を2色以下に整理している + 賽壇差条件を満たす場合に発動リスクあり
+  const playerLaneColors = new Set();
+  for (let q = oppLaneMin; q <= oppLaneMax; q++) {
+    for (const s of state.pits[q].stones) playerLaneColors.add(s.color);
+  }
+  const playerLaneConsolidated =
+    playerLaneColors.size > 0 && playerLaneColors.size <= 2;
+  const playerStoreNow = state.pits[oppStoreIndex].stones.length;
+  const aiStoreNow = state.pits[storeIndex].stones.length;
+  const playerCanKutakuta =
+    playerLaneConsolidated &&
+    playerStoreNow > aiStoreNow + (params.kutakutaThresholdOffset ?? -6);
+
   // 序盤フラグ
   const isEarlyGame =
     peeksDone < params.earlyGamePeekThreshold &&
@@ -199,8 +221,8 @@ export function pickPit(
 
     const { pits: pitsAfter } = simulateSow(state.pits, p);
 
-    // ─── プレイヤーぐるぐる破壊 ───
-    if (playerGuruguruNow > 0) {
+    // ─── プレイヤーぐるぐる変化（破壊ボーナス + 新規生成ペナルティ）───
+    {
       let playerGuruguruAfter = 0;
       for (let q = oppLaneMin; q <= oppLaneMax; q++) {
         const cnt = pitsAfter[q].stones.length;
@@ -208,6 +230,29 @@ export function pickPit(
       }
       const disrupted = playerGuruguruNow - playerGuruguruAfter;
       if (disrupted > 0) score += disrupted * params.guruguruDisrupt;
+      if (disrupted < 0) score -= -disrupted * (params.oppGuruguruCreate ?? 15);
+    }
+
+    // ─── ちらちら被弾防止（撒いた後に増えた被弾可能穴をペナルティ）───
+    {
+      let chirachiraAfter = 0;
+      for (let q = oppLaneMin; q <= oppLaneMax; q++) {
+        const cnt = pitsAfter[q].stones.length;
+        if (cnt > 0 && (q + cnt) % 12 === storeIndex) chirachiraAfter++;
+      }
+      const newChirachira = chirachiraAfter - chirachiraNow;
+      if (newChirachira > 0)
+        score -= newChirachira * (params.oppChirachiraCreate ?? 12);
+    }
+
+    // ─── くたくた妨害（相手がくたくた発動可能なら相手路への着地を避ける）───
+    if (playerCanKutakuta) {
+      for (let i = 0; i < count; i++) {
+        const landingPit = (p + 1 + i) % 12;
+        if (landingPit >= oppLaneMin && landingPit <= oppLaneMax) {
+          score -= params.kutakutaLanePenalty ?? 6;
+        }
+      }
     }
 
     // ─── ぐるぐる ───
