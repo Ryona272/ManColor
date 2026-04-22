@@ -52,6 +52,10 @@ function evalFollowupOpp(pits) {
       const depth = countGuruguruChain(p2, 11, 1);
       bonus += 10 + depth * 12;
     }
+    // 次ターンにちらちら/ぽいぽいできる路がある
+    if (last === 5) {
+      bonus += 14;
+    }
     if (last >= 6 && last <= 10 && pits[last].stones.length === 0) {
       const mirrorCount = pits[last - 6].stones.length;
       bonus += 8 + mirrorCount * 3;
@@ -70,6 +74,10 @@ function evalFollowupSelf(pits) {
       const { pits: p2 } = simulateSow(pits, q);
       const depth = countGuruguruChain(p2, 5, 1);
       bonus += 10 + depth * 12;
+    }
+    // 次ターンにちらちら/ぽいぽいできる路がある（AIへの脅威として計上）
+    if (last === 11) {
+      bonus += 14;
     }
     if (last >= 0 && last <= 4 && pits[last].stones.length === 0) {
       const mirrorCount = pits[last + 6]?.stones.length ?? 0;
