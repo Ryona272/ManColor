@@ -10,12 +10,12 @@ export const DEFAULT_PARAMS = {
   earlyGamePeekThreshold: 2, // peeksDone < X && inferredなし && knownPosなし → 序盤
 
   // ─── ぐるぐる ───
-  guruguruBaseEarly: 30, // 序盤のぐるぐるベース
+  guruguruBaseEarly: 37, // 序盤のぐるぐるベース
   guruguruChainMultEarly: 9, // 序盤の連鎖ボーナス乗数
-  guruguruBase: 71, // 中盤以降のぐるぐるベース
-  guruguruChainMult: 28, // 中盤以降の連鎖ボーナス乗数
+  guruguruBase: 77, // 中盤以降のぐるぐるベース
+  guruguruChainMult: 36, // 中盤以降の連鎖ボーナス乗数
   guruguruFollowupMult: 1.725, // 2手先読み乗数
-  guruguruDisrupt: 28, // プレイヤーぐるぐる破壊ボーナス/手
+  guruguruDisrupt: 33, // プレイヤーぐるぐる破壊ボーナス/手
 
   // ─── ちらちら（pit5着地）───
   chirachira1st: 34, // 1回目（序盤）
@@ -36,8 +36,9 @@ export const DEFAULT_PARAMS = {
   zakuzakuBase: 5, // ざくざく奪取基本点
   zakuzakuStoneMult: 11, // ざくざく石1個あたり
   zakuzakuOwnFortune: 8, // 奪う石が自占い色
-  zakuzakuInferred: 0, // 奪う石がinferred色
+  zakuzakuInferred: 8, // 奪う石が相手の推定占い色（+3石を否定）
   zakuzakuKnownPos: 10, // 奪う石がknownPos色
+  zakuzakuOppStoreColor: 5, // 奪う石が相手賽壇の色と一致（相手の蓄積否定）
 
   // ─── 石の色評価（pit11着地）─ 序盤 ───
   earlyOwnFortune: 28, // 自分の占い色（+3確実）
@@ -69,10 +70,17 @@ export const DEFAULT_PARAMS = {
   // ─── くたくた ───
   kutakutaThresholdOffset: -6,
 
-  // ─── 防御的ペナルティ ───
+  // ─── 防御的ペナルティ（タイブレーカー用: 攻撃スコアが接近した手の中でのみ適用）───
+  // 最良攻撃スコアから defensiveTiebreakWindow 以内の手にのみ加算される
+  defensiveTiebreakWindow: 8, // この点差以内の手の中でのみ防御ペナルティを比較
   oppGuruguruCreate: 15, // 撒いた結果相手路にぐるぐる待機が増えたときのペナルティ/個
   oppChirachiraCreate: 12, // 撒いた結果相手路にちらちら可能穴が増えたときのペナルティ/個
   kutakutaLanePenalty: 6, // 相手がくたくた発動可能な時に相手路に石を送るペナルティ/石
+  // ─── 被ざくざく露出ペナルティ ───
+  // 撒き後に自陣高石穴が相手ざくざく可能状態になる場合: base + stones^2 * mult
+  // 3石→-39, 4石→-60, 5石→-87, 6石→-120
+  zakuzakuExposedBase: 12,
+  zakuzakuExposedMult: 3,
 };
 
 /**
@@ -110,61 +118,74 @@ export const PRESETS = {
     guruguruChainMult: 12,
   }),
 
-  // AI先手特化（座標降下法最適化済み v2）
+  // AI先手特化（座標降下法最適化済み v3 tiebreaker対応）
   senteStrategy: mergeParams({
-    forceChirachiraThreshold: 2,
-    guruguruBaseEarly: 29,
-    guruguruBase: 68,
-    guruguruFollowupMult: 1.675,
-    guruguruChainMult: 27,
-    guruguruDisrupt: 29,
+    guruguruBaseEarly: 36,
+    guruguruChainMultEarly: 8,
+    guruguruBase: 75,
+    guruguruChainMult: 38,
+    guruguruDisrupt: 32,
     chirachira1st: 53,
     chirachira2nd: 48,
-    chirachira1stMid: 51,
-    chirachira2ndMid: 47,
+    chirachira1stMid: 50,
+    chirachira2ndMid: 48,
     chirachira3rd: 41,
-    chirachiraThresholdHigh: 24,
     poipoiWithFortune: 26,
+    poipoiGeneral: 5,
     poipoiEmpty: 2,
-    poipoiStoneOwnFortune: 44,
-    zakuzakuBase: 4,
-    zakuzakuOwnFortune: 44,
+    chirachiraThresholdHigh: 24,
+    zakuzakuBase: 3,
     zakuzakuKnownPos: 11,
+    zakuzakuOppStoreColor: 6,
     earlyOwnFortune: 26,
     earlyCancelThreshold: 0,
+    earlyUnknownPenalty: -18,
     midInferred: 32,
+    midOwnFortune: 25,
+    midKnownPos: 9,
     midKnownNeg: -50,
     midAvoidedColor: -20,
     midUnknownPenalty: -13,
-    midCancelMult: 5,
-    sendKnownNegToOpp: 18,
+    midCancelMult: 6,
+    laneKnownPos: 3,
+    sendKnownNegToOpp: 17,
+    forceChirachiraThreshold: 0,
+    kutakutaThresholdOffset: -5,
     oppGuruguruCreate: 36,
     oppChirachiraCreate: 8,
     kutakutaLanePenalty: 12,
+    zakuzakuExposedMult: 2,
   }),
 
-  // AI後手特化（座標降下法最適化済み）
+  // AI後手特化（座標降下法最適化済み v3 tiebreaker対応）
   goteStrategy: mergeParams({
-    forceChirachiraThreshold: 1,
-    guruguruBaseEarly: 35,
-    guruguruChainMultEarly: 7,
-    guruguruBase: 77,
+    guruguruBaseEarly: 44,
+    guruguruChainMultEarly: 3,
     guruguruChainMult: 34,
-    guruguruFollowupMult: 1.525,
-    guruguruDisrupt: 31,
+    guruguruFollowupMult: 1.575,
     chirachira1st: 54,
     chirachira2nd: 18,
-    chirachira3rd: 12,
     chirachira1stMid: 55,
     chirachira2ndMid: 19,
+    chirachira3rd: 12,
     poipoiWithFortune: 21,
     poipoiGeneral: 3,
     chirachiraThresholdHigh: 26,
+    poipoiStoneKnownPos: 3,
     zakuzakuBase: 4,
     zakuzakuOwnFortune: 9,
+    zakuzakuKnownPos: 9,
+    earlyOwnFortune: 27,
     midInferred: 41,
-    midKnownPos: 11,
-    midCancelMult: 9,
+    midKnownPos: 12,
+    midUnknownPenalty: -12,
+    midCancelMult: 8,
+    midCancelThreshold: 1,
+    laneInferred: 3,
+    sendKnownNegToOpp: 11,
+    forceChirachiraThreshold: 1,
+    oppGuruguruCreate: 16,
+    oppChirachiraCreate: 13,
   }),
 
   // 恐怖心強化: 未確定色ペナルティを大きく、マイナス色回避を最強に

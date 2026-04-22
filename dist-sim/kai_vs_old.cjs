@@ -134,71 +134,59 @@ var PRESETS = {
     guruguruBase: 20,
     guruguruChainMult: 12
   }),
-  // AI先手特化（座標降下法最適化済み v3 tiebreaker対応）
+  // AI先手特化（座標降下法最適化済み v2）
   senteStrategy: mergeParams({
-    guruguruBaseEarly: 36,
-    guruguruChainMultEarly: 8,
-    guruguruBase: 75,
-    guruguruChainMult: 38,
-    guruguruDisrupt: 32,
+    forceChirachiraThreshold: 2,
     chirachira1st: 53,
     chirachira2nd: 48,
-    chirachira1stMid: 50,
-    chirachira2ndMid: 48,
+    chirachira1stMid: 51,
+    chirachira2ndMid: 47,
     chirachira3rd: 41,
-    poipoiWithFortune: 26,
-    poipoiGeneral: 5,
-    poipoiEmpty: 2,
     chirachiraThresholdHigh: 24,
-    zakuzakuBase: 3,
+    poipoiWithFortune: 26,
+    poipoiEmpty: 2,
+    poipoiStoneOwnFortune: 44,
+    zakuzakuBase: 4,
     zakuzakuKnownPos: 11,
-    zakuzakuOppStoreColor: 6,
     earlyOwnFortune: 26,
     earlyCancelThreshold: 0,
-    earlyUnknownPenalty: -18,
     midInferred: 32,
-    midOwnFortune: 25,
-    midKnownPos: 9,
     midKnownNeg: -50,
     midAvoidedColor: -20,
     midUnknownPenalty: -13,
-    midCancelMult: 6,
-    laneKnownPos: 3,
-    sendKnownNegToOpp: 17,
-    forceChirachiraThreshold: 0,
-    kutakutaThresholdOffset: -5,
+    midCancelMult: 5,
+    sendKnownNegToOpp: 18,
     oppGuruguruCreate: 36,
     oppChirachiraCreate: 8,
-    kutakutaLanePenalty: 12,
-    zakuzakuExposedMult: 2
+    kutakutaLanePenalty: 12
   }),
-  // AI後手特化（座標降下法最適化済み v3 tiebreaker対応）
+  // AI後手特化（座標降下法最適化済み）
   goteStrategy: mergeParams({
-    guruguruBaseEarly: 44,
-    guruguruChainMultEarly: 3,
-    guruguruChainMult: 34,
-    guruguruFollowupMult: 1.575,
-    chirachira1st: 54,
+    forceChirachiraThreshold: 1,
+    guruguruBaseEarly: 37,
+    guruguruChainMultEarly: 6,
+    guruguruBase: 77,
+    guruguruChainMult: 36,
+    guruguruFollowupMult: 1.525,
+    guruguruDisrupt: 33,
+    chirachira1st: 53,
     chirachira2nd: 18,
+    chirachira3rd: 12,
     chirachira1stMid: 55,
     chirachira2ndMid: 19,
-    chirachira3rd: 12,
-    poipoiWithFortune: 21,
+    poipoiWithFortune: 20,
     poipoiGeneral: 3,
     chirachiraThresholdHigh: 26,
-    poipoiStoneKnownPos: 3,
+    poipoiStoneKnownPos: 5,
     zakuzakuBase: 4,
     zakuzakuOwnFortune: 9,
     zakuzakuKnownPos: 9,
-    earlyOwnFortune: 27,
     midInferred: 41,
     midKnownPos: 12,
-    midUnknownPenalty: -12,
+    midUnknownPenalty: -11,
     midCancelMult: 8,
-    midCancelThreshold: 1,
     laneInferred: 3,
     sendKnownNegToOpp: 11,
-    forceChirachiraThreshold: 1,
     oppGuruguruCreate: 16,
     oppChirachiraCreate: 13
   }),
@@ -1257,7 +1245,7 @@ function _applyKutakuta(gs, player) {
   }
 }
 
-// src/sim/sente_gote_check.js
+// src/sim/kai_vs_old.js
 var N = 1e3;
 function pr(label, s) {
   const draw = (100 - parseFloat(s.selfWinRate) - parseFloat(s.oppWinRate)).toFixed(1);
@@ -1275,18 +1263,76 @@ function sep(title) {
   console.log("  " + title);
   console.log("=".repeat(60));
 }
-var SENTE = PRESETS.senteStrategy;
-var GOTE = PRESETS.goteStrategy;
-var DEF = DEFAULT_PARAMS;
-sep("1. senteStrategy(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)");
-pr("senteStrategy vs DEFAULT", runMany(SENTE, DEF, N));
-sep("2. DEFAULT(\u5148\u624B) vs senteStrategy(\u5F8C\u624B)");
-pr("DEFAULT vs senteStrategy", runMany(DEF, SENTE, N));
-sep("3. goteStrategy(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)");
-pr("goteStrategy vs DEFAULT", runMany(GOTE, DEF, N));
-sep("4. DEFAULT(\u5148\u624B) vs goteStrategy(\u5F8C\u624B)");
-pr("DEFAULT vs goteStrategy", runMany(DEF, GOTE, N));
-sep("5. senteStrategy(\u5148\u624B) vs goteStrategy(\u5F8C\u624B)  \u76F4\u63A5\u5BFE\u6C7A");
-pr("senteStrategy vs goteStrategy", runMany(SENTE, GOTE, N));
-sep("6. DEFAULT(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)  \u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
-pr("DEFAULT vs DEFAULT", runMany(DEF, DEF, N));
+var OLD_DEFAULT = {
+  // フェーズ切り替え
+  earlyGamePeekThreshold: 2,
+  // ぐるぐる（旧値）
+  guruguruBaseEarly: 30,
+  guruguruChainMultEarly: 9,
+  guruguruBase: 71,
+  guruguruChainMult: 28,
+  guruguruFollowupMult: 1.725,
+  guruguruDisrupt: 28,
+  // ちらちら
+  chirachira1st: 34,
+  chirachira2nd: 30,
+  chirachira1stMid: 37,
+  chirachira2ndMid: 30,
+  chirachira3rd: 21,
+  poipoiWithFortune: 22,
+  poipoiGeneral: 4,
+  poipoiEmpty: 3,
+  chirachiraThresholdHigh: 25,
+  chirachiraThresholdLow: 6,
+  poipoiStoneOwnFortune: 45,
+  poipoiStoneInferred: 28,
+  poipoiStoneKnownPos: 4,
+  // ざくざく（旧値）
+  zakuzakuBase: 5,
+  zakuzakuStoneMult: 11,
+  zakuzakuOwnFortune: 8,
+  zakuzakuInferred: 0,
+  // 旧: 評価なし
+  zakuzakuKnownPos: 10,
+  // zakuzakuOppStoreColor なし
+  // 石の色評価・序盤
+  earlyOwnFortune: 28,
+  earlyCancelMult: 9,
+  earlyCancelThreshold: 2,
+  earlyUnknownPenalty: -17,
+  // 石の色評価・中盤
+  midInferred: 34,
+  midOwnFortune: 24,
+  midKnownPos: 10,
+  midKnownNeg: -42,
+  midAvoidedColor: -21,
+  midUnknownPenalty: -12,
+  midCancelMult: 7,
+  midCancelThreshold: 2,
+  // 自路石品質
+  laneOwnFortune: 3,
+  laneInferred: 4,
+  laneKnownPos: 2,
+  laneKnownNegPenalty: 8,
+  sendKnownNegToOpp: 12,
+  // 先後手制御
+  forceChirachiraThreshold: 2,
+  forceChirachiraMinLane: 3,
+  // くたくた
+  kutakutaThresholdOffset: -6,
+  // 旧: 防御ペナルティなし（新パラメータ導入前）
+  oppGuruguruCreate: 0,
+  oppChirachiraCreate: 0,
+  kutakutaLanePenalty: 0,
+  zakuzakuExposedBase: 0,
+  zakuzakuExposedMult: 0
+};
+var KAI = DEFAULT_PARAMS;
+sep("1. \u9B3C\u6539DEFAULT(\u5148\u624B) vs \u5143DEFAULT(\u5F8C\u624B)");
+pr("\u9B3C\u6539 vs \u65E7", runMany(KAI, OLD_DEFAULT, N));
+sep("2. \u5143DEFAULT(\u5148\u624B) vs \u9B3C\u6539DEFAULT(\u5F8C\u624B)");
+pr("\u65E7 vs \u9B3C\u6539", runMany(OLD_DEFAULT, KAI, N));
+sep("3. \u5143DEFAULT(\u5148\u624B) vs \u5143DEFAULT(\u5F8C\u624B)  \u65E7\u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
+pr("\u65E7 vs \u65E7", runMany(OLD_DEFAULT, OLD_DEFAULT, N));
+sep("4. \u9B3C\u6539DEFAULT(\u5148\u624B) vs \u9B3C\u6539DEFAULT(\u5F8C\u624B)  \u65B0\u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
+pr("\u9B3C\u6539 vs \u9B3C\u6539", runMany(KAI, KAI, N));

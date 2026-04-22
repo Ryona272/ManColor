@@ -111,8 +111,8 @@ var DEFAULT_PARAMS = {
   zakuzakuExposedBase: 12,
   zakuzakuExposedMult: 3
 };
-function mergeParams(overrides = {}) {
-  return { ...DEFAULT_PARAMS, ...overrides };
+function mergeParams(overrides2 = {}) {
+  return { ...DEFAULT_PARAMS, ...overrides2 };
 }
 var PRESETS = {
   default: DEFAULT_PARAMS,
@@ -172,33 +172,33 @@ var PRESETS = {
     kutakutaLanePenalty: 12,
     zakuzakuExposedMult: 2
   }),
-  // AI後手特化（座標降下法最適化済み v3 tiebreaker対応）
+  // AI後手特化（座標降下法最適化済み）
   goteStrategy: mergeParams({
-    guruguruBaseEarly: 44,
-    guruguruChainMultEarly: 3,
-    guruguruChainMult: 34,
-    guruguruFollowupMult: 1.575,
-    chirachira1st: 54,
+    forceChirachiraThreshold: 1,
+    guruguruBaseEarly: 37,
+    guruguruChainMultEarly: 6,
+    guruguruBase: 77,
+    guruguruChainMult: 36,
+    guruguruFollowupMult: 1.525,
+    guruguruDisrupt: 33,
+    chirachira1st: 53,
     chirachira2nd: 18,
+    chirachira3rd: 12,
     chirachira1stMid: 55,
     chirachira2ndMid: 19,
-    chirachira3rd: 12,
-    poipoiWithFortune: 21,
+    poipoiWithFortune: 20,
     poipoiGeneral: 3,
     chirachiraThresholdHigh: 26,
-    poipoiStoneKnownPos: 3,
+    poipoiStoneKnownPos: 5,
     zakuzakuBase: 4,
     zakuzakuOwnFortune: 9,
     zakuzakuKnownPos: 9,
-    earlyOwnFortune: 27,
     midInferred: 41,
     midKnownPos: 12,
-    midUnknownPenalty: -12,
+    midUnknownPenalty: -11,
     midCancelMult: 8,
-    midCancelThreshold: 1,
     laneInferred: 3,
     sendKnownNegToOpp: 11,
-    forceChirachiraThreshold: 1,
     oppGuruguruCreate: 16,
     oppChirachiraCreate: 13
   }),
@@ -571,7 +571,7 @@ function countGuruguruChain(pits, storeIndex = 11, depth = 0) {
   if (depth >= 4) return 0;
   const laneMin = storeIndex === 11 ? 6 : 0;
   const laneMax = storeIndex === 11 ? 10 : 4;
-  let best = 0;
+  let best2 = 0;
   for (let q = laneMin; q <= laneMax; q++) {
     if (pits[q].stones.length === 0) continue;
     const count = pits[q].stones.length;
@@ -579,10 +579,10 @@ function countGuruguruChain(pits, storeIndex = 11, depth = 0) {
     if (last === storeIndex) {
       const { pits: pitsAfter } = simulateSow(pits, q);
       const chain = 1 + countGuruguruChain(pitsAfter, storeIndex, depth + 1);
-      if (chain > best) best = chain;
+      if (chain > best2) best2 = chain;
     }
   }
-  return best;
+  return best2;
 }
 function evalFollowupOpp(pits) {
   let bonus = 0;
@@ -705,7 +705,7 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
   const aiStoreNow = state.pits[storeIndex].stones.length;
   const playerCanKutakuta = playerLaneConsolidated && playerStoreNow > aiStoreNow + (params.kutakutaThresholdOffset ?? -6);
   const isEarlyGame = peeksDone < params.earlyGamePeekThreshold && !inferred && knownPos.length === 0;
-  let best = validPits[0];
+  let best2 = validPits[0];
   let bestScore = -Infinity;
   const pitScores = [];
   for (const p of validPits) {
@@ -883,10 +883,10 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
     const finalScore = os + (os >= _maxOff - _window ? dp : 0);
     if (finalScore > bestScore) {
       bestScore = finalScore;
-      best = pit;
+      best2 = pit;
     }
   }
-  return best;
+  return best2;
 }
 function decidePlacements(stones, state, memo, fortune, params = DEFAULT_PARAMS, role = "opp") {
   const isOpp = role === "opp";
@@ -1257,36 +1257,158 @@ function _applyKutakuta(gs, player) {
   }
 }
 
-// src/sim/sente_gote_check.js
-var N = 1e3;
-function pr(label, s) {
-  const draw = (100 - parseFloat(s.selfWinRate) - parseFloat(s.oppWinRate)).toFixed(1);
-  console.log(`  ${label}`);
-  console.log(
-    `    self win: ${s.selfWinRate}  opp win: ${s.oppWinRate}  draw: ${draw}%  avgDiff: ${s.avgScoreDiff}  med: ${s.medianScoreDiff}`
-  );
-  console.log(`    guru  self:${s.avgSelfGuru} opp:${s.avgOppGuru}`);
-  console.log(
-    `    peeks self:${s.avgSelfPeeks} opp:${s.avgOppPeeks}  turns:${s.avgTurns}`
-  );
-}
+// src/sim/optim_gote2.js
+var N_EVAL = 400;
+var N_VERIFY = 1e3;
+var MAX_SWEEPS = 10;
+var MAX_EXTEND = 8;
+var oppRate = (s) => parseFloat(s.oppWinRate);
+var STEPS = {
+  guruguruBaseEarly: 1,
+  guruguruChainMultEarly: 1,
+  guruguruBase: 1,
+  guruguruChainMult: 1,
+  guruguruFollowupMult: 0.05,
+  guruguruDisrupt: 1,
+  chirachira1st: 1,
+  chirachira2nd: 1,
+  chirachira1stMid: 1,
+  chirachira2ndMid: 1,
+  chirachira3rd: 1,
+  poipoiWithFortune: 1,
+  poipoiGeneral: 1,
+  poipoiEmpty: 1,
+  chirachiraThresholdHigh: 1,
+  poipoiStoneOwnFortune: 1,
+  poipoiStoneInferred: 1,
+  poipoiStoneKnownPos: 1,
+  zakuzakuBase: 1,
+  zakuzakuStoneMult: 1,
+  zakuzakuOwnFortune: 1,
+  zakuzakuInferred: 1,
+  zakuzakuKnownPos: 1,
+  zakuzakuOppStoreColor: 1,
+  zakuzakuExposedBase: 1,
+  zakuzakuExposedMult: 1,
+  earlyOwnFortune: 1,
+  earlyCancelMult: 1,
+  earlyCancelThreshold: 1,
+  earlyUnknownPenalty: 1,
+  midInferred: 1,
+  midOwnFortune: 1,
+  midKnownPos: 1,
+  midKnownNeg: 1,
+  midAvoidedColor: 1,
+  midUnknownPenalty: 1,
+  midCancelMult: 1,
+  midCancelThreshold: 1,
+  laneOwnFortune: 1,
+  laneInferred: 1,
+  laneKnownPos: 1,
+  laneKnownNegPenalty: 1,
+  sendKnownNegToOpp: 1,
+  forceChirachiraThreshold: 1,
+  forceChirachiraMinLane: 1,
+  kutakutaThresholdOffset: 1,
+  defensiveTiebreakWindow: 1,
+  oppGuruguruCreate: 1,
+  oppChirachiraCreate: 1,
+  kutakutaLanePenalty: 1
+};
+var PARAM_KEYS = Object.keys(STEPS);
+var fix = (v) => parseFloat(v.toFixed(4));
 function sep(title) {
-  console.log("\n" + "=".repeat(60));
-  console.log("  " + title);
-  console.log("=".repeat(60));
+  console.log("\n" + "=".repeat(62) + "\n  " + title + "\n" + "=".repeat(62));
+}
+function lineSearch(key, current, curScore, sente) {
+  const step = STEPS[key];
+  const cur = current[key];
+  const evalFn = (p) => oppRate(runMany(sente, p, N_EVAL));
+  const sp = evalFn({ ...current, [key]: fix(cur + step) });
+  const sm = evalFn({ ...current, [key]: fix(cur - step) });
+  let best2 = cur, bestScore = curScore;
+  if (sp > bestScore) {
+    best2 = fix(cur + step);
+    bestScore = sp;
+  }
+  if (sm > bestScore) {
+    best2 = fix(cur - step);
+    bestScore = sm;
+  }
+  if (best2 !== cur) {
+    const dir = best2 > cur ? step : -step;
+    for (let ex = 0; ex < MAX_EXTEND; ex++) {
+      const nxt = fix(best2 + dir);
+      const score = evalFn({ ...current, [key]: nxt });
+      if (score > bestScore) {
+        bestScore = score;
+        best2 = nxt;
+      } else break;
+    }
+    const delta = (bestScore - curScore).toFixed(1);
+    console.log(
+      `    [${key}] ${cur} \u2192 ${best2}  (${delta >= 0 ? "+" : ""}${delta}%  now:${bestScore.toFixed(1)}%)`
+    );
+  }
+  return { value: best2, score: bestScore };
+}
+function sweep(params, sente, label) {
+  console.log(`
+  -- ${label} --`);
+  let cur = { ...params };
+  let score = oppRate(runMany(sente, cur, N_EVAL));
+  console.log(`  \u958B\u59CB: ${score.toFixed(1)}%`);
+  let improved = 0;
+  for (const key of PARAM_KEYS) {
+    const r = lineSearch(key, cur, score, sente);
+    if (r.value !== cur[key]) {
+      cur = { ...cur, [key]: r.value };
+      score = r.score;
+      improved++;
+    }
+  }
+  console.log(`  \u7D42\u4E86: ${score.toFixed(1)}%  (${improved}\u30D1\u30E9\u30E1\u30FC\u30BF\u6539\u5584)`);
+  return { params: cur, score, improved };
 }
 var SENTE = PRESETS.senteStrategy;
-var GOTE = PRESETS.goteStrategy;
-var DEF = DEFAULT_PARAMS;
-sep("1. senteStrategy(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)");
-pr("senteStrategy vs DEFAULT", runMany(SENTE, DEF, N));
-sep("2. DEFAULT(\u5148\u624B) vs senteStrategy(\u5F8C\u624B)");
-pr("DEFAULT vs senteStrategy", runMany(DEF, SENTE, N));
-sep("3. goteStrategy(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)");
-pr("goteStrategy vs DEFAULT", runMany(GOTE, DEF, N));
-sep("4. DEFAULT(\u5148\u624B) vs goteStrategy(\u5F8C\u624B)");
-pr("DEFAULT vs goteStrategy", runMany(DEF, GOTE, N));
-sep("5. senteStrategy(\u5148\u624B) vs goteStrategy(\u5F8C\u624B)  \u76F4\u63A5\u5BFE\u6C7A");
-pr("senteStrategy vs goteStrategy", runMany(SENTE, GOTE, N));
-sep("6. DEFAULT(\u5148\u624B) vs DEFAULT(\u5F8C\u624B)  \u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
-pr("DEFAULT vs DEFAULT", runMany(DEF, DEF, N));
+var best = { ...PRESETS.goteStrategy };
+sep("\u521D\u671F\u5024\u78BA\u8A8D");
+{
+  const r = runMany(SENTE, best, N_EVAL);
+  console.log(
+    `  gote(opp) vs sente(self): opp:${r.oppWinRate}  self:${r.selfWinRate}  diff:${r.avgScoreDiff}`
+  );
+}
+for (let sw = 1; sw <= MAX_SWEEPS; sw++) {
+  const result = sweep(best, SENTE, `\u30B9\u30A4\u30FC\u30D7 ${sw}/${MAX_SWEEPS}`);
+  best = result.params;
+  if (result.improved === 0) {
+    console.log("\n  \u53CE\u675F\u3057\u307E\u3057\u305F\u3002");
+    break;
+  }
+}
+sep("\u6700\u7D42\u691C\u8A3C (N=" + N_VERIFY + ")");
+{
+  const r = runMany(SENTE, best, N_VERIFY);
+  console.log(
+    `  sente vs gote: self ${r.selfWinRate}  opp ${r.oppWinRate}  avgDiff:${r.avgScoreDiff}`
+  );
+  console.log(`  guru  self:${r.avgSelfGuru} opp:${r.avgOppGuru}`);
+  console.log(
+    `  peeks self:${r.avgSelfPeeks} opp:${r.avgOppPeeks}  turns:${r.avgTurns}`
+  );
+}
+sep("goteStrategy \u66F4\u65B0\u5DEE\u5206");
+var base = { ...PRESETS.goteStrategy };
+for (const key of PARAM_KEYS) {
+  if (best[key] !== base[key])
+    console.log(`  ${key}: ${base[key]} \u2192 ${best[key]}`);
+}
+sep("goteStrategy mergeParams \u51FA\u529B\uFF08SimParams.js \u306B\u8CBC\u308A\u4ED8\u3051\uFF09");
+var overrides = {};
+for (const key of Object.keys(DEFAULT_PARAMS)) {
+  if (best[key] !== DEFAULT_PARAMS[key]) overrides[key] = best[key];
+}
+console.log("  goteStrategy: mergeParams({");
+for (const [k, v] of Object.entries(overrides)) console.log(`    ${k}: ${v},`);
+console.log("  }),");

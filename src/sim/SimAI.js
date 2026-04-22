@@ -213,15 +213,19 @@ export function pickPit(
 
   let best = validPits[0];
   let bestScore = -Infinity;
+  const pitScores = [];
 
   for (const p of validPits) {
     const count = state.pits[p].stones.length;
     const lastPit = (p + count) % 12;
     let score = 0;
+    let defPenalty = 0;
 
     const { pits: pitsAfter } = simulateSow(state.pits, p);
 
     // ─── プレイヤーぐるぐる変化（破壊ボーナス + 新規生成ペナルティ）───
+    // 自分がぐるぐるする手（lastPit===storeIndex）では生成ペナルティを無効化：
+    // ぐるぐる > 妨害 の優先順位を維持する
     {
       let playerGuruguruAfter = 0;
       for (let q = oppLaneMin; q <= oppLaneMax; q++) {
@@ -230,7 +234,8 @@ export function pickPit(
       }
       const disrupted = playerGuruguruNow - playerGuruguruAfter;
       if (disrupted > 0) score += disrupted * params.guruguruDisrupt;
-      if (disrupted < 0) score -= -disrupted * (params.oppGuruguruCreate ?? 15);
+      if (disrupted < 0 && lastPit !== storeIndex)
+        defPenalty -= -disrupted * (params.oppGuruguruCreate ?? 15);
     }
 
     // ─── ちらちら被弾防止（撒いた後に増えた被弾可能穴をペナルティ）───
@@ -242,7 +247,7 @@ export function pickPit(
       }
       const newChirachira = chirachiraAfter - chirachiraNow;
       if (newChirachira > 0)
-        score -= newChirachira * (params.oppChirachiraCreate ?? 12);
+        defPenalty -= newChirachira * (params.oppChirachiraCreate ?? 12);
     }
 
     // ─── くたくた妨害（相手がくたくた発動可能なら相手路への着地を避ける）───
@@ -250,7 +255,7 @@ export function pickPit(
       for (let i = 0; i < count; i++) {
         const landingPit = (p + 1 + i) % 12;
         if (landingPit >= oppLaneMin && landingPit <= oppLaneMax) {
-          score -= params.kutakutaLanePenalty ?? 6;
+          defPenalty -= params.kutakutaLanePenalty ?? 6;
         }
       }
     }
@@ -308,23 +313,31 @@ export function pickPit(
       const mirrorStones = state.pits[mirrorPit].stones;
       score +=
         params.zakuzakuBase + mirrorStones.length * params.zakuzakuStoneMult;
+      const oppStoreColorSet = new Set(
+        state.pits[oppStoreIndex].stones.map((s) => s.color),
+      );
       for (const s of mirrorStones) {
         if (ownFortune && s.color === ownFortune)
           score += params.zakuzakuOwnFortune;
+        // 相手の推定占い色（+3石）を奪う
         if (inferred && s.color === inferred) score += params.zakuzakuInferred;
         if (knownPos.includes(s.color)) score += params.zakuzakuKnownPos;
+        // 相手賽壇に既にある色の石を奪う（相手の戦略否定）
+        if (oppStoreColorSet.has(s.color))
+          score += params.zakuzakuOppStoreColor ?? 5;
       }
       score += evalOwnFollowup(pitsAfter) * 0.8;
       const playerThreatMult = 0.5 + playerGuruguruNow * 0.3;
       score -= evalOppThreat(pitsAfter) * playerThreatMult;
     }
 
-    // ─── ざくざく防御（ちらちら着地は免除）───
+    // ─── ざくざく防御（撒き元の鏡穴に石があれば非線形ペナルティ）───
     if (lastPit !== oppStoreIndex) {
       const playerMirrorOfP = isOpp ? p - 6 : p + 6;
       if (state.pits[playerMirrorOfP].stones.length > 0) {
-        const mirrorStoneCount = state.pits[playerMirrorOfP].stones.length;
-        score -= 10 + mirrorStoneCount * 3;
+        const c = state.pits[playerMirrorOfP].stones.length;
+        // 非線形: 1→-13, 2→-20, 3→-31, 4→-46, 5→-65
+        score -= 10 + c * c * 2 + c;
         if (inferred) {
           const inferredHere = state.pits[playerMirrorOfP].stones.filter(
             (s) => s.color === inferred,
@@ -334,12 +347,33 @@ export function pickPit(
       }
     }
 
-    // ─── 石の着地先がプレイヤー空き路のミラーなら脅威 ───
+    // ─── 石の着地先が相手空き路のミラー → 被ざくざくリスク（石数考慮）───
     for (let i = 0; i < count; i++) {
       const landingPit = (p + 1 + i) % 12;
       if (landingPit >= laneMin && landingPit <= laneMax) {
         const landedMirrorPlayer = isOpp ? landingPit - 6 : landingPit + 6;
-        if (emptyPlayerPits.has(landedMirrorPlayer)) score -= 10;
+        if (emptyPlayerPits.has(landedMirrorPlayer)) {
+          const stonesInPit = pitsAfter[landingPit].stones.length;
+          // 3石以上で急増: 1→-10, 2→-12, 3→-25, 4→-44, 5→-69
+          score -=
+            stonesInPit >= 3
+              ? stonesInPit * stonesInPit * 3 - 2
+              : 10 + stonesInPit;
+        }
+      }
+    }
+
+    // ─── 被ざくざく露出（撒き後に即取られ可能な高石穴）───
+    // 自陣に石が多くて相手の対応穴が空 → 相手は次の手番で即座にざくざく可能
+    for (let q = laneMin; q <= laneMax; q++) {
+      const exposed = pitsAfter[q].stones.length;
+      if (exposed < 3) continue; // 3石未満は安全圏
+      const playerMirror = isOpp ? q - 6 : q + 6;
+      if (pitsAfter[playerMirror].stones.length === 0) {
+        // 石数^2 乗数: 3→-39, 4→-60, 5→-87, 6→-120
+        defPenalty -=
+          (params.zakuzakuExposedBase ?? 12) +
+          exposed * exposed * (params.zakuzakuExposedMult ?? 3);
       }
     }
 
@@ -419,10 +453,18 @@ export function pickPit(
     }
 
     score += count * 0.1 + Math.random() * 0.06;
+    pitScores.push({ pit: p, score, defPenalty });
+  }
 
-    if (score > bestScore) {
-      bestScore = score;
-      best = p;
+  // 防御ペナルティはタイブレーカーとしてのみ適用:
+  // 最良攻撃スコアから window 以内の手にのみ defPenalty を加算して最終選択
+  const _maxOff = Math.max(...pitScores.map((x) => x.score));
+  const _window = params.defensiveTiebreakWindow ?? 8;
+  for (const { pit, score: os, defPenalty: dp } of pitScores) {
+    const finalScore = os + (os >= _maxOff - _window ? dp : 0);
+    if (finalScore > bestScore) {
+      bestScore = finalScore;
+      best = pit;
     }
   }
 

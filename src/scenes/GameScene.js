@@ -2488,7 +2488,8 @@ export class GameScene extends Phaser.Scene {
         }
         const disrupted = playerGuruguruNow - playerGuruguruAfter;
         if (disrupted > 0) score += disrupted * 22;
-        if (disrupted < 0) score -= -disrupted * 15;
+        // 自分がぐるぐるする手では生成ペナルティを無効化：ぐるぐる > 妨害の優先順位を維持
+        if (disrupted < 0 && lastPit !== 11) score -= -disrupted * 15;
       }
 
       // ─── ちらちら被弾防止 ───
@@ -2584,12 +2585,29 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // ─── 石の着地先がプレイヤー空き路のミラーなら脅威強化 ───
+      // ─── 石の着地先がプレイヤー空き路のミラーなら被ざくざくリスク（石数考慮）───
       for (let i = 0; i < count; i++) {
         const landingPit = (p + 1 + i) % 12;
         if (landingPit >= 6 && landingPit <= 10) {
           const landedMirrorPlayer = landingPit - 6;
-          if (emptyPlayerPits.has(landedMirrorPlayer)) score -= 10;
+          if (emptyPlayerPits.has(landedMirrorPlayer)) {
+            const stonesInPit = pitsAfter[landingPit].stones.length;
+            // 3石以上で急増: 1→-11, 2→-12, 3→-25, 4→-44, 5→-69
+            score -=
+              stonesInPit >= 3
+                ? stonesInPit * stonesInPit * 3 - 2
+                : 10 + stonesInPit;
+          }
+        }
+      }
+
+      // ─── 被ざくざく露出（撒き後に即取られ可能な高石穴）───
+      for (let q = 6; q <= 10; q++) {
+        const exposed = pitsAfter[q].stones.length;
+        if (exposed < 3) continue;
+        if (pitsAfter[q - 6].stones.length === 0) {
+          // 3→-39, 4→-60, 5→-87, 6→-120
+          score -= 12 + exposed * exposed * 3;
         }
       }
 
@@ -2770,7 +2788,8 @@ export class GameScene extends Phaser.Scene {
         }
         const disrupted = playerGuruguruNow - playerGuruguruAfter;
         if (disrupted > 0) score += disrupted * 28;
-        if (disrupted < 0) score -= -disrupted * 15;
+        // 自分がぐるぐるする手では生成ペナルティを無効化
+        if (disrupted < 0 && lastPit !== 11) score -= -disrupted * 15;
       }
 
       // ─── ちらちら被弾防止 ───
@@ -2913,12 +2932,29 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // ─── 石の着地先がプレイヤー空き路のミラーなら脅威強化 ───
+      // ─── 石の着地先がプレイヤー空き路のミラーなら被ざくざくリスク（石数考慮）───
       for (let i = 0; i < count; i++) {
         const landingPit = (p + 1 + i) % 12;
         if (landingPit >= 6 && landingPit <= 10) {
           const landedMirrorPlayer = landingPit - 6;
-          if (emptyPlayerPits.has(landedMirrorPlayer)) score -= 10;
+          if (emptyPlayerPits.has(landedMirrorPlayer)) {
+            const stonesInPit = pitsAfter[landingPit].stones.length;
+            // 3石以上で急増: 1→-11, 2→-12, 3→-25, 4→-44, 5→-69
+            score -=
+              stonesInPit >= 3
+                ? stonesInPit * stonesInPit * 3 - 2
+                : 10 + stonesInPit;
+          }
+        }
+      }
+
+      // ─── 被ざくざく露出（撒き後に即取られ可能な高石穴）───
+      for (let q = 6; q <= 10; q++) {
+        const exposed = pitsAfter[q].stones.length;
+        if (exposed < 3) continue;
+        if (pitsAfter[q - 6].stones.length === 0) {
+          // 3→-39, 4→-60, 5→-87, 6→-120
+          score -= 12 + exposed * exposed * 3;
         }
       }
 
