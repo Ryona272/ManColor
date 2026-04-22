@@ -2189,9 +2189,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 最も頻度の高い色を「プレイヤーが狙っている色」として推測
-    const sorted = Object.entries(this._aiMemo.playerColorFreq).sort(
-      (a, b) => b[1] - a[1],
-    );
+    // ただしプレイヤーが確認済みの中央石の色は個人占いではないので除外
+    const playerSeenCenterColors = this.gameState
+      .getState()
+      .fortune.center.filter((fc) => fc.seenBy.includes("self"))
+      .map((fc) => fc.color);
+    const sorted = Object.entries(this._aiMemo.playerColorFreq)
+      .filter(([color]) => !playerSeenCenterColors.includes(color))
+      .sort((a, b) => b[1] - a[1]);
     this._aiMemo.inferredPlayerColor = sorted[0]?.[0] ?? null;
     // playerAvoidedColor: 確認済みマイナス色（ちらちら情報）のみ使用 — 頻度推測は信頼性が低いため廃止
     this._aiMemo.playerAvoidedColor = this._aiKnownNegativeColor();
@@ -3045,8 +3050,27 @@ export class GameScene extends Phaser.Scene {
                     selectedIndex = index;
                   }
                 });
-                // 確定マイナス石以外はpit5から捨てる（未確認色=0も対象）
-                if (highestValue >= 0) {
+                // 自賽壇のknownNeg石の捨て価値を計算（-4確定石 > 相手未知石 の場合は自捨て優先）
+                let ownDiscardVal = 0;
+                let ownDiscardIdx = -1;
+                state.pits[11].stones.forEach((stone, idx) => {
+                  const v =
+                    knownNegColor && stone.color === knownNegColor ? 50 : 0;
+                  if (v > ownDiscardVal) {
+                    ownDiscardVal = v;
+                    ownDiscardIdx = idx;
+                  }
+                });
+                if (ownDiscardIdx >= 0 && ownDiscardVal > highestValue) {
+                  // 自分の-4確定石を捨てた方が得
+                  this.gameState.removeStoneFromPit(11, ownDiscardIdx);
+                  this._announceTechnique(
+                    "ぽいぽい！",
+                    0xe87070,
+                    "相手が自分の石を排除！",
+                  );
+                  this._renderStones();
+                } else if (highestValue >= 0) {
                   this.gameState.removeStoneFromPit(5, selectedIndex);
                   this._announceTechnique(
                     "ぽいぽい！",
@@ -3111,7 +3135,26 @@ export class GameScene extends Phaser.Scene {
               selectedIndex = index;
             }
           });
-          if (highestValue >= 0) {
+          // 自賽壇のknownNeg石の捨て価値を計算（-4確定石 > 相手未知石 の場合は自捨て優先）
+          let ownDiscardValL = 0;
+          let ownDiscardIdxL = -1;
+          state.pits[11].stones.forEach((stone, idx) => {
+            const v = knownNegColor && stone.color === knownNegColor ? 50 : 0;
+            if (v > ownDiscardValL) {
+              ownDiscardValL = v;
+              ownDiscardIdxL = idx;
+            }
+          });
+          if (ownDiscardIdxL >= 0 && ownDiscardValL > highestValue) {
+            // 自分の-4確定石を捨てた方が得
+            this.gameState.removeStoneFromPit(11, ownDiscardIdxL);
+            this._announceTechnique(
+              "ぽいぽい！",
+              0xe87070,
+              "相手が自分の石を排除！",
+            );
+            this._renderStones();
+          } else if (highestValue >= 0) {
             this.gameState.removeStoneFromPit(5, selectedIndex);
             this._announceTechnique(
               "ぽいぽい！",

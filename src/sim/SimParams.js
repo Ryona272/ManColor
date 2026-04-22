@@ -52,7 +52,7 @@ export const DEFAULT_PARAMS = {
   midKnownPos: 10, // ちらちら確認済み+1石
   midKnownNeg: -42, // 確定マイナス石（絶対回避）
   midAvoidedColor: -21, // プレイヤーが避けている色
-  midUnknownPenalty: -12, // 未確定色ペナルティ
+  midUnknownPenalty: -4, // 未確定色ペナルティ
   midCancelMult: 7, // 相手賽壇にN枚 → N×この値
   midCancelThreshold: 2, // キャンセルが有効になる枚数下限
 

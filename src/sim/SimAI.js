@@ -135,8 +135,11 @@ export function createMemo() {
   };
 }
 
-/** ターン開始時にプレイヤー色傾向を更新 */
-export function updateMemo(memo, state) {
+/**
+ * ターン開始時にプレイヤー色傾向を更新
+ * @param {string[]} excludeColors - 確定済み中央石の色（個人占いではないと確認済み）
+ */
+export function updateMemo(memo, state, excludeColors = []) {
   const storeFreq = {};
   for (const s of state.pits[5].stones) {
     storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
@@ -154,9 +157,10 @@ export function updateMemo(memo, state) {
   for (const [color, count] of Object.entries(laneFreq)) {
     memo.playerColorFreq[color] = (memo.playerColorFreq[color] ?? 0) + count;
   }
-  const sorted = Object.entries(memo.playerColorFreq).sort(
-    (a, b) => b[1] - a[1],
-  );
+  // 確定済み中央石の色は個人占いではない → inferredから除外
+  const sorted = Object.entries(memo.playerColorFreq)
+    .filter(([color]) => !excludeColors.includes(color))
+    .sort((a, b) => b[1] - a[1]);
   memo.inferredPlayerColor = sorted[0]?.[0] ?? null;
   memo.playerAvoidedColor =
     sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
@@ -271,6 +275,8 @@ export function pickPit(
   const moodRoll = Math.random();
   // fortune意識度: 0.3（今回は敢え無視 = ブラフ・躺増）～ 1.7（強く重視 = 安全路密著）
   const moodFortuneMult = 0.3 + moodRoll * 1.4;
+  // 賽壇着地の自占い色ボーナス用: 下限0.85（ブラフ時でも基本的に自占い色は賽壇に入れる）
+  const moodFortuneStoreMult = Math.max(0.85, moodFortuneMult);
   // 占い重視度が高いときは序盤グルグルベースを微縮してfortune路が屏に入りやすくする
   // （moodFortuneMult=1.7→約-21%、=1.0→変化なし、<1.0→変化なし）
   const moodGuruguruMult = isEarlyGame
@@ -505,7 +511,7 @@ export function pickPit(
       if (landingPit === storeIndex) {
         if (isEarlyGame) {
           if (ownFortune && stoneColor === ownFortune) {
-            score += params.earlyOwnFortune * moodFortuneMult;
+            score += params.earlyOwnFortune * moodFortuneStoreMult;
           } else {
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if (cancelCount >= params.earlyCancelThreshold)
@@ -737,7 +743,7 @@ export function decideSpecialAction(
 
 function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   const oppStoreIndex = role === "opp" ? 5 : 11;
-  if (state.pits[oppStoreIndex].stones.length === 0) return { action: "none" };
+  const ownStoreIndex = role === "opp" ? 11 : 5;
   const inferred = memo.inferredPlayerColor;
   const ownFortune = role === "opp" ? fortune.opp.color : fortune.self.color;
   const knownNeg = knownNegativeColor(fortune, role);
@@ -746,24 +752,50 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   const vInferred = params.poipoiStoneInferred ?? 22;
   const vKnownPos = params.poipoiStoneKnownPos ?? 4;
 
-  let bestIdx = -1;
-  let bestVal = 0; // 0以下なら実行しない
+  // 相手賽壇から取る石の最良値（高いほど取る価値あり）
+  let bestOppIdx = -1;
+  let bestOppVal = 0;
   state.pits[oppStoreIndex].stones.forEach((stone, index) => {
     let val = 1;
     if (ownFortune && stone.color === ownFortune) val = vOwnFortune;
     else if (inferred && stone.color === inferred) val = vInferred;
     else if (knownPos.includes(stone.color)) val = vKnownPos;
     if (knownNeg && stone.color === knownNeg) val = -99;
-    if (val > bestVal) {
-      bestVal = val;
-      bestIdx = index;
+    if (val > bestOppVal) {
+      bestOppVal = val;
+      bestOppIdx = index;
     }
   });
 
-  if (bestIdx < 0) return { action: "none" };
+  // 自分の賽壇から捨てる石の最良値（高いほど捨てる価値あり）
+  // knownNeg(-4確定)なら捨てた方が得 → 相手から取る+3より価値が高い場合がある
+  let bestOwnIdx = -1;
+  let bestOwnVal = 0;
+  state.pits[ownStoreIndex].stones.forEach((stone, index) => {
+    let val = 0;
+    if (knownNeg && stone.color === knownNeg) val = 40; // -4確定石を捨てる価値は高い
+    // 自占い色 / knownPos は捨てたくない（負の価値）
+    if (ownFortune && stone.color === ownFortune) val = -99;
+    if (knownPos.includes(stone.color)) val = -99;
+    if (val > bestOwnVal) {
+      bestOwnVal = val;
+      bestOwnIdx = index;
+    }
+  });
+
+  // 自分の賽壇から捨てる方が価値が高い場合はそちらを選択
+  if (bestOwnIdx >= 0 && bestOwnVal > bestOppVal) {
+    return {
+      action: "poipoi",
+      removePitIndex: ownStoreIndex,
+      removeStoneIndex: bestOwnIdx,
+    };
+  }
+
+  if (bestOppIdx < 0) return { action: "none" };
   return {
     action: "poipoi",
     removePitIndex: oppStoreIndex,
-    removeStoneIndex: bestIdx,
+    removeStoneIndex: bestOppIdx,
   };
 }

@@ -677,7 +677,7 @@ function createMemo() {
     playerAvoidedColor: null
   };
 }
-function updateMemo(memo, state) {
+function updateMemo(memo, state, excludeColors = []) {
   const storeFreq = {};
   for (const s of state.pits[5].stones) {
     storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
@@ -694,9 +694,7 @@ function updateMemo(memo, state) {
   for (const [color, count] of Object.entries(laneFreq)) {
     memo.playerColorFreq[color] = (memo.playerColorFreq[color] ?? 0) + count;
   }
-  const sorted = Object.entries(memo.playerColorFreq).sort(
-    (a, b) => b[1] - a[1]
-  );
+  const sorted = Object.entries(memo.playerColorFreq).filter(([color]) => !excludeColors.includes(color)).sort((a, b) => b[1] - a[1]);
   memo.inferredPlayerColor = sorted[0]?.[0] ?? null;
   memo.playerAvoidedColor = sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
 }
@@ -764,6 +762,7 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
   const isEarlyGame = peeksDone < params.earlyGamePeekThreshold && !inferred && knownPos.length === 0;
   const moodRoll = Math.random();
   const moodFortuneMult = 0.3 + moodRoll * 1.4;
+  const moodFortuneStoreMult = Math.max(0.85, moodFortuneMult);
   const moodGuruguruMult = isEarlyGame ? 1 - Math.max(0, moodFortuneMult - 1) * 0.3 : 1;
   let best = validPits[0];
   let bestScore = -Infinity;
@@ -922,7 +921,7 @@ function pickPit(role, validPits, state, memo, fortune, peeksDone, params = DEFA
       if (landingPit === storeIndex) {
         if (isEarlyGame) {
           if (ownFortune && stoneColor === ownFortune) {
-            score += params.earlyOwnFortune * moodFortuneMult;
+            score += params.earlyOwnFortune * moodFortuneStoreMult;
           } else {
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if (cancelCount >= params.earlyCancelThreshold)
@@ -1096,12 +1095,17 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
   let oppGuruCount = 0;
   let selfZakuCount = 0;
   let oppZakuCount = 0;
+  let selfMaxChain = 0;
+  let oppMaxChain = 0;
+  let selfCurrentChain = 0;
+  let oppCurrentChain = 0;
   while (!gs.isGameOver() && turn < MAX_TURNS) {
     turn++;
     const state = gs.getState();
     const fortune = state.fortune;
     if (selfTurn) {
-      updateMemo(memoSelf, _invertStateForSelf(state));
+      const selfSeenCenter = state.fortune.center.filter((fc) => fc.seenBy.includes("self")).map((fc) => fc.color);
+      updateMemo(memoSelf, _invertStateForSelf(state), selfSeenCenter);
       const peeksDone = gs.centerPeekProgress.self ?? 0;
       const validPits = [0, 1, 2, 3, 4].filter(
         (i) => state.pits[i].stones.length > 0
@@ -1150,8 +1154,11 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       }
       if (lastPit === 5) {
         selfGuruCount++;
+        selfCurrentChain++;
+        if (selfCurrentChain > selfMaxChain) selfMaxChain = selfCurrentChain;
         continue;
       }
+      selfCurrentChain = 0;
       if (lastPit === 11) {
         const specialAction = decideSpecialAction(
           gs.getState(),
@@ -1180,7 +1187,8 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       }
       selfTurn = false;
     } else {
-      updateMemo(memoOpp, state);
+      const oppSeenCenter = state.fortune.center.filter((fc) => fc.seenBy.includes("opp")).map((fc) => fc.color);
+      updateMemo(memoOpp, state, oppSeenCenter);
       const peeksDone = gs.centerPeekProgress.opp ?? 0;
       const validPits = [6, 7, 8, 9, 10].filter(
         (i) => state.pits[i].stones.length > 0
@@ -1233,8 +1241,11 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       }
       if (lastPit === 11) {
         oppGuruCount++;
+        oppCurrentChain++;
+        if (oppCurrentChain > oppMaxChain) oppMaxChain = oppCurrentChain;
         continue;
       }
+      oppCurrentChain = 0;
       if (lastPit === 5) {
         const specialAction = decideSpecialAction(
           gs.getState(),
@@ -1277,7 +1288,9 @@ function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
     selfGuruCount,
     oppGuruCount,
     selfZakuCount,
-    oppZakuCount
+    oppZakuCount,
+    selfMaxChain,
+    oppMaxChain
   };
 }
 function runMany(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS, n = 500) {
@@ -1288,6 +1301,10 @@ function runMany(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS, n = 500) {
   let selfZakuSum = 0, oppZakuSum = 0;
   let selfPeekSum = 0, oppPeekSum = 0;
   const scores = [];
+  let selfMaxChainEver = 0;
+  let oppMaxChainEver = 0;
+  const selfChainDist = {};
+  const oppChainDist = {};
   for (let i = 0; i < n; i++) {
     const r = runGame(paramsA, paramsB);
     if (r.winner === "self") selfWins++;
@@ -1302,6 +1319,10 @@ function runMany(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS, n = 500) {
     oppZakuSum += r.oppZakuCount;
     selfPeekSum += r.selfPeeks;
     oppPeekSum += r.oppPeeks;
+    if (r.selfMaxChain > selfMaxChainEver) selfMaxChainEver = r.selfMaxChain;
+    if (r.oppMaxChain > oppMaxChainEver) oppMaxChainEver = r.oppMaxChain;
+    selfChainDist[r.selfMaxChain] = (selfChainDist[r.selfMaxChain] || 0) + 1;
+    oppChainDist[r.oppMaxChain] = (oppChainDist[r.oppMaxChain] || 0) + 1;
     scores.push(r.selfScore - r.oppScore);
   }
   scores.sort((a, b) => a - b);
@@ -1323,7 +1344,11 @@ function runMany(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS, n = 500) {
     avgSelfZaku: (selfZakuSum / n).toFixed(2),
     avgOppZaku: (oppZakuSum / n).toFixed(2),
     avgSelfPeeks: (selfPeekSum / n).toFixed(2),
-    avgOppPeeks: (oppPeekSum / n).toFixed(2)
+    avgOppPeeks: (oppPeekSum / n).toFixed(2),
+    selfMaxChainEver,
+    oppMaxChainEver,
+    selfChainDist,
+    oppChainDist
   };
 }
 function _invertStateForSelf(state) {
@@ -1349,94 +1374,33 @@ function _applyKutakuta(gs, player) {
   }
 }
 
-// src/sim/kai_vs_old.js
-var N = 1e3;
+// src/sim/mood_check.js
+var N = 2e3;
+var CURRENT = DEFAULT_PARAMS;
 function pr(label, s) {
   const draw = (100 - parseFloat(s.selfWinRate) - parseFloat(s.oppWinRate)).toFixed(1);
+  const adv = (parseFloat(s.selfWinRate) - parseFloat(s.oppWinRate)).toFixed(1);
   console.log(`  ${label}`);
   console.log(
-    `    self win: ${s.selfWinRate}  opp win: ${s.oppWinRate}  draw: ${draw}%  avgDiff: ${s.avgScoreDiff}  med: ${s.medianScoreDiff}`
+    `    \u5148\u624B win: ${s.selfWinRate}  \u5F8C\u624B win: ${s.oppWinRate}  draw: ${draw}%  \u5148\u624B\u512A\u4F4D: ${adv}pt`
   );
-  console.log(`    guru  self:${s.avgSelfGuru} opp:${s.avgOppGuru}`);
   console.log(
-    `    peeks self:${s.avgSelfPeeks} opp:${s.avgOppPeeks}  turns:${s.avgTurns}`
+    `    avgDiff: ${s.avgScoreDiff}  guru \u5148\u624B:${s.avgSelfGuru} \u5F8C\u624B:${s.avgOppGuru}`
   );
 }
-function sep(title) {
-  console.log("\n" + "=".repeat(60));
-  console.log("  " + title);
-  console.log("=".repeat(60));
-}
-var OLD_DEFAULT = {
-  // フェーズ切り替え
-  earlyGamePeekThreshold: 2,
-  // ぐるぐる（旧値）
-  guruguruBaseEarly: 30,
-  guruguruChainMultEarly: 9,
-  guruguruBase: 71,
-  guruguruChainMult: 28,
-  guruguruFollowupMult: 1.725,
-  guruguruDisrupt: 28,
-  // ちらちら
-  chirachira1st: 34,
-  chirachira2nd: 30,
-  chirachira1stMid: 37,
-  chirachira2ndMid: 30,
-  chirachira3rd: 21,
-  poipoiWithFortune: 22,
-  poipoiGeneral: 4,
-  poipoiEmpty: 3,
-  chirachiraThresholdHigh: 25,
-  chirachiraThresholdLow: 6,
-  poipoiStoneOwnFortune: 45,
-  poipoiStoneInferred: 28,
-  poipoiStoneKnownPos: 4,
-  // ざくざく（旧値）
-  zakuzakuBase: 5,
-  zakuzakuStoneMult: 11,
-  zakuzakuOwnFortune: 8,
-  zakuzakuInferred: 0,
-  // 旧: 評価なし
-  zakuzakuKnownPos: 10,
-  // zakuzakuOppStoreColor なし
-  // 石の色評価・序盤
-  earlyOwnFortune: 28,
-  earlyCancelMult: 9,
-  earlyCancelThreshold: 2,
-  earlyUnknownPenalty: -17,
-  // 石の色評価・中盤
-  midInferred: 34,
-  midOwnFortune: 24,
-  midKnownPos: 10,
-  midKnownNeg: -42,
-  midAvoidedColor: -21,
-  midUnknownPenalty: -12,
-  midCancelMult: 7,
-  midCancelThreshold: 2,
-  // 自路石品質
-  laneOwnFortune: 3,
-  laneInferred: 4,
-  laneKnownPos: 2,
-  laneKnownNegPenalty: 8,
-  sendKnownNegToOpp: 12,
-  // 先後手制御
-  forceChirachiraThreshold: 2,
-  forceChirachiraMinLane: 3,
-  // くたくた
-  kutakutaThresholdOffset: -6,
-  // 旧: 防御ペナルティなし（新パラメータ導入前）
-  oppGuruguruCreate: 0,
-  oppChirachiraCreate: 0,
-  kutakutaLanePenalty: 0,
-  zakuzakuExposedBase: 0,
-  zakuzakuExposedMult: 0
-};
-var KAI = DEFAULT_PARAMS;
-sep("1. \u9B3C\u6539DEFAULT(\u5148\u624B) vs \u5143DEFAULT(\u5F8C\u624B)");
-pr("\u9B3C\u6539 vs \u65E7", runMany(KAI, OLD_DEFAULT, N));
-sep("2. \u5143DEFAULT(\u5148\u624B) vs \u9B3C\u6539DEFAULT(\u5F8C\u624B)");
-pr("\u65E7 vs \u9B3C\u6539", runMany(OLD_DEFAULT, KAI, N));
-sep("3. \u5143DEFAULT(\u5148\u624B) vs \u5143DEFAULT(\u5F8C\u624B)  \u65E7\u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
-pr("\u65E7 vs \u65E7", runMany(OLD_DEFAULT, OLD_DEFAULT, N));
-sep("4. \u9B3C\u6539DEFAULT(\u5148\u624B) vs \u9B3C\u6539DEFAULT(\u5F8C\u624B)  \u65B0\u30D9\u30FC\u30B9\u30E9\u30A4\u30F3");
-pr("\u9B3C\u6539 vs \u9B3C\u6539", runMany(KAI, KAI, N));
+console.log("=== \u5148\u624B\u512A\u4F4D\u306E\u5909\u5316\u78BA\u8A8D ===\n");
+var s1 = runMany(CURRENT, CURRENT, N);
+pr("CURRENT vs CURRENT (\u4E21\u4FEE\u6B63\u3042\u308A)", s1);
+console.log("");
+var AGGRESSIVE = mergeParams({ earlyOwnFortune: 40, midOwnFortune: 32 });
+var s2 = runMany(AGGRESSIVE, AGGRESSIVE, N);
+pr("AGGRESSIVE (ownFortune\u5F37\u5316) vs AGGRESSIVE", s2);
+console.log("");
+var BLUFF = mergeParams({ earlyOwnFortune: 20, midOwnFortune: 18 });
+var s3 = runMany(BLUFF, BLUFF, N);
+pr("BLUFF (ownFortune\u5F31\u3081) vs BLUFF", s3);
+console.log("");
+var s4 = runMany(AGGRESSIVE, BLUFF, N);
+pr("AGGRESSIVE(\u5148\u624B) vs BLUFF(\u5F8C\u624B)", s4);
+var s5 = runMany(BLUFF, AGGRESSIVE, N);
+pr("BLUFF(\u5148\u624B) vs AGGRESSIVE(\u5F8C\u624B)", s5);

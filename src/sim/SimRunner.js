@@ -55,6 +55,10 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
   let oppGuruCount = 0;
   let selfZakuCount = 0;
   let oppZakuCount = 0;
+  let selfMaxChain = 0;
+  let oppMaxChain = 0;
+  let selfCurrentChain = 0;
+  let oppCurrentChain = 0;
 
   while (!gs.isGameOver() && turn < MAX_TURNS) {
     turn++;
@@ -63,7 +67,11 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
 
     if (selfTurn) {
       // ─── self ターン ───
-      updateMemo(memoSelf, _invertStateForSelf(state));
+      // self が確認した中央石の色 = opp の個人占いではない
+      const selfSeenCenter = state.fortune.center
+        .filter((fc) => fc.seenBy.includes("self"))
+        .map((fc) => fc.color);
+      updateMemo(memoSelf, _invertStateForSelf(state), selfSeenCenter);
       const peeksDone = gs.centerPeekProgress.self ?? 0;
       const validPits = [0, 1, 2, 3, 4].filter(
         (i) => state.pits[i].stones.length > 0,
@@ -119,8 +127,11 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       // ぐるぐる（余分ターン）- pit5 着地 = 自賽壇 → 追加ターンのみ
       if (lastPit === 5) {
         selfGuruCount++;
+        selfCurrentChain++;
+        if (selfCurrentChain > selfMaxChain) selfMaxChain = selfCurrentChain;
         continue;
       }
+      selfCurrentChain = 0;
 
       // ちらちら/ぽいぽい - pit11 着地 = 相手賽壇 → 特殊行動のみ（追加ターンなし）
       if (lastPit === 11) {
@@ -156,7 +167,11 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       selfTurn = false;
     } else {
       // ─── opp ターン ───
-      updateMemo(memoOpp, state);
+      // opp が確認した中央石の色 = self の個人占いではない
+      const oppSeenCenter = state.fortune.center
+        .filter((fc) => fc.seenBy.includes("opp"))
+        .map((fc) => fc.color);
+      updateMemo(memoOpp, state, oppSeenCenter);
       const peeksDone = gs.centerPeekProgress.opp ?? 0;
       const validPits = [6, 7, 8, 9, 10].filter(
         (i) => state.pits[i].stones.length > 0,
@@ -216,8 +231,11 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
       // ぐるぐる（余分ターン）- pit11 着地 = 自賽壇 → 追加ターンのみ
       if (lastPit === 11) {
         oppGuruCount++;
+        oppCurrentChain++;
+        if (oppCurrentChain > oppMaxChain) oppMaxChain = oppCurrentChain;
         continue;
       }
+      oppCurrentChain = 0;
 
       // ちらちら/ぽいぽい - pit5 着地 = 相手賽壇 → 特殊行動のみ（追加ターンなし）
       if (lastPit === 5) {
@@ -270,6 +288,8 @@ export function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
     oppGuruCount,
     selfZakuCount,
     oppZakuCount,
+    selfMaxChain,
+    oppMaxChain,
   };
 }
 
@@ -294,6 +314,10 @@ export function runMany(
   let selfPeekSum = 0,
     oppPeekSum = 0;
   const scores = []; // 得点差の分布用
+  let selfMaxChainEver = 0;
+  let oppMaxChainEver = 0;
+  const selfChainDist = {}; // 連鎖数分布
+  const oppChainDist = {};
 
   for (let i = 0; i < n; i++) {
     const r = runGame(paramsA, paramsB);
@@ -309,6 +333,10 @@ export function runMany(
     oppZakuSum += r.oppZakuCount;
     selfPeekSum += r.selfPeeks;
     oppPeekSum += r.oppPeeks;
+    if (r.selfMaxChain > selfMaxChainEver) selfMaxChainEver = r.selfMaxChain;
+    if (r.oppMaxChain > oppMaxChainEver) oppMaxChainEver = r.oppMaxChain;
+    selfChainDist[r.selfMaxChain] = (selfChainDist[r.selfMaxChain] || 0) + 1;
+    oppChainDist[r.oppMaxChain] = (oppChainDist[r.oppMaxChain] || 0) + 1;
     scores.push(r.selfScore - r.oppScore);
   }
 
@@ -333,6 +361,10 @@ export function runMany(
     avgOppZaku: (oppZakuSum / n).toFixed(2),
     avgSelfPeeks: (selfPeekSum / n).toFixed(2),
     avgOppPeeks: (oppPeekSum / n).toFixed(2),
+    selfMaxChainEver,
+    oppMaxChainEver,
+    selfChainDist,
+    oppChainDist,
   };
 }
 
