@@ -200,6 +200,15 @@ export function pickPit(
     return cnt > 0 && (q + cnt) % 12 === storeIndex;
   }).length;
 
+  // 自分のちらちら準備数（撒く前）: 自路のうちpit5（相手賽壇）に着地できる穴の数
+  const ownChirachiraNow = Array.from(
+    { length: laneMax - laneMin + 1 },
+    (_, i) => laneMin + i,
+  ).filter((q) => {
+    const cnt = state.pits[q].stones.length;
+    return cnt > 0 && (q + cnt) % 12 === oppStoreIndex;
+  }).length;
+
   // くたくた発動判定: 相手路の色を2色以下に整理している + 賽壇差条件を満たす場合に発動リスクあり
   const playerLaneColors = new Set();
   for (let q = oppLaneMin; q <= oppLaneMax; q++) {
@@ -256,6 +265,18 @@ export function pickPit(
       const newChirachira = chirachiraAfter - chirachiraNow;
       if (newChirachira > 0)
         defPenalty -= newChirachira * (params.oppChirachiraCreate ?? 12);
+    }
+
+    // ─── 自分のちらちら準備破壊防止（撒いた結果ちらちら狙い路が崩れたらペナルティ）───
+    // lastPit === oppStoreIndex の手は意図的な使用なので免除
+    if (lastPit !== oppStoreIndex) {
+      let ownChirachiraAfter = 0;
+      for (let q = laneMin; q <= laneMax; q++) {
+        const cnt = pitsAfter[q].stones.length;
+        if (cnt > 0 && (q + cnt) % 12 === oppStoreIndex) ownChirachiraAfter++;
+      }
+      const lost = ownChirachiraNow - ownChirachiraAfter;
+      if (lost > 0) defPenalty -= lost * (params.ownChirachiraLost ?? 20);
     }
 
     // ─── くたくた妨害（相手がくたくた発動可能なら相手路への着地を避ける）───
@@ -397,7 +418,13 @@ export function pickPit(
       if (knownPos.includes(s.color)) score += params.pitColorKnownPos ?? 1.5;
       if (knownNeg && s.color === knownNeg)
         score -= params.pitColorKnownNeg ?? 6;
-      if (playerAvoidedColor && s.color === playerAvoidedColor)
+      // ownFortune / knownPos が確定している色は playerAvoidedColor で上書きしない
+      if (
+        playerAvoidedColor &&
+        s.color === playerAvoidedColor &&
+        !(ownFortune && s.color === ownFortune) &&
+        !knownPos.includes(s.color)
+      )
         score -= params.pitColorAvoided ?? 3;
     }
 
@@ -429,7 +456,13 @@ export function pickPit(
           )
             score += cancelCount * params.midCancelMult;
           if (knownNeg && stoneColor === knownNeg) score += params.midKnownNeg;
-          if (playerAvoidedColor && stoneColor === playerAvoidedColor)
+          // ownFortune / knownPos が確定している色は playerAvoidedColor で上書きしない
+          if (
+            playerAvoidedColor &&
+            stoneColor === playerAvoidedColor &&
+            !(ownFortune && stoneColor === ownFortune) &&
+            !knownPos.includes(stoneColor)
+          )
             score += params.midAvoidedColor;
           const isConfirmedSafe =
             (ownFortune && stoneColor === ownFortune) ||
@@ -464,7 +497,13 @@ export function pickPit(
         if (knownNeg && stoneColor === knownNeg)
           score -= params.laneKnownNegPenalty ?? 8;
         // 相手が避けている色（推定マイナス）を自路に貯めない
-        if (playerAvoidedColor && stoneColor === playerAvoidedColor)
+        // ただし ownFortune / knownPos で確定済みなら上書きしない
+        if (
+          playerAvoidedColor &&
+          stoneColor === playerAvoidedColor &&
+          !(ownFortune && stoneColor === ownFortune) &&
+          !knownPos.includes(stoneColor)
+        )
           score -= params.laneAvoidedPenalty ?? 5;
       }
 

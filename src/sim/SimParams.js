@@ -83,6 +83,7 @@ export const DEFAULT_PARAMS = {
   defensiveTiebreakWindow: 8, // この点差以内の手の中でのみ防御ペナルティを比較
   oppGuruguruCreate: 15, // 撒いた結果相手路にぐるぐる待機が増えたときのペナルティ/個
   oppChirachiraCreate: 12, // 撒いた結果相手路にちらちら可能穴が増えたときのペナルティ/個
+  ownChirachiraLost: 20, // 撒いた結果自分のちらちら準備路が崩れたときのペナルティ/個
   kutakutaLanePenalty: 6, // 相手がくたくた発動可能な時に相手路に石を送るペナルティ/石
   // ─── 被ざくざく露出ペナルティ ───
   // 撒き後に自陣高石穴が相手ざくざく可能状態になる場合: base + stones^2 * mult
