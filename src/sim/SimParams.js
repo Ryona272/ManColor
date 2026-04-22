@@ -81,9 +81,10 @@ export const DEFAULT_PARAMS = {
   // ─── 防御的ペナルティ（タイブレーカー用: 攻撃スコアが接近した手の中でのみ適用）───
   // 最良攻撃スコアから defensiveTiebreakWindow 以内の手にのみ加算される
   defensiveTiebreakWindow: 8, // この点差以内の手の中でのみ防御ペナルティを比較
-  oppGuruguruCreate: 15, // 撒いた結果相手路にぐるぐる待機が増えたときのペナルティ/個
+  oppGuruguruCreate: 15, // （互換性用に残存）
   oppChirachiraCreate: 12, // 撒いた結果相手路にちらちら可能穴が増えたときのペナルティ/個
   ownChirachiraLost: 20, // 撒いた結果自分のちらちら準備路が崩れたときのペナルティ/個
+  playerThreatGrowthMult: 1.2, // 全手共通: 撒き後にプレイヤー脅威度が増加した場合の硬ペナルティ乗数
   kutakutaLanePenalty: 6, // 相手がくたくた発動可能な時に相手路に石を送るペナルティ/石
   // ─── 被ざくざく露出ペナルティ ───
   // 撒き後に自陣高石穴が相手ざくざく可能状態になる場合: base + stones^2 * mult

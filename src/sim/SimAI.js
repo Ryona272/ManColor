@@ -228,9 +228,23 @@ export function pickPit(
     !inferred &&
     knownPos.length === 0;
 
+  // ─── 気分（ターンごとのランダム重み: 心理戦用）───
+  // 占い色重視度を毎ターンゆらがせる → 行動パターンが読まれにくい
+  const moodRoll = Math.random();
+  // fortune意識度: 0.3（今回は敢え無視 = ブラフ・躺増）～ 1.7（強く重視 = 安全路密著）
+  const moodFortuneMult = 0.3 + moodRoll * 1.4;
+  // 占い重視度が高いときは序盤グルグルベースを微縮してfortune路が屏に入りやすくする
+  // （moodFortuneMult=1.7→約-21%、=1.0→変化なし、<1.0→変化なし）
+  const moodGuruguruMult = isEarlyGame
+    ? 1.0 - Math.max(0, moodFortuneMult - 1.0) * 0.3
+    : 1.0;
+
   let best = validPits[0];
   let bestScore = -Infinity;
   const pitScores = [];
+
+  // 全手共通: 撒く前のプレイヤー脅威度ベースライン
+  const basePlayerThreat = evalOppThreat(state.pits);
 
   for (const p of validPits) {
     const count = state.pits[p].stones.length;
@@ -240,7 +254,15 @@ export function pickPit(
 
     const { pits: pitsAfter } = simulateSow(state.pits, p);
 
-    // ─── プレイヤーぐるぐる変化（破壊ボーナス + 新規生成ペナルティ）───
+    // ─── 全手共通: 撒いた後のプレイヤー脅威増加を硬ペナルティとして適用───
+    // 通常手で相手路に石が流れ込んでグルグル連鎖が増える場合も送んない
+    const playerThreatAfter = evalOppThreat(pitsAfter);
+    {
+      const threatGrowth = playerThreatAfter - basePlayerThreat;
+      if (threatGrowth > 0)
+        score -= threatGrowth * (params.playerThreatGrowthMult ?? 1.0);
+    }
+    // ─── プレイヤーぐるぐる変化（破壊ボーナス）───
     // 自分がぐるぐるする手（lastPit===storeIndex）では生成ペナルティを無効化：
     // ぐるぐる > 妨害 の優先順位を維持する
     {
@@ -251,8 +273,7 @@ export function pickPit(
       }
       const disrupted = playerGuruguruNow - playerGuruguruAfter;
       if (disrupted > 0) score += disrupted * params.guruguruDisrupt;
-      if (disrupted < 0 && lastPit !== storeIndex)
-        defPenalty -= -disrupted * (params.oppGuruguruCreate ?? 15);
+      // 新規ぐるぐる倉の増加は playerThreatGrowth で聖流負担済み
     }
 
     // ─── ちらちら被弾防止（撒いた後に増えた被弾可能穴をペナルティ）───
@@ -294,7 +315,7 @@ export function pickPit(
       const chainCount = countGuruguruChain(pitsAfter, storeIndex);
       if (isEarlyGame) {
         score +=
-          params.guruguruBaseEarly +
+          params.guruguruBaseEarly * moodGuruguruMult +
           chainCount * chainCount * params.guruguruChainMultEarly;
         score += evalOwnFollowup(pitsAfter) * 0.8;
       } else {
@@ -412,7 +433,7 @@ export function pickPit(
     // ─── 路の色品質評価（知識ベース: 占い/推測/確定情報を活用）───
     for (const s of state.pits[p].stones) {
       if (ownFortune && s.color === ownFortune)
-        score += params.pitColorOwnFortune ?? 2;
+        score += (params.pitColorOwnFortune ?? 2) * moodFortuneMult;
       if (inferred && s.color === inferred)
         score += params.pitColorInferred ?? 2.5;
       if (knownPos.includes(s.color)) score += params.pitColorKnownPos ?? 1.5;
@@ -437,7 +458,7 @@ export function pickPit(
       if (landingPit === storeIndex) {
         if (isEarlyGame) {
           if (ownFortune && stoneColor === ownFortune) {
-            score += params.earlyOwnFortune;
+            score += params.earlyOwnFortune * moodFortuneMult;
           } else {
             const cancelCount = playerStoreColorCount[stoneColor] ?? 0;
             if (cancelCount >= params.earlyCancelThreshold)
