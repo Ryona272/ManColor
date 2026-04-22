@@ -3234,8 +3234,8 @@ export class GameScene extends Phaser.Scene {
                     selectedIndex = index;
                   }
                 });
-                // 有効なターゲットがある場合のみ実行
-                if (highestValue > 0) {
+                // 確定マイナス石以外はpit5から捨てる（未確認色=0も対象）
+                if (highestValue >= 0) {
                   this.gameState.removeStoneFromPit(5, selectedIndex);
                   this._announceTechnique(
                     "ぽいぽい！",
@@ -3300,7 +3300,7 @@ export class GameScene extends Phaser.Scene {
               selectedIndex = index;
             }
           });
-          if (highestValue > 0) {
+          if (highestValue >= 0) {
             this.gameState.removeStoneFromPit(5, selectedIndex);
             this._announceTechnique(
               "ぽいぽい！",

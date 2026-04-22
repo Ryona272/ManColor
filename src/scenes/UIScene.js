@@ -2087,36 +2087,44 @@ export class UIScene extends Phaser.Scene {
     const pits = gs.gameState.getState().pits;
     const inferred = gs._aiMemo?.inferredPlayerColor;
     const ownFortune = gs.gameState.getFortuneColorForPlayer("opp");
+    const knownNeg = gs._aiKnownNegativeColor?.();
+    const knownPos = gs._aiKnownPositiveColors?.() ?? [];
 
-    // プレイヤーの賟壇(pit5)を優先、なければAI賟壇(pit11)
-    const stores = [5, 11].filter((i) => pits[i].stones.length > 0);
-    if (stores.length === 0) return;
+    // pit5に石があれば必ずpit5から、空の場合のみpit11
+    const targetPit =
+      pits[5].stones.length > 0 ? 5 : pits[11].stones.length > 0 ? 11 : null;
+    if (targetPit === null) return;
 
-    // 各賟壇の石にスコアを付けて最大を削除
-    let bestPit = null;
-    let bestStoneIdx = -1;
+    let bestStoneIdx = 0;
     let bestScore = -Infinity;
 
-    for (const pitIdx of stores) {
-      pits[pitIdx].stones.forEach((stone, idx) => {
-        let score = 0;
-        // プレイヤー賟壇の石を削除する方が強い
-        if (pitIdx === 5) score += 10;
-        // 推測たプレイヤーの占い色(プレイヤーに3ptの源泉)
-        if (inferred && stone.color === inferred) score += 15;
-        // AI自身の占い色が相手賟壇にあれば相手に5pt、最優先
-        if (ownFortune && stone.color === ownFortune && pitIdx === 5)
-          score += 20;
-        if (score > bestScore) {
-          bestScore = score;
-          bestPit = pitIdx;
-          bestStoneIdx = idx;
-        }
-      });
-    }
+    pits[targetPit].stones.forEach((stone, idx) => {
+      let score = 0;
+      if (targetPit === 5) {
+        // AI自身の占い色 → 相手に+5点の源泉、最優先で除去
+        if (ownFortune && stone.color === ownFortune) score = 40;
+        // 推測プレイヤー占い色 → 相手に+3点
+        else if (inferred && stone.color === inferred) score = 25;
+        // ちらちら確認済み+1石
+        else if (knownPos.includes(stone.color)) score = 10;
+        // 確定マイナス石 → 取るとプレイヤーのマイナスが消えて損、絶対回避
+        if (knownNeg && stone.color === knownNeg) score = -99;
+        // 未確認色でも pit5 にある石は除去対象（score=0のまま）
+      } else {
+        // pit11（自賽壇）: マイナス確定石を優先して捨てる
+        if (knownNeg && stone.color === knownNeg) score = 50;
+        else if (!ownFortune || stone.color !== ownFortune) score = 1;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestStoneIdx = idx;
+      }
+    });
 
-    if (bestPit !== null) {
-      gs.gameState.removeStoneFromPit(bestPit, bestStoneIdx);
+    // pit5の場合: 確定マイナス石（-99）以外は全部除去対象
+    // pit11の場合: 常に除去
+    if (targetPit === 11 || bestScore >= 0) {
+      gs.gameState.removeStoneFromPit(targetPit, bestStoneIdx);
     }
   }
 
