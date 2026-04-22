@@ -1,6 +1,6 @@
 {
   "name": "mancolor",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "private": true,
   "description": "ManColor - Mancala-style board game",
   "scripts": {
