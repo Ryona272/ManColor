@@ -2085,8 +2085,9 @@ export class UIScene extends Phaser.Scene {
   _oppPoipoiSmartRemove(st) {
     const gs = this.gameScene;
     const pits = gs.gameState.getState().pits;
-    const inferred = gs._aiMemo?.inferredPlayerColor;
     const ownFortune = gs.gameState.getFortuneColorForPlayer("opp");
+    // ファイナルフェーズでは個人占い石が公開済み → 確定情報を使う
+    const playerFortune = gs.gameState.getFortuneColorForPlayer("self");
     const knownNeg = gs._aiKnownNegativeColor?.();
     const knownPos = gs._aiKnownPositiveColors?.() ?? [];
 
@@ -2103,8 +2104,8 @@ export class UIScene extends Phaser.Scene {
       if (targetPit === 5) {
         // AI自身の占い色 → 相手に+5点の源泉、最優先で除去
         if (ownFortune && stone.color === ownFortune) score = 40;
-        // 推測プレイヤー占い色 → 相手に+3点
-        else if (inferred && stone.color === inferred) score = 25;
+        // プレイヤーの確定占い色 → +3点（ファイナルフェーズは公開済み確定情報）
+        else if (playerFortune && stone.color === playerFortune) score = 25;
         // ちらちら確認済み+1石
         else if (knownPos.includes(stone.color)) score = 10;
         // 確定マイナス石 → 取るとプレイヤーのマイナスが消えて損、絶対回避
