@@ -2326,14 +2326,78 @@ export class GameScene extends Phaser.Scene {
 
   // ─── AI フェーズ処理（撒き → 配置 → 技） ───────────────────────────
 
+  /**
+   * 撒き先が確定した後、どの石をどの穴に割り当てるか最適化する。
+   * 賽壇(pit11)には価値の高い石を、相手賽壇(pit5)には価値の低い石を優先的に送る。
+   * 鬼/ロボ難易度のみ適用。
+   */
+  _aiOptimizeSowOrder(stones, targets) {
+    if (
+      this.aiDifficulty !== "oni" &&
+      this.aiDifficulty !== "oni-sente" &&
+      this.aiDifficulty !== "oni-gote" &&
+      this.aiDifficulty !== "robo" &&
+      this.aiDifficulty !== "hard"
+    ) {
+      return stones;
+    }
+    if (stones.length <= 1) return stones;
+
+    const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+    const knownNeg = this._aiKnownNegativeColor();
+    const knownPos = this._aiKnownPositiveColors();
+    const inferred = this._aiMemo?.inferredPlayerColor;
+
+    // 各石の「pit11(AI賽壇)への価値」
+    // - 相手推定占い色: pit11に入れると+5点 → 最高優先
+    // - 自占い色: pit11に入れると+3点 → 高優先
+    // - ちらちら確認+1色: 自占いと同等（相手を惑わせる戦略）
+    // - 確定マイナス色: pit11に絶対入れない
+    const stoneValue = (stone) => {
+      if (knownNeg && stone.color === knownNeg) return -200; // 絶対NG
+      if (inferred && stone.color === inferred) return 100; // 相手占い色→+5点
+      if (ownFortune && stone.color === ownFortune) return 80; // 自占い色→+3点
+      if (knownPos.includes(stone.color)) return 80; // ちらちら+1石→自占いと同等
+      return 0;
+    };
+
+    // 各ターゲット穴の「良い石が欲しい度」
+    // - pit11(AI賽壇): 高スコア石を入れたい
+    // - pit5(相手賽壇): 自占い色→相手+5, 相手推定色→相手+3 なので避ける
+    const targetDesire = (pit) => {
+      if (pit === 11) return 10;
+      if (pit === 5) return -10;
+      return 0;
+    };
+
+    // グリーディ割り当て: 欲しい度の高い穴に価値の高い石を割り当てる
+    const indexedTargets = targets.map((pit, pos) => ({
+      pit,
+      pos,
+      d: targetDesire(pit),
+    }));
+    const sortedTargets = [...indexedTargets].sort((a, b) => b.d - a.d);
+    const sortedStones = [...stones]
+      .map((s, i) => ({ s, i, v: stoneValue(s) }))
+      .sort((a, b) => b.v - a.v);
+
+    const result = new Array(stones.length);
+    sortedTargets.forEach((t, rank) => {
+      result[t.pos] = sortedStones[rank].s;
+    });
+
+    return result;
+  }
+
   _aiStartSowing(pitIndex) {
     const state = this.gameState.getState();
     const stones = [...state.pits[pitIndex].stones];
     state.pits[pitIndex].stones = [];
 
     this.mode = "sowing";
-    this.sowPending = stones;
-    this.sowTargets = this._buildSowTargets(pitIndex, stones.length);
+    const targets = this._buildSowTargets(pitIndex, stones.length);
+    this.sowPending = this._aiOptimizeSowOrder(stones, targets);
+    this.sowTargets = targets;
     this.sowHistory = [];
     this.sowSourcePitIndex = pitIndex;
     this.selectedPlacementStoneIndex = 0;
