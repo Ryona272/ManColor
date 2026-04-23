@@ -1,20 +1,21 @@
 /**
- * optim_gote.js
+ * optim_gote2.js
  * goteStrategy を固定 senteStrategy（先手）に勝てるよう座標降下法で最適化
- * SimAI.js の新評価関数（oppGuruguruCreate / oppChirachiraCreate / zakuzakuExposed 等）を考慮
+ * tiebreaker方式の新防御アーキテクチャ対応版
  *
- * npx.cmd esbuild src/sim/optim_gote.js --bundle --platform=node --outfile=dist-sim/optim_gote.cjs --format=cjs && node dist-sim/optim_gote.cjs
+ * npx.cmd esbuild tools/optim_gote2.js --bundle --platform=node --outfile=dist-sim/optim_gote2.cjs --format=cjs && node dist-sim/optim_gote2.cjs
  */
-import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N_EVAL = 400;
 const N_VERIFY = 1000;
 const MAX_SWEEPS = 10;
 const MAX_EXTEND = 8;
 
-// ─── goteStrategy で調整するパラメータ ───
-// 先手相手なので oppWinRate（後手=opp の勝率）を最大化
+// gote は opp 側なので oppWinRate を最大化
+const oppRate = (s) => parseFloat(s.oppWinRate);
+
 const STEPS = {
   guruguruBaseEarly: 1,
   guruguruChainMultEarly: 1,
@@ -39,6 +40,7 @@ const STEPS = {
   zakuzakuOwnFortune: 1,
   zakuzakuInferred: 1,
   zakuzakuKnownPos: 1,
+  zakuzakuOppStoreColor: 1,
   zakuzakuExposedBase: 1,
   zakuzakuExposedMult: 1,
   earlyOwnFortune: 1,
@@ -61,6 +63,7 @@ const STEPS = {
   forceChirachiraThreshold: 1,
   forceChirachiraMinLane: 1,
   kutakutaThresholdOffset: 1,
+  defensiveTiebreakWindow: 1,
   oppGuruguruCreate: 1,
   oppChirachiraCreate: 1,
   kutakutaLanePenalty: 1,
@@ -68,9 +71,6 @@ const STEPS = {
 const PARAM_KEYS = Object.keys(STEPS);
 
 const fix = (v) => parseFloat(v.toFixed(4));
-
-// gote は opp 側なので oppWinRate を最大化
-const oppRate = (s) => parseFloat(s.oppWinRate);
 
 function sep(title) {
   console.log("\n" + "=".repeat(62) + "\n  " + title + "\n" + "=".repeat(62));
@@ -131,7 +131,7 @@ function sweep(params, sente, label) {
   return { params: cur, score, improved };
 }
 
-// ─── 開始点: 現在の goteStrategy ───
+// 先手は最適化済み senteStrategy で固定
 const SENTE = PRESETS.senteStrategy;
 let best = { ...PRESETS.goteStrategy };
 
@@ -143,8 +143,7 @@ sep("初期値確認");
   );
 }
 
-// ─── 座標降下ループ ───
-let prevScore = oppRate(runMany(SENTE, best, N_EVAL));
+// 座標降下ループ
 for (let sw = 1; sw <= MAX_SWEEPS; sw++) {
   const result = sweep(best, SENTE, `スイープ ${sw}/${MAX_SWEEPS}`);
   best = result.params;
@@ -152,41 +151,32 @@ for (let sw = 1; sw <= MAX_SWEEPS; sw++) {
     console.log("\n  収束しました。");
     break;
   }
-  prevScore = result.score;
 }
 
-// ─── 最終検証 ───
 sep("最終検証 (N=" + N_VERIFY + ")");
 {
   const r = runMany(SENTE, best, N_VERIFY);
   console.log(
     `  sente vs gote: self ${r.selfWinRate}  opp ${r.oppWinRate}  avgDiff:${r.avgScoreDiff}`,
   );
-  console.log(`  guru  self:${r.selfGuruAvg} opp:${r.oppGuruAvg}`);
+  console.log(`  guru  self:${r.avgSelfGuru} opp:${r.avgOppGuru}`);
   console.log(
-    `  peeks self:${r.selfPeekAvg} opp:${r.oppPeekAvg}  turns:${r.avgTurns}`,
+    `  peeks self:${r.avgSelfPeeks} opp:${r.avgOppPeeks}  turns:${r.avgTurns}`,
   );
 }
 
-// ─── 最適化後の差分を表示 ───
 sep("goteStrategy 更新差分");
 const base = { ...PRESETS.goteStrategy };
 for (const key of PARAM_KEYS) {
-  if (best[key] !== base[key]) {
+  if (best[key] !== base[key])
     console.log(`  ${key}: ${base[key]} → ${best[key]}`);
-  }
 }
 
-// ─── mergeParams 形式でそのまま貼り付けられる形式で出力 ───
 sep("goteStrategy mergeParams 出力（SimParams.js に貼り付け）");
 const overrides = {};
 for (const key of Object.keys(DEFAULT_PARAMS)) {
-  if (best[key] !== DEFAULT_PARAMS[key]) {
-    overrides[key] = best[key];
-  }
+  if (best[key] !== DEFAULT_PARAMS[key]) overrides[key] = best[key];
 }
 console.log("  goteStrategy: mergeParams({");
-for (const [k, v] of Object.entries(overrides)) {
-  console.log(`    ${k}: ${v},`);
-}
+for (const [k, v] of Object.entries(overrides)) console.log(`    ${k}: ${v},`);
 console.log("  }),");

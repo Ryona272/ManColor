@@ -2,10 +2,10 @@
  * analysis.js -- 今セッションの全改善を段階的に検証
  *
  * ビルド＆実行:
- *   npx.cmd esbuild src/sim/analysis.js --bundle --platform=node --outfile=dist-sim/analysis.cjs --format=cjs ; node dist-sim/analysis.cjs
+ *   npx.cmd esbuild tools/analysis.js --bundle --platform=node --outfile=dist-sim/analysis.cjs --format=cjs ; node dist-sim/analysis.cjs
  */
-import { DEFAULT_PARAMS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 1000;
 

@@ -9,6 +9,9 @@
     "room:server": "node server/roomServer.js",
     "room:server:debug-kutakuta": "node -e \"process.env.DEBUG_NEAR_KUTAKUTA='1'; require('./server/roomServer.js')\"",
     "room:server:lan": "node server/roomServer.js",
+    "selfplay": "npx esbuild tools/selfplay_evolve.js --bundle --platform=node --outfile=dist-sim/selfplay_evolve.cjs --format=cjs && node dist-sim/selfplay_evolve.cjs",
+    "bot": "node bot/botClient.mjs",
+    "bot:2": "cross-env BOT_COUNT=2 node bot/botClient.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "preview:lan": "vite preview --host 0.0.0.0 --port 3000 --strictPort",
@@ -27,6 +30,7 @@
     "@capacitor/android": "^7.2.0",
     "@capacitor/cli": "^7.2.0",
     "@capacitor/core": "^7.2.0",
+    "cross-env": "^10.1.0",
     "terser": "^5.46.1",
     "vite": "^6.2.6"
   }

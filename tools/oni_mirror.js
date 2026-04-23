@@ -1,9 +1,9 @@
 /**
  * oni_mirror.js -- 鬼 vs 鬼（DEFAULT_PARAMS 同士）先後手勝率確認
- * npx.cmd esbuild src/sim/oni_mirror.js --bundle --platform=node --outfile=dist-sim/oni_mirror.cjs --format=cjs ; node dist-sim/oni_mirror.cjs
+ * npx.cmd esbuild tools/oni_mirror.js --bundle --platform=node --outfile=dist-sim/oni_mirror.cjs --format=cjs ; node dist-sim/oni_mirror.cjs
  */
-import { DEFAULT_PARAMS } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 3000;
 const P = DEFAULT_PARAMS;

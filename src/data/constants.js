@@ -25,7 +25,7 @@ export const INITIAL_STATE = {
     opp: { color: null, seen: false },
     center: [
       { color: null, seenBy: [] }, // 左 +1
-      { color: null, seenBy: [] }, // 中央 -2
+      { color: null, seenBy: [] }, // 中央 -4
       { color: null, seenBy: [] }, // 右 +1
     ],
   },

@@ -6,10 +6,10 @@
  * Phase2: goteStrategy を 最適化済みsenteStrategy に対して最適化
  * Phase3: 交互繰り返し（収束まで）
  *
- * npx.cmd esbuild src/sim/optim_sente_gote.js --bundle --platform=node --outfile=dist-sim/optim_sente_gote.cjs --format=cjs && node dist-sim/optim_sente_gote.cjs
+ * npx.cmd esbuild tools/optim_sente_gote.js --bundle --platform=node --outfile=dist-sim/optim_sente_gote.cjs --format=cjs && node dist-sim/optim_sente_gote.cjs
  */
-import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 // ─── 設定 ───
 const N_EVAL = 200; // 1回の評価あたり試合数（速度優先）

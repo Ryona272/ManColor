@@ -1,9 +1,9 @@
 /**
  * kai_vs_old.js -- 鬼改DEFAULT vs 元DEFAULT 比較
- * npx.cmd esbuild src/sim/kai_vs_old.js --bundle --platform=node --outfile=dist-sim/kai_vs_old.cjs --format=cjs ; node dist-sim/kai_vs_old.cjs
+ * npx.cmd esbuild tools/kai_vs_old.js --bundle --platform=node --outfile=dist-sim/kai_vs_old.cjs --format=cjs ; node dist-sim/kai_vs_old.cjs
  */
-import { DEFAULT_PARAMS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 1000;
 

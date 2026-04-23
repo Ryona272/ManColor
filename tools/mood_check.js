@@ -1,8 +1,8 @@
 /**
  * mood_check.js -- 気分システムの影響を切り分け検証
  */
-import { DEFAULT_PARAMS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 2000;
 

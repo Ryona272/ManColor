@@ -1,9 +1,9 @@
 /**
  * sente_gote_check.js -- 先手/後手戦略の1000試合検証
- * npx.cmd esbuild src/sim/sente_gote_check.js --bundle --platform=node --outfile=dist-sim/sente_gote_check.cjs --format=cjs ; node dist-sim/sente_gote_check.cjs
+ * npx.cmd esbuild tools/sente_gote_check.js --bundle --platform=node --outfile=dist-sim/sente_gote_check.cjs --format=cjs ; node dist-sim/sente_gote_check.cjs
  */
-import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 1000;
 

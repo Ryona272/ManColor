@@ -1,0 +1,8 @@
+feat: ロボAI追加・難易度選択に先後手サブパネル導入
+
+- SimParams.js: selfplay進化パラメータをPRESETS.roboとして追加
+- LobbyScene: 難易度パネルを弱い/普通/強い/鬼/ロボの5種に整理
+- LobbyScene: 各難易度クリック後に先手・後手選択サブパネルを表示
+- GameScene: playerFirstフラグ導入、先後手をLobbySceneから受け取る形に変更
+- GameScene: 鬼はDEFAULT_PARAMSに統一（senteStrategy/goteStrategy分岐を廃止）
+- GameScene: ロボ難易度はPRESETS.roboを使用

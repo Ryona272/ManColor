@@ -3,10 +3,10 @@
  * 新防御パラメータ（oppGuruguruCreate / oppChirachiraCreate / kutakutaLanePenalty）を
  * senteStrategy 用にグリッド探索
  *
- * npx.cmd esbuild src/sim/grid_defense_params.js --bundle --platform=node --outfile=dist-sim/grid_defense_params.cjs --format=cjs && node dist-sim/grid_defense_params.cjs
+ * npx.cmd esbuild tools/grid_defense_params.js --bundle --platform=node --outfile=dist-sim/grid_defense_params.cjs --format=cjs && node dist-sim/grid_defense_params.cjs
  */
-import { PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 500;
 const GOTE = PRESETS.goteStrategy;

@@ -1,20 +1,20 @@
 /**
- * optim_gote2.js
- * goteStrategy を固定 senteStrategy（先手）に勝てるよう座標降下法で最適化
+ * optim_sente2.js
+ * senteStrategy を DEFAULT（後手）相手に先手で勝てるよう座標降下法で最適化
  * tiebreaker方式の新防御アーキテクチャ対応版
  *
- * npx.cmd esbuild src/sim/optim_gote2.js --bundle --platform=node --outfile=dist-sim/optim_gote2.cjs --format=cjs && node dist-sim/optim_gote2.cjs
+ * npx.cmd esbuild tools/optim_sente2.js --bundle --platform=node --outfile=dist-sim/optim_sente2.cjs --format=cjs && node dist-sim/optim_sente2.cjs
  */
-import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N_EVAL = 400;
 const N_VERIFY = 1000;
 const MAX_SWEEPS = 10;
 const MAX_EXTEND = 8;
 
-// gote は opp 側なので oppWinRate を最大化
-const oppRate = (s) => parseFloat(s.oppWinRate);
+// sente は self 側なので selfWinRate を最大化
+const selfRate = (s) => parseFloat(s.selfWinRate);
 
 const STEPS = {
   guruguruBaseEarly: 1,
@@ -76,10 +76,10 @@ function sep(title) {
   console.log("\n" + "=".repeat(62) + "\n  " + title + "\n" + "=".repeat(62));
 }
 
-function lineSearch(key, current, curScore, sente) {
+function lineSearch(key, current, curScore, gote) {
   const step = STEPS[key];
   const cur = current[key];
-  const evalFn = (p) => oppRate(runMany(sente, p, N_EVAL));
+  const evalFn = (p) => selfRate(runMany(p, gote, N_EVAL));
 
   const sp = evalFn({ ...current, [key]: fix(cur + step) });
   const sm = evalFn({ ...current, [key]: fix(cur - step) });
@@ -113,14 +113,14 @@ function lineSearch(key, current, curScore, sente) {
   return { value: best, score: bestScore };
 }
 
-function sweep(params, sente, label) {
+function sweep(params, gote, label) {
   console.log(`\n  -- ${label} --`);
   let cur = { ...params };
-  let score = oppRate(runMany(sente, cur, N_EVAL));
+  let score = selfRate(runMany(cur, gote, N_EVAL));
   console.log(`  開始: ${score.toFixed(1)}%`);
   let improved = 0;
   for (const key of PARAM_KEYS) {
-    const r = lineSearch(key, cur, score, sente);
+    const r = lineSearch(key, cur, score, gote);
     if (r.value !== cur[key]) {
       cur = { ...cur, [key]: r.value };
       score = r.score;
@@ -131,21 +131,21 @@ function sweep(params, sente, label) {
   return { params: cur, score, improved };
 }
 
-// 先手は最適化済み senteStrategy で固定
-const SENTE = PRESETS.senteStrategy;
-let best = { ...PRESETS.goteStrategy };
+// 後手は固定 DEFAULT
+const GOTE = DEFAULT_PARAMS;
+let best = { ...PRESETS.senteStrategy };
 
 sep("初期値確認");
 {
-  const r = runMany(SENTE, best, N_EVAL);
+  const r = runMany(best, GOTE, N_EVAL);
   console.log(
-    `  gote(opp) vs sente(self): opp:${r.oppWinRate}  self:${r.selfWinRate}  diff:${r.avgScoreDiff}`,
+    `  sente(self) vs DEFAULT(opp): self:${r.selfWinRate}  opp:${r.oppWinRate}  diff:${r.avgScoreDiff}`,
   );
 }
 
 // 座標降下ループ
 for (let sw = 1; sw <= MAX_SWEEPS; sw++) {
-  const result = sweep(best, SENTE, `スイープ ${sw}/${MAX_SWEEPS}`);
+  const result = sweep(best, GOTE, `スイープ ${sw}/${MAX_SWEEPS}`);
   best = result.params;
   if (result.improved === 0) {
     console.log("\n  収束しました。");
@@ -155,9 +155,9 @@ for (let sw = 1; sw <= MAX_SWEEPS; sw++) {
 
 sep("最終検証 (N=" + N_VERIFY + ")");
 {
-  const r = runMany(SENTE, best, N_VERIFY);
+  const r = runMany(best, GOTE, N_VERIFY);
   console.log(
-    `  sente vs gote: self ${r.selfWinRate}  opp ${r.oppWinRate}  avgDiff:${r.avgScoreDiff}`,
+    `  sente vs DEFAULT: self ${r.selfWinRate}  opp ${r.oppWinRate}  avgDiff:${r.avgScoreDiff}`,
   );
   console.log(`  guru  self:${r.avgSelfGuru} opp:${r.avgOppGuru}`);
   console.log(
@@ -165,18 +165,18 @@ sep("最終検証 (N=" + N_VERIFY + ")");
   );
 }
 
-sep("goteStrategy 更新差分");
-const base = { ...PRESETS.goteStrategy };
+sep("senteStrategy 更新差分");
+const base = { ...PRESETS.senteStrategy };
 for (const key of PARAM_KEYS) {
   if (best[key] !== base[key])
     console.log(`  ${key}: ${base[key]} → ${best[key]}`);
 }
 
-sep("goteStrategy mergeParams 出力（SimParams.js に貼り付け）");
+sep("senteStrategy mergeParams 出力（SimParams.js に貼り付け）");
 const overrides = {};
 for (const key of Object.keys(DEFAULT_PARAMS)) {
   if (best[key] !== DEFAULT_PARAMS[key]) overrides[key] = best[key];
 }
-console.log("  goteStrategy: mergeParams({");
+console.log("  senteStrategy: mergeParams({");
 for (const [k, v] of Object.entries(overrides)) console.log(`    ${k}: ${v},`);
 console.log("  }),");

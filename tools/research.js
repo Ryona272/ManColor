@@ -1,43 +1,102 @@
 ﻿/**
  * research.js -- params validation
- * npx.cmd esbuild src/sim/research.js --bundle --platform=node --outfile=dist-sim/research.cjs --format=cjs ; node dist-sim/research.cjs
+ * npx.cmd esbuild tools/research.js --bundle --platform=node --outfile=dist-sim/research.cjs --format=cjs ; node dist-sim/research.cjs
  */
-import { DEFAULT_PARAMS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N_AB = 800;
 const N_GRID = 500;
 
 const EVO_BEST = mergeParams({
-  guruguruBaseEarly: 30, guruguruChainMultEarly: 9,
-  guruguruBase: 71, guruguruChainMult: 28,
-  guruguruFollowupMult: 1.725, guruguruDisrupt: 28,
-  chirachira1st: 34, chirachira2nd: 30,
-  chirachira1stMid: 37, chirachira2ndMid: 30, chirachira3rd: 21,
-  poipoiWithFortune: 27, poipoiGeneral: 7, poipoiEmpty: 3,
-  chirachiraThresholdHigh: 10, chirachiraThresholdLow: 4,
-  poipoiStoneOwnFortune: 30, poipoiStoneInferred: 22, poipoiStoneKnownPos: 4,
-  zakuzakuBase: 8, zakuzakuStoneMult: 4,
-  zakuzakuOwnFortune: 6, zakuzakuInferred: 7, zakuzakuKnownPos: 10,
-  earlyOwnFortune: 28, earlyCancelMult: 9, earlyCancelThreshold: 2, earlyUnknownPenalty: -17,
-  midInferred: 41, midOwnFortune: 18, midKnownPos: 10,
-  midKnownNeg: -42, midAvoidedColor: -21, midUnknownPenalty: -12,
-  midCancelMult: 7, midCancelThreshold: 2,
+  guruguruBaseEarly: 30,
+  guruguruChainMultEarly: 9,
+  guruguruBase: 71,
+  guruguruChainMult: 28,
+  guruguruFollowupMult: 1.725,
+  guruguruDisrupt: 28,
+  chirachira1st: 34,
+  chirachira2nd: 30,
+  chirachira1stMid: 37,
+  chirachira2ndMid: 30,
+  chirachira3rd: 21,
+  poipoiWithFortune: 27,
+  poipoiGeneral: 7,
+  poipoiEmpty: 3,
+  chirachiraThresholdHigh: 10,
+  chirachiraThresholdLow: 4,
+  poipoiStoneOwnFortune: 30,
+  poipoiStoneInferred: 22,
+  poipoiStoneKnownPos: 4,
+  zakuzakuBase: 8,
+  zakuzakuStoneMult: 4,
+  zakuzakuOwnFortune: 6,
+  zakuzakuInferred: 7,
+  zakuzakuKnownPos: 10,
+  earlyOwnFortune: 28,
+  earlyCancelMult: 9,
+  earlyCancelThreshold: 2,
+  earlyUnknownPenalty: -17,
+  midInferred: 41,
+  midOwnFortune: 18,
+  midKnownPos: 10,
+  midKnownNeg: -42,
+  midAvoidedColor: -21,
+  midUnknownPenalty: -12,
+  midCancelMult: 7,
+  midCancelThreshold: 2,
 });
 
-function sep(t) { console.log("\n" + "=".repeat(60) + "\n  " + t + "\n" + "=".repeat(60)); }
+function sep(t) {
+  console.log("\n" + "=".repeat(60) + "\n  " + t + "\n" + "=".repeat(60));
+}
 function pr(label, s) {
   console.log("  " + label);
-  console.log("    win: " + s.selfWinRate + " / " + s.oppWinRate + "  avgDiff: " + s.avgScoreDiff + "  med: " + s.medianScoreDiff);
-  console.log("    guru self:" + s.avgSelfGuru + " opp:" + s.avgOppGuru + "  peeks self:" + s.avgSelfPeeks + " opp:" + s.avgOppPeeks + "  turns:" + s.avgTurns);
+  console.log(
+    "    win: " +
+      s.selfWinRate +
+      " / " +
+      s.oppWinRate +
+      "  avgDiff: " +
+      s.avgScoreDiff +
+      "  med: " +
+      s.medianScoreDiff,
+  );
+  console.log(
+    "    guru self:" +
+      s.avgSelfGuru +
+      " opp:" +
+      s.avgOppGuru +
+      "  peeks self:" +
+      s.avgSelfPeeks +
+      " opp:" +
+      s.avgOppPeeks +
+      "  turns:" +
+      s.avgTurns,
+  );
 }
 function grid(key, values, base) {
-  const rows = values.map(v => {
-    const s = runMany(mergeParams({ ...base, [key]: v }), DEFAULT_PARAMS, N_GRID);
+  const rows = values.map((v) => {
+    const s = runMany(
+      mergeParams({ ...base, [key]: v }),
+      DEFAULT_PARAMS,
+      N_GRID,
+    );
     return { v, win: s.selfWinRate, diff: parseFloat(s.avgScoreDiff) };
   });
-  rows.sort((a,b) => b.diff - a.diff);
-  rows.forEach(r => console.log("    " + key + "=" + r.v + "  win=" + r.win + "  avgDiff=" + r.diff.toFixed(2)));
+  rows.sort((a, b) => b.diff - a.diff);
+  rows.forEach((r) =>
+    console.log(
+      "    " +
+        key +
+        "=" +
+        r.v +
+        "  win=" +
+        r.win +
+        "  avgDiff=" +
+        r.diff.toFixed(2),
+    ),
+  );
   return rows[0].v;
 }
 
@@ -66,7 +125,9 @@ sep("1e. poipoi stone select: poipoiStoneOwnFortune (take AI fortune color)");
 grid("poipoiStoneOwnFortune", [15, 22, 28, 35, 45, 60], EVO_BEST);
 
 // 1f. poipoi stone: inferred
-sep("1f. poipoi stone select: poipoiStoneInferred (take inferred player fortune)");
+sep(
+  "1f. poipoi stone select: poipoiStoneInferred (take inferred player fortune)",
+);
 grid("poipoiStoneInferred", [10, 16, 22, 28, 36, 45], EVO_BEST);
 
 // 2. earlyGamePeekThreshold (forced chirachira count)

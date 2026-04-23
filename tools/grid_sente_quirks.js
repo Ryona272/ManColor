@@ -6,10 +6,10 @@
  * 2. zakuzakuOwnFortune / earlyOwnFortune : 序盤から自占い色を積極奪取
  * 3. 組み合わせ最良値
  *
- * npx.cmd esbuild src/sim/grid_sente_quirks.js --bundle --platform=node --outfile=dist-sim/grid_sente_quirks.cjs --format=cjs && node dist-sim/grid_sente_quirks.cjs
+ * npx.cmd esbuild tools/grid_sente_quirks.js --bundle --platform=node --outfile=dist-sim/grid_sente_quirks.cjs --format=cjs && node dist-sim/grid_sente_quirks.cjs
  */
-import { PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 const N = 500; // 精度とスピードのバランス
 const GOTE = PRESETS.goteStrategy;

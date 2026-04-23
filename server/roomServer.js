@@ -76,7 +76,7 @@ function createFortune() {
       seenBy: [],
       selfPeekOrder: 0,
       oppPeekOrder: 0,
-      bonus: index === 1 ? -2 : +1,
+      bonus: index === 1 ? -4 : +1,
     })),
   };
 }
@@ -140,7 +140,7 @@ function applyDebugNearKutakutaState(state) {
         seenBy: ["opp"],
         selfPeekOrder: 0,
         oppPeekOrder: 1,
-        bonus: -2,
+        bonus: -4,
       },
       {
         color: "yellow",

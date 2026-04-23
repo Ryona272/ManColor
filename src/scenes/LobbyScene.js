@@ -195,17 +195,17 @@ export class LobbyScene extends Phaser.Scene {
       },
       {
         y: 1140,
-        label: "鬼 - 先手",
-        sub: "鬼に先手で挑む",
+        label: "鬼",
+        sub: "最強クラスの鬼AI",
         fill: 0x2a1a2e,
-        diff: "oni-sente",
+        diff: "oni",
       },
       {
         y: 1330,
-        label: "鬼 - 後手",
-        sub: "鬼に後手で挑む",
-        fill: 0x2a1a2e,
-        diff: "oni-gote",
+        label: "ロボ",
+        sub: "自己学習した進化AI",
+        fill: 0x0d2a3e,
+        diff: "robo",
       },
     ];
 
@@ -239,11 +239,128 @@ export class LobbyScene extends Phaser.Scene {
 
       const zone = this.add.zone(W / 2, item.y + 2, 620, 165).setInteractive();
       zone.on("pointerdown", () => {
-        cleanup();
-        this.scene.start("GameScene", {
-          mode: "solo",
-          aiDifficulty: item.diff,
+        // 先後手選択サブパネルを表示
+        const subObjs = [];
+
+        const subBg = this.add.graphics();
+        subBg.fillStyle(0x0d1825, 0.97);
+        subBg.lineStyle(2, 0xe5d5b1, 0.55);
+        subBg.fillRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
+        subBg.strokeRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
+        subObjs.push(subBg);
+
+        // クリックをメインパネルへ透過させないブロッカー
+        const subBlocker = this.add
+          .rectangle(W / 2, 960, 720, 1260, 0x000000, 0)
+          .setInteractive();
+        subObjs.push(subBlocker);
+
+        const subTitle = this.add
+          .text(W / 2, 480, `「${item.label}」で対戦`, {
+            fontSize: "48px",
+            color: "#fff8e6",
+            fontFamily: DISPLAY_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(subTitle);
+
+        const subGuide = this.add
+          .text(W / 2, 560, "先手・後手を選んでください", {
+            fontSize: "30px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(subGuide);
+
+        // 先手ボタン
+        const senteG = this.add.graphics();
+        senteG.fillStyle(0x1e4a7a, 0.9);
+        senteG.lineStyle(2, 0xf2dfbe, 0.65);
+        senteG.fillRoundedRect(W / 2 - 300, 650, 600, 170, 22);
+        senteG.strokeRoundedRect(W / 2 - 300, 650, 600, 170, 22);
+        subObjs.push(senteG);
+
+        const senteT1 = this.add
+          .text(W / 2, 720, "先手で戦う", {
+            fontSize: "52px",
+            color: "#fff8e6",
+            fontFamily: DISPLAY_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(senteT1);
+
+        const senteT2 = this.add
+          .text(W / 2, 783, "あなたが先に撒きます", {
+            fontSize: "26px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(senteT2);
+
+        // 後手ボタン
+        const goteG = this.add.graphics();
+        goteG.fillStyle(0x4a1e1e, 0.9);
+        goteG.lineStyle(2, 0xf2dfbe, 0.65);
+        goteG.fillRoundedRect(W / 2 - 300, 880, 600, 170, 22);
+        goteG.strokeRoundedRect(W / 2 - 300, 880, 600, 170, 22);
+        subObjs.push(goteG);
+
+        const goteT1 = this.add
+          .text(W / 2, 950, "後手で戦う", {
+            fontSize: "52px",
+            color: "#fff8e6",
+            fontFamily: DISPLAY_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(goteT1);
+
+        const goteT2 = this.add
+          .text(W / 2, 1013, "AIが先に撒きます", {
+            fontSize: "26px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5);
+        subObjs.push(goteT2);
+
+        const subCleanup = () => subObjs.forEach((o) => o.destroy());
+
+        const senteZone = this.add.zone(W / 2, 735, 600, 170).setInteractive();
+        senteZone.on("pointerdown", () => {
+          subCleanup();
+          cleanup();
+          this.scene.start("GameScene", {
+            mode: "solo",
+            aiDifficulty: item.diff,
+            playerFirst: true,
+          });
         });
+        subObjs.push(senteZone);
+
+        const goteZone = this.add.zone(W / 2, 965, 600, 170).setInteractive();
+        goteZone.on("pointerdown", () => {
+          subCleanup();
+          cleanup();
+          this.scene.start("GameScene", {
+            mode: "solo",
+            aiDifficulty: item.diff,
+            playerFirst: false,
+          });
+        });
+        subObjs.push(goteZone);
+
+        const backT = this.add
+          .text(W / 2, 1160, "← 戻る", {
+            fontSize: "30px",
+            color: "#8899bb",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5)
+          .setInteractive();
+        backT.on("pointerdown", subCleanup);
+        subObjs.push(backT);
       });
       objs.push(zone);
     }

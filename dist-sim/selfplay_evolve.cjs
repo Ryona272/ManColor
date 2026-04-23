@@ -1,4 +1,4 @@
-// ../src/sim/SimParams.js
+// src/sim/SimParams.js
 var DEFAULT_PARAMS = {
   // ─── フェーズ切り替え ───
   earlyGamePeekThreshold: 2,
@@ -233,7 +233,7 @@ var PRESETS = {
   kai: DEFAULT_PARAMS
 };
 
-// ../src/data/constants.js
+// src/data/constants.js
 var INITIAL_STATE = {
   pits: [
     { stones: [] },
@@ -300,7 +300,7 @@ function shuffle(arr) {
   return a;
 }
 
-// ../src/logic/GameState.js
+// src/logic/GameState.js
 var GameState = class {
   constructor() {
     this.reset();
@@ -569,7 +569,7 @@ var GameState = class {
   }
 };
 
-// ../src/sim/SimAI.js
+// src/sim/SimAI.js
 function simulateSow(pits, pitIndex) {
   const nPits = pits.map((p) => ({ stones: [...p.stones] }));
   const stones = nPits[pitIndex].stones;
@@ -1102,7 +1102,7 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   };
 }
 
-// ../src/sim/SimRunner.js
+// src/sim/SimRunner.js
 var MAX_TURNS = 300;
 function runGame(paramsA = DEFAULT_PARAMS, paramsB = DEFAULT_PARAMS) {
   const gs = new GameState();
@@ -1393,33 +1393,213 @@ function _applyKutakuta(gs, player) {
   }
 }
 
-// oni_mirror.js
-var N = 3e3;
-var P = DEFAULT_PARAMS;
-var s1 = runMany(P, P, N);
-var draw1 = (100 - parseFloat(s1.selfWinRate) - parseFloat(s1.oppWinRate)).toFixed(1);
-console.log("=== \u9B3C vs \u9B3C\uFF08DEFAULT_PARAMS \u540C\u58EB\uFF09N=" + N + " ===");
-console.log("");
+// tools/selfplay_evolve.js
+var import_fs = require("fs");
+var POP_SIZE = 20;
+var MAX_GENERATIONS = 300;
+var N_GAMES_PAIR = 100;
+var N_VERIFY = 800;
+var MUTATION_RATE = 0.25;
+var MUTATION_SCALE = 0.25;
+var CROSSOVER_PROB = 0.5;
+var ELITE_COUNT = 4;
+var VERIFY_EVERY = 3;
+var CONVERGE_THRESHOLD = 1;
+var CONVERGE_PATIENCE = 2;
+var RANGES = {
+  earlyGamePeekThreshold: [1, 3],
+  guruguruBaseEarly: [5, 80],
+  guruguruChainMultEarly: [1, 25],
+  guruguruBase: [10, 150],
+  guruguruChainMult: [5, 70],
+  guruguruFollowupMult: [0.2, 3.5],
+  guruguruDisrupt: [0, 60],
+  chirachira1st: [5, 70],
+  chirachira2nd: [5, 60],
+  chirachira1stMid: [5, 70],
+  chirachira2ndMid: [5, 60],
+  chirachira3rd: [0, 45],
+  poipoiWithFortune: [0, 60],
+  poipoiGeneral: [0, 25],
+  poipoiEmpty: [0, 15],
+  chirachiraThresholdHigh: [2, 50],
+  chirachiraThresholdLow: [0, 25],
+  poipoiStoneOwnFortune: [5, 70],
+  poipoiStoneInferred: [0, 50],
+  poipoiStoneKnownPos: [0, 20],
+  zakuzakuBase: [0, 25],
+  zakuzakuStoneMult: [1, 30],
+  zakuzakuOwnFortune: [0, 25],
+  zakuzakuInferred: [0, 25],
+  zakuzakuKnownPos: [0, 25],
+  earlyOwnFortune: [0, 60],
+  earlyCancelMult: [1, 25],
+  earlyCancelThreshold: [1, 5],
+  earlyUnknownPenalty: [-50, 5],
+  midInferred: [5, 80],
+  midOwnFortune: [0, 60],
+  midKnownPos: [0, 30],
+  midKnownNeg: [-100, -5],
+  midAvoidedColor: [-60, 0],
+  midUnknownPenalty: [-40, 10],
+  midCancelMult: [1, 25],
+  midCancelThreshold: [1, 5],
+  laneOwnFortune: [0, 25],
+  laneInferred: [0, 25],
+  laneKnownPos: [0, 20],
+  laneKnownNegPenalty: [2, 40],
+  laneAvoidedPenalty: [0, 20],
+  sendKnownNegToOpp: [0, 40],
+  forceChirachiraThreshold: [1, 3],
+  forceChirachiraMinLane: [1, 6],
+  kutakutaThresholdOffset: [-15, 0],
+  defensiveTiebreakWindow: [2, 25],
+  oppChirachiraCreate: [2, 30],
+  ownChirachiraLost: [0, 20],
+  playerThreatGrowthMult: [0.2, 3],
+  lookaheadOwnMult: [0.05, 1.5],
+  lookaheadPlayerMult: [0.05, 2],
+  kutakutaLanePenalty: [0, 20],
+  pitColorOwnFortune: [0, 10],
+  pitColorInferred: [0, 10],
+  pitColorKnownPos: [0, 8],
+  pitColorKnownNeg: [0, 18],
+  pitColorAvoided: [0, 12]
+};
+var PARAM_KEYS = Object.keys(RANGES);
+function randomIndividual() {
+  const p = { ...DEFAULT_PARAMS };
+  for (const key of PARAM_KEYS) {
+    const [lo, hi] = RANGES[key];
+    let v = lo + Math.random() * (hi - lo);
+    p[key] = Number.isInteger(DEFAULT_PARAMS[key]) ? Math.round(v) : parseFloat(v.toFixed(4));
+  }
+  return p;
+}
+function mutate(p) {
+  const child = { ...p };
+  for (const key of PARAM_KEYS) {
+    if (Math.random() < MUTATION_RATE) {
+      const [lo, hi] = RANGES[key];
+      const span = hi - lo;
+      let v = child[key] + span * MUTATION_SCALE * (Math.random() * 2 - 1);
+      v = Math.max(lo, Math.min(hi, v));
+      child[key] = Number.isInteger(DEFAULT_PARAMS[key]) ? Math.round(v) : parseFloat(v.toFixed(4));
+    }
+  }
+  return child;
+}
+function crossover(a, b) {
+  const child = { ...DEFAULT_PARAMS };
+  for (const key of PARAM_KEYS) {
+    child[key] = Math.random() < CROSSOVER_PROB ? a[key] : b[key];
+  }
+  return child;
+}
+function roundRobin(population2) {
+  const wins = new Float64Array(population2.length);
+  const games = new Float64Array(population2.length);
+  let pairs = 0;
+  for (let i = 0; i < population2.length; i++) {
+    for (let j = i + 1; j < population2.length; j++) {
+      const ab = runMany(population2[i], population2[j], N_GAMES_PAIR);
+      const ba = runMany(population2[j], population2[i], N_GAMES_PAIR);
+      const iWinAB = parseFloat(ab.selfWinRate) / 100 * N_GAMES_PAIR;
+      const jWinAB = parseFloat(ab.oppWinRate) / 100 * N_GAMES_PAIR;
+      const jWinBA = parseFloat(ba.selfWinRate) / 100 * N_GAMES_PAIR;
+      const iWinBA = parseFloat(ba.oppWinRate) / 100 * N_GAMES_PAIR;
+      wins[i] += iWinAB + iWinBA;
+      wins[j] += jWinAB + jWinBA;
+      games[i] += N_GAMES_PAIR * 2;
+      games[j] += N_GAMES_PAIR * 2;
+      pairs++;
+    }
+  }
+  return population2.map((params, i) => ({ params, wins: wins[i], totalGames: games[i] })).sort((a, b) => b.wins - a.wins);
+}
+function nextGeneration(ranked) {
+  const next = [];
+  for (let i = 0; i < ELITE_COUNT && i < ranked.length; i++) {
+    next.push(ranked[i].params);
+  }
+  const elites = ranked.slice(0, Math.ceil(POP_SIZE / 2));
+  while (next.length < POP_SIZE) {
+    const a = elites[Math.floor(Math.random() * elites.length)].params;
+    const b = elites[Math.floor(Math.random() * elites.length)].params;
+    const child = a === b ? mutate(a) : mutate(crossover(a, b));
+    next.push(child);
+  }
+  return next;
+}
+function saveCheckpoint(params, gen, vsOniRate) {
+  (0, import_fs.mkdirSync)("dist-sim", { recursive: true });
+  const data = {
+    generation: gen,
+    vsOniWinRate: vsOniRate,
+    params
+  };
+  (0, import_fs.writeFileSync)("dist-sim/selfplay_best.json", JSON.stringify(data, null, 2));
+}
 console.log(
-  `\u5148\u624B win: ${s1.selfWinRate}  \u5F8C\u624B win: ${s1.oppWinRate}  draw: ${draw1}%`
+  `\u81EA\u5DF1\u5BFE\u6226\u578B\u9032\u5316\u5B66\u7FD2 \u958B\u59CB (\u500B\u4F53\u6570:${POP_SIZE} \u4E0A\u9650:${MAX_GENERATIONS}\u4E16\u4EE3 \u53CE\u675F:<${CONVERGE_THRESHOLD}% \xD7 ${CONVERGE_PATIENCE}\u56DE)`
 );
-console.log(`avgDiff: ${s1.avgScoreDiff}  med: ${s1.medianScoreDiff}`);
-console.log(
-  `guru  \u5148\u624B:${s1.avgSelfGuru} \u5F8C\u624B:${s1.avgOppGuru}  turns:${s1.avgTurns}`
-);
-console.log("");
-function printChainDist(label, dist, maxEver) {
-  console.log(`${label}  \u6700\u5927\u9023\u9396 ever: ${maxEver}`);
-  const keys = Object.keys(dist).map(Number).sort((a, b) => a - b);
-  for (const k of keys) {
-    const pct = (dist[k] / N * 100).toFixed(1);
-    const bar = "\u2588".repeat(Math.round(dist[k] / N * 40));
+var population = Array.from({ length: POP_SIZE }, randomIndividual);
+var bestEver = null;
+var bestEverVsOni = -Infinity;
+var lastVerifiedVsOni = null;
+var convergeCount = 0;
+var stopReason = "";
+for (let gen = 1; gen <= MAX_GENERATIONS; gen++) {
+  const ranked = roundRobin(population);
+  if (gen % VERIFY_EVERY === 0) {
+    const best = ranked[0].params;
+    const asSente = runMany(best, DEFAULT_PARAMS, N_VERIFY);
+    const asGote = runMany(DEFAULT_PARAMS, best, N_VERIFY);
+    const vsOniAvgNum = (parseFloat(asSente.selfWinRate) + parseFloat(asGote.oppWinRate)) / 2;
+    const vsOniAvg = vsOniAvgNum.toFixed(1);
+    const delta = lastVerifiedVsOni !== null ? vsOniAvgNum - lastVerifiedVsOni : Infinity;
+    const deltaStr = lastVerifiedVsOni !== null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%` : "\u521D\u56DE";
     console.log(
-      `  chain=${k}: ${String(dist[k]).padStart(5)}\u56DE (${pct}%) ${bar}`
+      `\u4E16\u4EE3${gen}: \u5BFE\u9B3C ${vsOniAvg}% (${deltaStr})${vsOniAvgNum > 50 ? " \u2605\u9B3C\u8D85\u3048" : ""}`
     );
+    if (lastVerifiedVsOni !== null && Math.abs(delta) < CONVERGE_THRESHOLD) {
+      convergeCount++;
+    } else {
+      convergeCount = 0;
+    }
+    lastVerifiedVsOni = vsOniAvgNum;
+    if (vsOniAvgNum > bestEverVsOni) {
+      bestEverVsOni = vsOniAvgNum;
+      bestEver = best;
+      saveCheckpoint(best, gen, vsOniAvg);
+    }
+    if (convergeCount >= CONVERGE_PATIENCE) {
+      stopReason = `\u53CE\u675F (${CONVERGE_PATIENCE}\u56DE\u9023\u7D9A\u3067\u6539\u5584\u5E45 <${CONVERGE_THRESHOLD}%)`;
+      break;
+    }
+  }
+  population = nextGeneration(ranked);
+  if (gen === MAX_GENERATIONS) {
+    stopReason = `\u4E0A\u9650 ${MAX_GENERATIONS} \u4E16\u4EE3\u306B\u5230\u9054`;
   }
 }
-console.log("=== \u3050\u308B\u3050\u308B\u6700\u5927\u9023\u9396\u5206\u5E03\uFF081\u30B2\u30FC\u30E0\u3042\u305F\u308A\u306E\u6700\u5927\u9023\u7D9A\u7740\u5730\u56DE\u6570\uFF09===");
-printChainDist("\u5148\u624B", s1.selfChainDist, s1.selfMaxChainEver);
-console.log("");
-printChainDist("\u5F8C\u624B", s1.oppChainDist, s1.oppMaxChainEver);
+console.log(`
+=== \u5B8C\u4E86: ${stopReason || "\u4E0D\u660E"} ===`);
+if (bestEver) {
+  const finalSente = runMany(bestEver, DEFAULT_PARAMS, N_VERIFY);
+  const finalGote = runMany(DEFAULT_PARAMS, bestEver, N_VERIFY);
+  const finalVsOni = ((parseFloat(finalSente.selfWinRate) + parseFloat(finalGote.oppWinRate)) / 2).toFixed(1);
+  console.log(
+    `\u5BFE\u9B3C \u5148\u624B:${finalSente.selfWinRate}% \u5F8C\u624B:${finalGote.oppWinRate}% \u5E73\u5747:${finalVsOni}%`
+  );
+  console.log("\n\u30D9\u30B9\u30C8\u30D1\u30E9\u30E1\u30FC\u30BF\u5DEE\u5206 (DEFAULT_PARAMS\u304B\u3089\u5909\u5316\u3057\u305F\u3082\u306E):");
+  const diffs = {};
+  for (const key of PARAM_KEYS) {
+    if (Math.abs(bestEver[key] - DEFAULT_PARAMS[key]) > 1e-4)
+      diffs[key] = bestEver[key];
+  }
+  console.log(JSON.stringify(diffs, null, 2));
+  console.log("\n\u5168\u30D1\u30E9\u30E1\u30FC\u30BF: dist-sim/selfplay_best.json");
+} else {
+  console.log("\u9B3C\u8D85\u3048\u306B\u306F\u81F3\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002");
+}

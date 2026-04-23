@@ -2,10 +2,10 @@
  * optim_sente.js
  * senteStrategy を固定 goteStrategy に勝てるよう座標降下法で最適化
  *
- * npx.cmd esbuild src/sim/optim_sente.js --bundle --platform=node --outfile=dist-sim/optim_sente.cjs --format=cjs && node dist-sim/optim_sente.cjs
+ * npx.cmd esbuild tools/optim_sente.js --bundle --platform=node --outfile=dist-sim/optim_sente.cjs --format=cjs && node dist-sim/optim_sente.cjs
  */
-import { DEFAULT_PARAMS, PRESETS, mergeParams } from "./SimParams.js";
-import { runMany } from "./SimRunner.js";
+import { DEFAULT_PARAMS, PRESETS, mergeParams } from "../src/sim/SimParams.js";
+import { runMany } from "../src/sim/SimRunner.js";
 
 // ─── 設定 ───
 const N_EVAL = 400; // 評価精度（ノイズ低減）
