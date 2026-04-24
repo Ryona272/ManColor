@@ -5,11 +5,17 @@ import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
   pickPit as simPickPit,
   pickPitV3 as simPickPitV3,
+  pickPitHardV1 as simPickPitHardV1,
+  pickPitRoboV1 as simPickPitRoboV1,
   decidePlacementsV3 as simDecidePlacementsV3,
   optimizeSowOrderV3 as simOptimizeSowOrderV3,
   updateMemo as simUpdateMemo,
 } from "../sim/SimAI.js";
-import { PRESETS, DEFAULT_PARAMS } from "../sim/SimParams.js";
+import {
+  PRESETS,
+  DEFAULT_PARAMS,
+  DEFAULT_ROBO_PARAMS,
+} from "../sim/SimParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -2071,12 +2077,16 @@ export class GameScene extends Phaser.Scene {
       return validPits[Math.floor(Math.random() * validPits.length)];
     }
     if (this.aiDifficulty === "hard") {
-      // 強い: エキスパートAI
-      return this._aiPickPitExpert(validPits, state);
+      // 強い: HardV1（ぐるぐる・ざくざく特化、3手番先読み）
+      return this._aiPickPitHardV1(validPits, state);
     }
-    if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
-      // 鬼/ロボ: OniV3 AI
+    if (this.aiDifficulty === "oni") {
+      // 鬼: OniV3 AI
       return this._aiPickPitOniV3(validPits, state);
+    }
+    if (this.aiDifficulty === "robo") {
+      // ロボ: RoboV1 AI（機械学習最適化パラメータ）
+      return this._aiPickPitRoboV1(validPits, state);
     }
     if (this.aiDifficulty === "normal") {
       // 普通: 技優先→賽壇近い順
@@ -2280,6 +2290,37 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * HardV1 AI: 3手番先読み（ぐるぐる・ざくざく特化）
+   * ちらちら機会があれば即選択（上限2）、それ以外はAI→Player→AIのDFS
+   */
+  _aiPickPitHardV1(validPits, state) {
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    return simPickPitHardV1(validPits, state, peeksDoneAI);
+  }
+
+  /**
+   * RoboV1 AI: パラメータ化OniV3 (DEFAULT_ROBO_PARAMS 使用)
+   */
+  _aiPickPitRoboV1(validPits, state) {
+    const fortune = {
+      center: this.gameState.getState().fortune.center,
+      opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+      self: { color: this.gameState.getFortuneColorForPlayer("self") },
+    };
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
+    return simPickPitRoboV1(
+      validPits,
+      state,
+      peeksDoneAI,
+      peeksDonePlayer,
+      fortune,
+      DEFAULT_ROBO_PARAMS,
+      "opp",
+    );
+  }
+
+  /**
    * 鬼V3 AI: 5手番先読みによるピット選択
    * AI→Player→AI→Player→AIの順で各上余3手を列挙（3^5=243パス）
    * AI累計スコア−Player累計スコアが最大のパスの最初の路を返す
@@ -2306,72 +2347,24 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 撒き先が確定した後、どの石をどの穴に割り当てるか最適化する。
-   * 賽壇(pit11)には価値の高い石を、相手賽壇(pit5)には価値の低い石を優先的に送る。
-   * 鬼/ロボ難易度のみ適用。
+   * ロボ以外の全難易度で OniV3 の石並び替えを適用。
    */
   _aiOptimizeSowOrder(stones, targets) {
     if (stones.length <= 1) return stones;
 
-    if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
-      // V3: 全着地先に対応した石並び替え
-      const state = this.gameState.getState();
-      const fortune = {
-        center: state.fortune.center,
-        opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
-        self: { color: this.gameState.getFortuneColorForPlayer("self") },
-      };
-      const memo = {
-        inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
-      };
-      return simOptimizeSowOrderV3(stones, targets, state, fortune, memo);
-    }
+    if (this.aiDifficulty === "robo") return stones;
 
-    if (this.aiDifficulty !== "hard") return stones;
-
-    const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
-    const knownNeg = this._aiKnownNegativeColor();
-    const knownPos = this._aiKnownPositiveColors();
-    const inferred = this._aiMemo?.inferredPlayerColor;
-
-    // 各石の「pit11(AI賽壇)への価値」
-    // - 相手推定占い色: pit11に入れると+5点 → 最高優先
-    // - 自占い色: pit11に入れると+3点 → 高優先
-    // - ちらちら確認+1色: 自占いと同等（相手を惑わせる戦略）
-    // - 確定マイナス色: pit11に絶対入れない
-    const stoneValue = (stone) => {
-      if (knownNeg && stone.color === knownNeg) return -200; // 絶対NG
-      if (inferred && stone.color === inferred) return 100; // 相手占い色→+5点
-      if (ownFortune && stone.color === ownFortune) return 80; // 自占い色→+3点
-      if (knownPos.includes(stone.color)) return 80; // ちらちら+1石→自占いと同等
-      return 0;
+    // ロボ以外: V3の全着地先対応石並び替えを共通で使用
+    const state = this.gameState.getState();
+    const fortune = {
+      center: state.fortune.center,
+      opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+      self: { color: this.gameState.getFortuneColorForPlayer("self") },
     };
-
-    // 各ターゲット穴の「良い石が欲しい度」
-    // - pit11(AI賽壇): 高スコア石を入れたい
-    // - pit5(相手賽壇): 自占い色→相手+5, 相手推定色→相手+3 なので避ける
-    const targetDesire = (pit) => {
-      if (pit === 11) return 10;
-      if (pit === 5) return -10;
-      return 0;
+    const memo = {
+      inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
     };
-
-    // グリーディ割り当て: 欲しい度の高い穴に価値の高い石を割り当てる
-    const indexedTargets = targets.map((pit, pos) => ({
-      pit,
-      pos,
-      d: targetDesire(pit),
-    }));
-    const sortedTargets = [...indexedTargets].sort((a, b) => b.d - a.d);
-    const sortedStones = [...stones]
-      .map((s, i) => ({ s, i, v: stoneValue(s) }))
-      .sort((a, b) => b.v - a.v);
-
-    const result = new Array(stones.length);
-    sortedTargets.forEach((t, rank) => {
-      result[t.pos] = sortedStones[rank].s;
-    });
-
-    return result;
+    return simOptimizeSowOrderV3(stones, targets, state, fortune, memo);
   }
 
   _aiStartSowing(pitIndex) {

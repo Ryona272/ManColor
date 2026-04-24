@@ -97,6 +97,21 @@ export const DEFAULT_PARAMS = {
 };
 
 /**
+ * ロボ用パラメータ（OniV3ベース、機械学習で最適化）
+ * pickPitRoboV1 に渡す変動変数
+ */
+export const DEFAULT_ROBO_PARAMS = {
+  roboGuruguruScore: 8, // ぐるぐる発動スコア
+  roboChirachiraScore: 15, // ちらちら発動スコア
+  roboChirachiraNegBonus: 4, // ちらちら時マイナス確定ボーナス
+  roboChirachiraLimit: 10, // ちらちら上限（10=事実上無制限, 整数）
+  roboZakuzakuBase: 7, // ざくざく基本スコア
+  roboKutakutaBonus: 2, // くたくた新規解放ボーナス
+  roboTopN: 3, // 各手番で候補にする上位N手（整数）
+  roboDepth: 5, // 先読み深さ（整数）
+};
+
+/**
  * パラメータのマージユーティリティ
  * overrides に含まれるキーだけを上書き
  */

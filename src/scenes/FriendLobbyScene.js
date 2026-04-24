@@ -682,10 +682,11 @@ export class FriendLobbyScene extends Phaser.Scene {
     });
 
     this.connectionStatusText = this.add
-      .text(cx, cy + 76, "接続中...", {
+      .text(cx, cy + 76, "サーバーに接続中...\n(時間がかかる場合があります)", {
         fontSize: "36px",
-        color: "#8da7c7",
+        color: "#ff6666",
         fontFamily: UI_FONT,
+        align: "center",
       })
       .setOrigin(0.5);
   }
@@ -697,7 +698,7 @@ export class FriendLobbyScene extends Phaser.Scene {
     const cy = 1245;
     const r = 50;
     g.clear();
-    g.lineStyle(8, 0x5ea8ff, 1);
+    g.lineStyle(8, 0xff3333, 1);
     const startRad = Phaser.Math.DegToRad(angleDeg - 90);
     const endRad = Phaser.Math.DegToRad(angleDeg + 210);
     g.beginPath();
@@ -725,8 +726,10 @@ export class FriendLobbyScene extends Phaser.Scene {
 
     if (this.connectionStatusText) {
       if (showSpinner) {
-        this.connectionStatusText.setText("接続中...");
-        this.connectionStatusText.setColor("#8da7c7");
+        this.connectionStatusText.setText(
+          "サーバーに接続中...\n(時間がかかる場合があります)",
+        );
+        this.connectionStatusText.setColor("#ff6666");
         this.connectionStatusText.setVisible(true);
       } else {
         this.connectionStatusText.setVisible(false);

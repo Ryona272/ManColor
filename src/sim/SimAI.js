@@ -901,10 +901,10 @@ export function pickPitV3(
       }
     }
 
-    // ざくざく: +7 (着地先が自陣の空きかつ鏡に石あり)
+    // ざくざく: +7 + 取れた石数×1 (着地先が自陣の空きかつ鏡に石あり)
     if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
       const mirror = isAI ? lastPit - 6 : lastPit + 6;
-      if (counts[mirror] > 0) score += 7;
+      if (counts[mirror] > 0) score += 7 + counts[mirror];
     }
 
     return { score, lastPit };
@@ -1045,6 +1045,365 @@ export function pickPitV3(
     initAiKk,
     initPlayerKk,
   );
+
+  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
+}
+
+// ─── RoboV1: OniV3完全パラメータ化クローン ───────────────────────────────
+
+/**
+ * RoboV1 ピット選択 - OniV3を完全パラメータ化したモデル
+ *
+ * OniV3と同じ先読みDFS構造だが、全スコア値が可変パラメータ。
+ * ちらちら上限も roboChirachiraLimit で制御（無制限可）。
+ * role="opp" なら pit6-10 が AI レーン、role="self" なら pit0-4 が AI レーン。
+ *
+ * @param {number[]} validPits      - AIが選べる路インデックス
+ * @param {object}   state          - GameState スナップショット
+ * @param {number}   peeksDoneAI    - AIのちらちら完了回数
+ * @param {number}   peeksDonePlayer- プレイヤーのちらちら完了回数
+ * @param {object}   fortune        - { center: [{bonus, seenBy},...] }
+ * @param {object}   params         - DEFAULT_ROBO_PARAMS 相当のパラメータ
+ * @param {string}   role           - "opp" (デフォルト) | "self"
+ */
+export function pickPitRoboV1(
+  validPits,
+  state,
+  peeksDoneAI,
+  peeksDonePlayer,
+  fortune,
+  params,
+  role = "opp",
+) {
+  const p = params;
+  const isOppRole = role === "opp";
+
+  // レーン・賽壇インデックス
+  const aiLaneMin = isOppRole ? 6 : 0;
+  const aiLaneMax = isOppRole ? 10 : 4;
+  const aiStore = isOppRole ? 11 : 5;
+  const playerStore = isOppRole ? 5 : 11;
+  const plLaneMin = isOppRole ? 0 : 6;
+  const plLaneMax = isOppRole ? 4 : 10;
+
+  // fortuneキー
+  const aiFortKey = isOppRole ? "opp" : "self";
+  const plFortKey = isOppRole ? "self" : "opp";
+
+  const initCounts = state.pits.map((pt) => pt.stones.length);
+
+  // マイナス色未確定チェック
+  const hasUnconfirmedNegForAI = (fortune.center ?? []).some(
+    (fc) => fc.bonus < 0 && !fc.seenBy.includes(aiFortKey),
+  );
+  const hasUnconfirmedNegForPlayer = (fortune.center ?? []).some(
+    (fc) => fc.bonus < 0 && !fc.seenBy.includes(plFortKey),
+  );
+
+  // ─── 高速撒きシミュレーション ───
+  function fastSow(counts, pitIndex) {
+    const nc = counts.slice();
+    const n = nc[pitIndex];
+    if (n === 0) return { counts: nc, lastPit: -1 };
+    nc[pitIndex] = 0;
+    let cur = pitIndex;
+    for (let i = 0; i < n; i++) {
+      cur = (cur + 1) % 12;
+      nc[cur]++;
+    }
+    return { counts: nc, lastPit: cur };
+  }
+
+  // ─── 1手スコア計算 ───
+  function scoreSow(counts, pit, isAI, peeks) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const storeIdx = isAI ? aiStore : playerStore;
+    const oppStoreIdx = isAI ? playerStore : aiStore;
+    const n = counts[pit];
+    const lastPit = (pit + n) % 12;
+    let score = 0;
+
+    // ぐるぐる
+    if (lastPit === storeIdx) score += p.roboGuruguruScore;
+
+    // ちらちら（上限 roboChirachiraLimit）
+    if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
+      score += p.roboChirachiraScore;
+      const hasNeg = isAI ? hasUnconfirmedNegForAI : hasUnconfirmedNegForPlayer;
+      if (hasNeg) score += p.roboChirachiraNegBonus;
+    }
+
+    // ざくざく: 着地先が自陣の空きかつ鏡に石あり
+    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
+      const mirror = isAI
+        ? isOppRole
+          ? lastPit - 6
+          : lastPit + 6
+        : isOppRole
+          ? lastPit + 6
+          : lastPit - 6;
+      if (counts[mirror] > 0) {
+        score += p.roboZakuzakuBase;
+      }
+    }
+
+    return { score, lastPit };
+  }
+
+  // ─── 上位N手取得 ───
+  function getTopMoves(counts, isAI, topN, peeks, restrictTo) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const pool =
+      restrictTo ??
+      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
+    const scored = [];
+    for (const pt of pool) {
+      if (counts[pt] === 0) continue;
+      const { score } = scoreSow(counts, pt, isAI, peeks);
+      scored.push({ pit: pt, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, topN);
+  }
+
+  // ─── くたくた発動可能チェック ───
+  function canKutakutaAI(counts) {
+    return counts[aiStore] >= counts[playerStore] - 6;
+  }
+  function canKutakutaPlayer(counts) {
+    return counts[playerStore] >= counts[aiStore];
+  }
+
+  // ─── DFS ───
+  const topN = Math.max(1, Math.round(p.roboTopN));
+  const depth = Math.max(1, Math.round(p.roboDepth));
+
+  let bestFirstPit = validPits[0];
+  let bestNet = -Infinity;
+
+  const initAiKk = canKutakutaAI(initCounts);
+  const initPlayerKk = canKutakutaPlayer(initCounts);
+
+  function dfs(
+    d,
+    counts,
+    aiPeeks,
+    playerPeeks,
+    aiScore,
+    playerScore,
+    firstPit,
+    prevAiKk,
+    prevPlayerKk,
+  ) {
+    if (d === depth) {
+      const net = aiScore - playerScore;
+      if (net > bestNet) {
+        bestNet = net;
+        bestFirstPit = firstPit;
+      }
+      return;
+    }
+
+    const isAI = d % 2 === 0;
+    const peeks = isAI ? aiPeeks : playerPeeks;
+    const oppStoreIdx = isAI ? playerStore : aiStore;
+
+    const topMoves =
+      d === 0
+        ? getTopMoves(counts, true, topN, peeks, validPits)
+        : getTopMoves(counts, isAI, topN, peeks, null);
+
+    if (topMoves.length === 0) {
+      dfs(
+        d + 1,
+        counts,
+        aiPeeks,
+        playerPeeks,
+        aiScore,
+        playerScore,
+        firstPit,
+        prevAiKk,
+        prevPlayerKk,
+      );
+      return;
+    }
+
+    for (const { pit } of topMoves) {
+      const { score, lastPit } = scoreSow(counts, pit, isAI, peeks);
+      const { counts: newCounts } = fastSow(counts, pit);
+
+      let newAiPeeks = aiPeeks;
+      let newPlayerPeeks = playerPeeks;
+      if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
+        if (isAI) newAiPeeks++;
+        else newPlayerPeeks++;
+      }
+
+      const newAiKk = canKutakutaAI(newCounts);
+      const newPlayerKk = canKutakutaPlayer(newCounts);
+      const aiKkBonus = !prevAiKk && newAiKk ? p.roboKutakutaBonus : 0;
+      const playerKkBonus =
+        !prevPlayerKk && newPlayerKk ? p.roboKutakutaBonus : 0;
+
+      const newAiScore = isAI
+        ? aiScore + score + aiKkBonus
+        : aiScore + aiKkBonus;
+      const newPlayerScore = !isAI
+        ? playerScore + score + playerKkBonus
+        : playerScore + playerKkBonus;
+
+      const fp = d === 0 ? pit : firstPit;
+      dfs(
+        d + 1,
+        newCounts,
+        newAiPeeks,
+        newPlayerPeeks,
+        newAiScore,
+        newPlayerScore,
+        fp,
+        newAiKk,
+        newPlayerKk,
+      );
+    }
+  }
+
+  dfs(
+    0,
+    initCounts,
+    peeksDoneAI,
+    peeksDonePlayer,
+    0,
+    0,
+    validPits[0],
+    initAiKk,
+    initPlayerKk,
+  );
+
+  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
+}
+
+// ─── HardV1: 3手番先読み（ぐるぐる・ざくざく特化） ──────────────────────
+
+/**
+ * HardV1 ピット選択 - 3手番先読み
+ *
+ * 手番順: AI → Player → AI (計3手番)
+ * 各手番で評価の高い上位3手を候補とし、3^3 = 27 パスを全列挙。
+ * AI累計スコア - Player累計スコアが最大のパスの最初の路を返す。
+ *
+ * ★特殊ルール
+ *   DFS前にちらちら(pit5着地)できる路があれば即選択（上限2回）。
+ *
+ * ★評価基準（ぐるぐる・ざくざくのみ）
+ *   ぐるぐる発動      : +5
+ *   ざくざく発動      : +7 + 取れた石数
+ *
+ * @param {number[]} validPits    - AIが選べる路インデックス
+ * @param {object}   state        - GameState のスナップショット
+ * @param {number}   peeksDoneAI  - AIのちらちら完了回数
+ */
+export function pickPitHardV1(validPits, state, peeksDoneAI) {
+  const initCounts = state.pits.map((p) => p.stones.length);
+
+  // ちらちら強制チェック: たまたまpit5着地できる路があれば即選択（上限2）
+  if (peeksDoneAI < 2) {
+    const chirachiraPit = validPits.find((p) => {
+      const n = initCounts[p];
+      return n > 0 && (p + n) % 12 === 5;
+    });
+    if (chirachiraPit !== undefined) return chirachiraPit;
+  }
+
+  // ─── 高速撒きシミュレーション ───
+  function fastSow(counts, pitIndex) {
+    const nc = counts.slice();
+    const n = nc[pitIndex];
+    if (n === 0) return { counts: nc, lastPit: -1 };
+    nc[pitIndex] = 0;
+    let cur = pitIndex;
+    for (let i = 0; i < n; i++) {
+      cur = (cur + 1) % 12;
+      nc[cur]++;
+    }
+    return { counts: nc, lastPit: cur };
+  }
+
+  // ─── スコア計算（ぐるぐる・ざくざくのみ）───
+  function scoreSow(counts, pit, isAI) {
+    const laneMin = isAI ? 6 : 0;
+    const laneMax = isAI ? 10 : 4;
+    const storeIndex = isAI ? 11 : 5;
+    const n = counts[pit];
+    const lastPit = (pit + n) % 12;
+    let score = 0;
+
+    // ぐるぐる: +5
+    if (lastPit === storeIndex) score += 5;
+
+    // ざくざく: +7 + 取れた石数
+    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
+      const mirror = isAI ? lastPit - 6 : lastPit + 6;
+      if (counts[mirror] > 0) score += 7 + counts[mirror];
+    }
+
+    return { score, lastPit };
+  }
+
+  // ─── 上位N手取得 ───
+  function getTopMoves(counts, isAI, n, restrictTo) {
+    const laneMin = isAI ? 6 : 0;
+    const laneMax = isAI ? 10 : 4;
+    const pool =
+      restrictTo ??
+      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
+    const scored = [];
+    for (const p of pool) {
+      if (counts[p] === 0) continue;
+      const { score } = scoreSow(counts, p, isAI);
+      scored.push({ pit: p, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, n);
+  }
+
+  // ─── DFS（深さ3: AI→Player→AI）───
+  let bestFirstPit = validPits[0];
+  let bestNet = -Infinity;
+
+  function dfs(depth, counts, aiScore, playerScore, firstPit) {
+    if (depth === 3) {
+      const net = aiScore - playerScore;
+      if (net > bestNet) {
+        bestNet = net;
+        bestFirstPit = firstPit;
+      }
+      return;
+    }
+
+    const isAI = depth % 2 === 0; // depth 0,2 = AI; 1 = Player
+    const topMoves =
+      depth === 0
+        ? getTopMoves(counts, true, 3, validPits)
+        : getTopMoves(counts, isAI, 3, null);
+
+    if (topMoves.length === 0) {
+      dfs(depth + 1, counts, aiScore, playerScore, firstPit);
+      return;
+    }
+
+    for (const { pit } of topMoves) {
+      const { score } = scoreSow(counts, pit, isAI);
+      const { counts: newCounts } = fastSow(counts, pit);
+      const newAiScore = isAI ? aiScore + score : aiScore;
+      const newPlayerScore = !isAI ? playerScore + score : playerScore;
+      const fp = depth === 0 ? pit : firstPit;
+      dfs(depth + 1, newCounts, newAiScore, newPlayerScore, fp);
+    }
+  }
+
+  dfs(0, initCounts, 0, 0, validPits[0]);
 
   return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
 }

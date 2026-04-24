@@ -181,7 +181,9 @@ export class RandomLobbyScene extends Phaser.Scene {
         this.connectionState === "connecting" ||
         this.connectionState === "reconnecting"
       ) {
-        this.statusText.setText(`接続中${dots}`);
+        this.statusText.setText(
+          `サーバーに接続中${dots}\n(時間がかかる場合があります)`,
+        );
       } else if (this.connectionState === "error") {
         this.statusText.setText("接続できませんでした");
       } else {
