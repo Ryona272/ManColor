@@ -72,8 +72,9 @@ export const DEFAULT_PARAMS = {
   pitColorAvoided: 3,
 
   // ─── 先後手制御 ───
-  forceChirachiraThreshold: 2, // 強制ちらちら回数（先手=2、後手=1、通常=2）
+  forceChirachiraThreshold: 2, // 強制ちらちら回数（2回まで）
   forceChirachiraMinLane: 3, // 強制ちらちら発動に必要な自陣の最低石数（これ未満なら点数稼ぎ優先）
+  saidanAbandonThreshold: 7, // 両賽壇の石の合計がこの値以上になったらちらちらを諦めてぐるぐる専念
 
   // ─── くたくた ───
   kutakutaThresholdOffset: -6,
@@ -130,75 +131,11 @@ export const PRESETS = {
     guruguruChainMult: 12,
   }),
 
-  // AI先手特化（座標降下法最適化済み v3 tiebreaker対応）
-  senteStrategy: mergeParams({
-    guruguruBaseEarly: 36,
-    guruguruChainMultEarly: 8,
-    guruguruBase: 75,
-    guruguruChainMult: 38,
-    guruguruDisrupt: 32,
-    chirachira1st: 53,
-    chirachira2nd: 48,
-    chirachira1stMid: 50,
-    chirachira2ndMid: 48,
-    chirachira3rd: 41,
-    poipoiWithFortune: 26,
-    poipoiGeneral: 5,
-    poipoiEmpty: 2,
-    chirachiraThresholdHigh: 24,
-    zakuzakuBase: 3,
-    zakuzakuKnownPos: 11,
-    zakuzakuOppStoreColor: 6,
-    earlyOwnFortune: 26,
-    earlyCancelThreshold: 0,
-    earlyUnknownPenalty: -18,
-    midInferred: 32,
-    midOwnFortune: 25,
-    midKnownPos: 9,
-    midKnownNeg: -50,
-    midAvoidedColor: -20,
-    midUnknownPenalty: -13,
-    midCancelMult: 6,
-    laneKnownPos: 3,
-    sendKnownNegToOpp: 17,
-    forceChirachiraThreshold: 0,
-    kutakutaThresholdOffset: -5,
-    oppGuruguruCreate: 36,
-    oppChirachiraCreate: 8,
-    kutakutaLanePenalty: 12,
-    zakuzakuExposedMult: 2,
-  }),
+  // AI先手特化パラメータ（廃止: oni-sente削除のため未使用）
+  // senteStrategy: mergeParams({ ... }),
 
-  // AI後手特化（座標降下法最適化済み v3 tiebreaker対応）
-  goteStrategy: mergeParams({
-    guruguruBaseEarly: 44,
-    guruguruChainMultEarly: 3,
-    guruguruChainMult: 34,
-    guruguruFollowupMult: 1.575,
-    chirachira1st: 54,
-    chirachira2nd: 18,
-    chirachira1stMid: 55,
-    chirachira2ndMid: 19,
-    chirachira3rd: 12,
-    poipoiWithFortune: 21,
-    poipoiGeneral: 3,
-    chirachiraThresholdHigh: 26,
-    poipoiStoneKnownPos: 3,
-    zakuzakuBase: 4,
-    zakuzakuOwnFortune: 9,
-    zakuzakuKnownPos: 9,
-    earlyOwnFortune: 27,
-    midInferred: 41,
-    midKnownPos: 12,
-    midUnknownPenalty: -12,
-    midCancelMult: 8,
-    midCancelThreshold: 1,
-    laneInferred: 3,
-    sendKnownNegToOpp: 11,
-    forceChirachiraThreshold: 1,
-    oppGuruguruCreate: 16,
-    oppChirachiraCreate: 13,
-  }),
+  // AI後手特化パラメータ（廃止: oni-gote削除のため未使用）
+  // goteStrategy: mergeParams({ ... }),
 
   // 恐怖心強化: 未確定色ペナルティを大きく、マイナス色回避を最強に
   fearHeavy: mergeParams({
@@ -218,8 +155,13 @@ export const PRESETS = {
   // 改善版鬼: 2手先読み + 脅威成長ペナルティ + 気分システム
   kai: DEFAULT_PARAMS,
 
-  // selfplay進化版: 64.5% vs 鬼（sente 61.9%, gote 67.0%）
-  robo: mergeParams({
+  // ロボ: リセット済み（旧selfplay進化パラメータは保管のみ）
+  // 将来: プレイヤー操作記録をサーバーに蓄積し、機械学習で自動進化する知能変動型AI
+  // 現在はデータ不足のため導入保留 → DEFAULT_PARAMSと同等
+  robo: DEFAULT_PARAMS,
+
+  // ロボ旧パラメータ（保管用・現在は未使用）
+  roboLegacy: mergeParams({
     guruguruBaseEarly: 36,
     guruguruChainMultEarly: 20,
     guruguruBase: 134,

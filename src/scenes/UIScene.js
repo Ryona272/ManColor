@@ -1901,8 +1901,7 @@ export class UIScene extends Phaser.Scene {
         (gs.aiDifficulty === "hard" ||
           gs.aiDifficulty === "normal" ||
           gs.aiDifficulty === "oni" ||
-          gs.aiDifficulty === "oni-sente" ||
-          gs.aiDifficulty === "oni-gote");
+          gs.aiDifficulty === "robo");
       if (isSmartAi) {
         // 1. ゲーム中の観察から推測した色を優先
         if (gs._aiMemo?.inferredPlayerColor) {

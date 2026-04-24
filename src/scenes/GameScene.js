@@ -2,7 +2,13 @@ import Phaser from "phaser";
 import { GameState } from "../logic/GameState.js";
 import { roomClient } from "../net/roomClient.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
-import { pickPit as simPickPit } from "../sim/SimAI.js";
+import {
+  pickPit as simPickPit,
+  pickPitV3 as simPickPitV3,
+  decidePlacementsV3 as simDecidePlacementsV3,
+  optimizeSowOrderV3 as simOptimizeSowOrderV3,
+  updateMemo as simUpdateMemo,
+} from "../sim/SimAI.js";
 import { PRESETS, DEFAULT_PARAMS } from "../sim/SimParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
@@ -228,8 +234,6 @@ export class GameScene extends Phaser.Scene {
         hard: "強い",
         oni: "鬼",
         robo: "ロボ",
-        "oni-sente": "鬼",
-        "oni-gote": "鬼",
       };
       const diffColors = {
         easy: 0x3a9e66,
@@ -237,8 +241,6 @@ export class GameScene extends Phaser.Scene {
         hard: 0xbf4a55,
         oni: 0x4a0e6e,
         robo: 0x0d3a5e,
-        "oni-sente": 0x4a0e6e,
-        "oni-gote": 0x4a0e6e,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
       const color = diffColors[this.aiDifficulty] ?? 0x4a7bbf;
@@ -2072,14 +2074,9 @@ export class GameScene extends Phaser.Scene {
       // 強い: エキスパートAI
       return this._aiPickPitExpert(validPits, state);
     }
-    if (
-      this.aiDifficulty === "oni" ||
-      this.aiDifficulty === "oni-sente" ||
-      this.aiDifficulty === "oni-gote" ||
-      this.aiDifficulty === "robo"
-    ) {
-      // 鬼/ロボ: さらに強化された2段階上位AI
-      return this._aiPickPitOniV2(validPits, state);
+    if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
+      // 鬼/ロボ: OniV3 AI
+      return this._aiPickPitOniV3(validPits, state);
     }
     if (this.aiDifficulty === "normal") {
       // 普通: 技優先→賽壇近い順
@@ -2094,14 +2091,11 @@ export class GameScene extends Phaser.Scene {
    * 各ターン開始時に呼ばれる。
    */
   _aiUpdateMemo(state) {
-    // 相手賽壇(pit5)の一番多い色を推測占い色とする
-    const storeFreq = {};
-    for (const s of state.pits[5].stones) {
-      storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
-    }
-    const sorted = Object.entries(storeFreq).sort((a, b) => b[1] - a[1]);
-    this._aiMemo.inferredPlayerColor = sorted[0]?.[0] ?? null;
-    this._aiMemo.playerAvoidedColor = null;
+    // opp(AI)が確認済みの中央石色 = self(プレイヤー)の個人占いではない
+    const oppSeenCenter = (state.fortune?.center ?? [])
+      .filter((fc) => fc.seenBy?.includes("opp"))
+      .map((fc) => fc.color);
+    simUpdateMemo(this._aiMemo, state, oppSeenCenter);
   }
 
   /**
@@ -2286,41 +2280,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 鬼V2 AI: ちらちら情報・プレイヤー色パターン読み・プレイヤーぐるぐる連鎖破壊を統合した最強評価
-   * - ちらちらで見たプラス色を積極的に自賽壇へ収集
-   * - プレイヤーが蓄積している色を自賽壇にも入れてキャンセル（枚数比例ボーナス）
-   * - プレイヤーが避けている色（おそらくマイナス）は自賽壇に入れない
-   * - プレイヤーのぐるぐる連鎖を積極的に破壊
+   * 鬼V3 AI: 5手番先読みによるピット選択
+   * AI→Player→AI→Player→AIの順で各上余3手を列挙（3^5=243パス）
+   * AI累計スコア−Player累計スコアが最大のパスの最初の路を返す
    */
-  _aiPickPitOniV2(validPits, state) {
-    // 難易度に応じて最適化済みパラメータセットを選択
-    let params;
-    if (this.aiDifficulty === "robo") {
-      params = PRESETS.robo; // selfplay進化版
-    } else {
-      params = DEFAULT_PARAMS; // 鬼（先後手共通）
-    }
-
-    // GameScene の fortune/memo を SimAI 形式にブリッジ
+  _aiPickPitOniV3(validPits, state) {
     const fortune = {
       center: this.gameState.getState().fortune.center,
       opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
       self: { color: this.gameState.getFortuneColorForPlayer("self") },
     };
-    const memo = {
-      inferredPlayerColor: this._aiMemo.inferredPlayerColor,
-      playerAvoidedColor: this._aiMemo.playerAvoidedColor,
-    };
-    const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
 
-    return simPickPit(
-      "opp",
+    return simPickPitV3(
       validPits,
       state,
-      memo,
+      peeksDoneAI,
+      peeksDonePlayer,
       fortune,
-      peeksDone,
-      params,
     );
   }
 
@@ -2332,16 +2310,23 @@ export class GameScene extends Phaser.Scene {
    * 鬼/ロボ難易度のみ適用。
    */
   _aiOptimizeSowOrder(stones, targets) {
-    if (
-      this.aiDifficulty !== "oni" &&
-      this.aiDifficulty !== "oni-sente" &&
-      this.aiDifficulty !== "oni-gote" &&
-      this.aiDifficulty !== "robo" &&
-      this.aiDifficulty !== "hard"
-    ) {
-      return stones;
-    }
     if (stones.length <= 1) return stones;
+
+    if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
+      // V3: 全着地先に対応した石並び替え
+      const state = this.gameState.getState();
+      const fortune = {
+        center: state.fortune.center,
+        opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+        self: { color: this.gameState.getFortuneColorForPlayer("self") },
+      };
+      const memo = {
+        inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
+      };
+      return simOptimizeSowOrderV3(stones, targets, state, fortune, memo);
+    }
+
+    if (this.aiDifficulty !== "hard") return stones;
 
     const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
     const knownNeg = this._aiKnownNegativeColor();
@@ -2505,70 +2490,28 @@ export class GameScene extends Phaser.Scene {
       if (this.mode !== "placing" || this._isOnlineRoomMode()) return;
       const oppLanes = [6, 7, 8, 9, 10];
       let pitIndex;
+      let stoneIndex = 0; // デフォルト: 最初の石を配置
 
-      if (
-        this.aiDifficulty === "oni" ||
-        this.aiDifficulty === "oni-sente" ||
-        this.aiDifficulty === "oni-gote" ||
-        this.aiDifficulty === "robo"
-      ) {
-        // 鬼/ロボ: 各置き先路をスコア評価して最強の路を選ぶ
+      if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
+        // 鬼/ロボ: V3 配置 — 石の色選択も最適化
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
-        const stone = pendingNow[0];
-        const inferred = this._aiMemo?.inferredPlayerColor;
-        const playerAvoidedColor = this._aiMemo?.playerAvoidedColor;
-        const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
-        const knownNeg = this._aiKnownNegativeColor();
-        const knownPos = this._aiKnownPositiveColors();
-
-        // プレイヤーの賽壇(pit5)の各色の数（キャンセル評価用）
-        const playerStoreColorCount = {};
-        for (const s of st.pits[5].stones) {
-          playerStoreColorCount[s.color] =
-            (playerStoreColorCount[s.color] ?? 0) + 1;
+        const fortune = {
+          center: st.fortune.center,
+          opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+          self: { color: this.gameState.getFortuneColorForPlayer("self") },
+        };
+        const memo = {
+          inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
+          playerAvoidedColor: this._aiMemo?.playerAvoidedColor,
+        };
+        const placements = simDecidePlacementsV3(pendingNow, st, fortune, memo);
+        if (placements.length > 0) {
+          pitIndex = placements[0].pitIndex;
+          stoneIndex = placements[0].stoneIndex;
+        } else {
+          pitIndex = oppLanes[0];
         }
-
-        let bestP = oppLanes[0];
-        let bestS = -Infinity;
-        for (const q of oppLanes) {
-          let s = 0;
-          const newCount = st.pits[q].stones.length + 1;
-          const targetPit = (q + newCount) % 12;
-
-          // ぐるぐるセットアップ: この路から撒くとpit11に落ちる
-          if (targetPit === 11) {
-            s += 18;
-            if (ownFortune && stone?.color === ownFortune) s += 12;
-            if (inferred && stone?.color === inferred) s += 16;
-            // 鬼V2: ちらちらプラス色 → 積極的に自賽壇設定レーンへ
-            if (knownPos.includes(stone?.color)) s += 22;
-            // 鬼V2: プレイヤーの蓄積色を枚数比例でキャンセルボーナス
-            if (stone?.color) {
-              const cancelCount = playerStoreColorCount[stone.color] ?? 0;
-              s += cancelCount * 9;
-            }
-            // 否定色対策
-            if (knownNeg && stone?.color === knownNeg) {
-              const matchInPlayerStore = playerStoreColorCount[knownNeg] ?? 0;
-              if (matchInPlayerStore === 0) s -= 22;
-            }
-            // プレイヤーが避けている色: おそらくマイナス → 自賽壇設定レーンに避ける
-            if (playerAvoidedColor && stone?.color === playerAvoidedColor)
-              s -= 18;
-          }
-
-          // 空きプレイヤー路のミラーに石を積むとざくざく脅威を強化するので減点
-          const playerMirror = q - 6;
-          if (st.pits[playerMirror].stones.length === 0) s -= 8;
-          else s += 4;
-          s += Math.random() * 0.1;
-          if (s > bestS) {
-            bestS = s;
-            bestP = q;
-          }
-        }
-        pitIndex = bestP;
       } else if (this.aiDifficulty === "hard") {
         // 強い: ざくざくリスクを避けつつぐるぐるセットアップレーンを優先
         const st = this.gameState.getState();
@@ -2615,7 +2558,7 @@ export class GameScene extends Phaser.Scene {
         pitIndex = oppLanes[Math.floor(Math.random() * oppLanes.length)];
       }
 
-      this.gameState.placePendingStone(pitIndex, 0);
+      this.gameState.placePendingStone(pitIndex, stoneIndex);
       this._renderStones();
       this.scene
         .get("UIScene")
@@ -2661,12 +2604,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(900, () => {
       if (this.gameState.canUseChirachira("opp")) {
         // 鬼: ぽいぽいの方が価値が高い場合はぽいぽいを優先する
-        if (
-          this.aiDifficulty === "oni" ||
-          this.aiDifficulty === "oni-sente" ||
-          this.aiDifficulty === "oni-gote" ||
-          this.aiDifficulty === "robo"
-        ) {
+        if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           // 自陣(pit6-10)の石が少ない場合は強制解除（点数稼ぎを優先）
           const selfLaneStones = state.pits
@@ -2861,14 +2799,8 @@ export class GameScene extends Phaser.Scene {
     if (!extraTurn && this.gameState.canActivateKutakuta("opp")) {
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
-      // 鬼: 2石差まで許容して積極的にくたくた（わずかに劣勢でも発動）
-      const kutakutaThreshold =
-        this.aiDifficulty === "oni" ||
-        this.aiDifficulty === "oni-sente" ||
-        this.aiDifficulty === "oni-gote"
-          ? selfStoreCount - 6
-          : selfStoreCount;
-      if (oppStoreCount >= kutakutaThreshold) {
+      // AIの賽壇 > プレイヤーの賽壇 なら発動
+      if (oppStoreCount > selfStoreCount) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
         this.time.delayedCall(450, () =>
           this.scene.get("UIScene").showResult(),

@@ -38,3 +38,7 @@ npm.cmd run docker:run
 # Google Play Console用
 
 npm.cmd run release:bundle
+
+# git用
+
+cmd /c "cd /d C:\Users\User\OneDrive\Desktop\ManColor && npm run build && git add -A && git commit -m "update" && git push"
