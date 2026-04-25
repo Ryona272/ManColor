@@ -845,6 +845,7 @@ export function pickPitV3(
   peeksDoneAI,
   peeksDonePlayer,
   fortune,
+  maxDepth = 5,
 ) {
   // 初期pit石数（カウントのみ、高速シミュレーション用）
   const initCounts = state.pits.map((p) => p.stones.length);
@@ -910,8 +911,8 @@ export function pickPitV3(
     return { score, lastPit };
   }
 
-  // ─── 上位N手を取得 ───
-  function getTopMoves(counts, isAI, peeks, n, restrictTo) {
+  // ─── 全手を取得（選択可能な路すべてを評価）───
+  function getTopMoves(counts, isAI, peeks, restrictTo) {
     const laneMin = isAI ? 6 : 0;
     const laneMax = isAI ? 10 : 4;
     const pool =
@@ -924,9 +925,7 @@ export function pickPitV3(
       const { score } = scoreSow(counts, p, isAI, peeks);
       scored.push({ pit: p, score });
     }
-    scored.sort((a, b) => b.score - a.score);
-    // 上位n手（同スコア ties は含める、上限n）
-    return scored.slice(0, n);
+    return scored;
   }
 
   // ─── くたくた発動可能チェック ───
@@ -950,6 +949,7 @@ export function pickPitV3(
 
   function dfs(
     depth,
+    isAITurn,
     counts,
     aiPeeks,
     playerPeeks,
@@ -959,7 +959,7 @@ export function pickPitV3(
     prevAiKk,
     prevPlayerKk,
   ) {
-    if (depth === 5) {
+    if (depth === maxDepth) {
       const net = aiScore - playerScore;
       if (net > bestNet) {
         bestNet = net;
@@ -968,29 +968,19 @@ export function pickPitV3(
       return;
     }
 
-    const isAI = depth % 2 === 0; // depth 0,2,4 = AI; 1,3 = Player
+    const isAI = isAITurn;
+    const storeIndex = isAI ? 11 : 5;
     const peeks = isAI ? aiPeeks : playerPeeks;
     const oppStoreIndex = isAI ? 5 : 11;
 
-    // 手の候補（turn0のみvalidPitsに制限）
+    // 手の候補（depth===0のみvalidPitsに制限）
     const topMoves =
       depth === 0
-        ? getTopMoves(counts, true, aiPeeks, 3, validPits)
-        : getTopMoves(counts, isAI, peeks, 3, null);
+        ? getTopMoves(counts, true, aiPeeks, validPits)
+        : getTopMoves(counts, isAI, peeks, null);
 
     if (topMoves.length === 0) {
-      // 打てる手なし → この手番スキップ
-      dfs(
-        depth + 1,
-        counts,
-        aiPeeks,
-        playerPeeks,
-        aiScore,
-        playerScore,
-        firstPit,
-        prevAiKk,
-        prevPlayerKk,
-      );
+      // 打てる手なし → このブランチは評価しない
       return;
     }
 
@@ -1020,8 +1010,13 @@ export function pickPitV3(
         : playerScore + playerKkBonus;
 
       const fp = depth === 0 ? pit : firstPit;
+
+      // ぐるぐる発動時は同じプレイヤーの手番が続く
+      const nextIsAI = lastPit === storeIndex ? isAITurn : !isAITurn;
+
       dfs(
         depth + 1,
+        nextIsAI,
         newCounts,
         newAiPeeks,
         newPlayerPeeks,
@@ -1036,6 +1031,7 @@ export function pickPitV3(
 
   dfs(
     0,
+    true,
     initCounts,
     peeksDoneAI,
     peeksDonePlayer,

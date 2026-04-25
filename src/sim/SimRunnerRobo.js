@@ -344,3 +344,250 @@ export function runManyRoboVsOni(roboParams = DEFAULT_ROBO_PARAMS, n = 500) {
     oniWinPct: (oniWins / n) * 100,
   };
 }
+
+// ─── OniV3 depth 比較用ゲームループ ─────────────────────────────
+
+/**
+ * OniV3(depthSente) vs OniV3(depthGote) の1ゲームを実行
+ * sente = pit0-4, gote = pit6-10
+ * @param {number} depthSente
+ * @param {number} depthGote
+ * @returns {{ senteScore, goteScore, winner: "sente"|"gote"|"draw" }}
+ */
+export function runGameOniVsOni(depthSente, depthGote) {
+  const gs = new GameState();
+  const memoSente = createMemo();
+  const memoGote = createMemo();
+
+  let selfTurn = true;
+  let turn = 0;
+
+  while (!gs.isGameOver() && turn < MAX_TURNS) {
+    turn++;
+    const state = gs.getState();
+    const fortune = state.fortune;
+
+    // ─── sente ターン (pit0-4) ─────────────────────────────────
+    if (selfTurn) {
+      const validPits = [0, 1, 2, 3, 4].filter(
+        (i) => state.pits[i].stones.length > 0,
+      );
+      if (validPits.length === 0) {
+        selfTurn = false;
+        continue;
+      }
+
+      const selfPeeks = gs.centerPeekProgress?.self ?? 0;
+      const oppPeeks = gs.centerPeekProgress?.opp ?? 0;
+
+      const senteSeen = fortune.center
+        .filter((fc) => fc.seenBy.includes("self"))
+        .map((fc) => fc.color);
+      updateMemo(memoSente, _invertState(state), senteSeen);
+
+      // OniV3 は gote 視点固定なので反転して呼ぶ
+      const invState = _invertState(state);
+      const invFortune = _invertFortune(fortune);
+      const invPits = validPits.map((p) => p + 6);
+      const invChosen = pickPitV3(
+        invPits,
+        invState,
+        selfPeeks,
+        oppPeeks,
+        invFortune,
+        depthSente,
+      );
+      const chosen = invChosen - 6;
+
+      if (chosen < 0 || chosen > 4) {
+        selfTurn = false;
+        continue;
+      }
+
+      const sowResult = gs.sow(chosen);
+      if (!sowResult) {
+        selfTurn = false;
+        continue;
+      }
+      const lastPit = sowResult.lastPit;
+
+      const capturedSente = gs.checkCaptureForPlayer("self", lastPit);
+      if (capturedSente.length > 0) {
+        gs.startPlacement(capturedSente);
+        while (gs.isPlacementActive()) {
+          gs.placePendingStone(Math.floor(Math.random() * 5), 0);
+        }
+      }
+
+      if (lastPit === 5) continue;
+
+      if (lastPit === 11) {
+        const specialAction = decideSpecialAction(
+          gs.getState(),
+          memoSente,
+          fortune,
+          selfPeeks,
+          true,
+          "self",
+          DEFAULT_PARAMS,
+        );
+        if (specialAction.action === "chirachira")
+          gs.revealNextCenterForPlayer("self");
+        else if (specialAction.action === "poipoi")
+          gs.removeStoneFromPit(
+            specialAction.removePitIndex,
+            specialAction.removeStoneIndex,
+          );
+      }
+
+      if (gs.canActivateKutakuta("self")) {
+        const s = gs.getState().pits[5].stones.length;
+        const o = gs.getState().pits[11].stones.length;
+        if (s > o + (DEFAULT_PARAMS.kutakutaThresholdOffset ?? -6))
+          _applyKutakuta(gs, "self");
+      }
+
+      selfTurn = false;
+
+      // ─── gote ターン (pit6-10) ────────────────────────────────
+    } else {
+      const validPits = [6, 7, 8, 9, 10].filter(
+        (i) => state.pits[i].stones.length > 0,
+      );
+      if (validPits.length === 0) {
+        selfTurn = true;
+        continue;
+      }
+
+      const selfPeeks = gs.centerPeekProgress?.self ?? 0;
+      const oppPeeks = gs.centerPeekProgress?.opp ?? 0;
+
+      const goteSeen = fortune.center
+        .filter((fc) => fc.seenBy.includes("opp"))
+        .map((fc) => fc.color);
+      updateMemo(memoGote, state, goteSeen);
+
+      const chosen = pickPitV3(
+        validPits,
+        state,
+        oppPeeks,
+        selfPeeks,
+        fortune,
+        depthGote,
+      );
+
+      if (chosen < 6 || chosen > 10) {
+        selfTurn = true;
+        continue;
+      }
+
+      const pitData = state.pits[chosen];
+      if (!pitData || pitData.stones.length === 0) {
+        selfTurn = true;
+        continue;
+      }
+      const stones = [...pitData.stones];
+      pitData.stones = [];
+      let cursor = chosen;
+      for (const s of stones) {
+        cursor = (cursor + 1) % 12;
+        gs.getState().pits[cursor].stones.push(s);
+      }
+      const lastPit = cursor;
+
+      const capturedGote = gs.checkCaptureForPlayer("opp", lastPit);
+      if (capturedGote.length > 0) {
+        gs.startPlacement(capturedGote);
+        const placements = decidePlacementsV3(
+          capturedGote,
+          gs.getState(),
+          fortune,
+          memoGote,
+        );
+        for (const { pitIndex } of placements) {
+          if (!gs.isPlacementActive()) break;
+          gs.placePendingStone(pitIndex, 0);
+        }
+        while (gs.isPlacementActive())
+          gs.placePendingStone(6 + Math.floor(Math.random() * 5), 0);
+      }
+
+      if (lastPit === 11) continue;
+
+      if (lastPit === 5) {
+        const specialAction = decideSpecialAction(
+          gs.getState(),
+          memoGote,
+          fortune,
+          oppPeeks,
+          true,
+          "opp",
+          DEFAULT_PARAMS,
+        );
+        if (specialAction.action === "chirachira")
+          gs.revealNextCenterForPlayer("opp");
+        else if (specialAction.action === "poipoi")
+          gs.removeStoneFromPit(
+            specialAction.removePitIndex,
+            specialAction.removeStoneIndex,
+          );
+      }
+
+      if (gs.canActivateKutakuta("opp")) {
+        const s = gs.getState().pits[5].stones.length;
+        const o = gs.getState().pits[11].stones.length;
+        if (o > s + (DEFAULT_PARAMS.kutakutaThresholdOffset ?? -6))
+          _applyKutakuta(gs, "opp");
+      }
+
+      selfTurn = true;
+    }
+  }
+
+  const senteScore = gs.calcScore("self");
+  const goteScore = gs.calcScore("opp");
+  return {
+    senteScore,
+    goteScore,
+    winner:
+      senteScore > goteScore
+        ? "sente"
+        : senteScore < goteScore
+          ? "gote"
+          : "draw",
+  };
+}
+
+/**
+ * depthA vs depthB を n ゲーム（半数ずつ先後交代）実行して集計
+ * @returns {{ depthAWins, depthBWins, draws, depthAWinPct, depthBWinPct }}
+ */
+export function runManyOniVsOni(depthA, depthB, n = 1000) {
+  let aWins = 0,
+    bWins = 0,
+    draws = 0;
+  const half = Math.floor(n / 2);
+
+  // 前半: A=sente, B=gote
+  for (let i = 0; i < half; i++) {
+    const r = runGameOniVsOni(depthA, depthB);
+    if (r.winner === "sente") aWins++;
+    else if (r.winner === "gote") bWins++;
+    else draws++;
+  }
+  // 後半: B=sente, A=gote
+  for (let i = 0; i < n - half; i++) {
+    const r = runGameOniVsOni(depthB, depthA);
+    if (r.winner === "sente") bWins++;
+    else if (r.winner === "gote") aWins++;
+    else draws++;
+  }
+
+  return {
+    depthAWins: aWins,
+    depthBWins: bWins,
+    draws,
+    depthAWinPct: (aWins / n) * 100,
+    depthBWinPct: (bWins / n) * 100,
+  };
+}
