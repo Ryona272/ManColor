@@ -5,7 +5,7 @@
  */
 import { runManyOniVsOni } from "../src/sim/SimRunnerRobo.js";
 
-const N_GAMES = 1000;
+const N_GAMES = 500;
 const DEPTHS = [3, 4, 5];
 
 console.log(`=== OniV3 深さ比較ベンチ ===`);

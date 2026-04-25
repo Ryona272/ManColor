@@ -2340,6 +2340,7 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
+      3,
     );
   }
 

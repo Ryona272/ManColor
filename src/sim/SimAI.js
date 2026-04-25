@@ -950,6 +950,7 @@ export function pickPitV3(
   function dfs(
     depth,
     isAITurn,
+    isFirstMove,
     counts,
     aiPeeks,
     playerPeeks,
@@ -973,11 +974,10 @@ export function pickPitV3(
     const peeks = isAI ? aiPeeks : playerPeeks;
     const oppStoreIndex = isAI ? 5 : 11;
 
-    // 手の候補（depth===0のみvalidPitsに制限）
-    const topMoves =
-      depth === 0
-        ? getTopMoves(counts, true, aiPeeks, validPits)
-        : getTopMoves(counts, isAI, peeks, null);
+    // 手の候補（最初の1手のみvalidPitsに制限）
+    const topMoves = isFirstMove
+      ? getTopMoves(counts, true, aiPeeks, validPits)
+      : getTopMoves(counts, isAI, peeks, null);
 
     if (topMoves.length === 0) {
       // 打てる手なし → このブランチは評価しない
@@ -1009,28 +1009,45 @@ export function pickPitV3(
         ? playerScore + score + playerKkBonus
         : playerScore + playerKkBonus;
 
-      const fp = depth === 0 ? pit : firstPit;
+      const fp = isFirstMove ? pit : firstPit;
 
-      // ぐるぐる発動時は同じプレイヤーの手番が続く
-      const nextIsAI = lastPit === storeIndex ? isAITurn : !isAITurn;
-
-      dfs(
-        depth + 1,
-        nextIsAI,
-        newCounts,
-        newAiPeeks,
-        newPlayerPeeks,
-        newAiScore,
-        newPlayerScore,
-        fp,
-        newAiKk,
-        newPlayerKk,
-      );
+      if (lastPit === storeIndex) {
+        // ぐるぐる: depth を消費しない、同プレイヤー継続
+        dfs(
+          depth,
+          isAITurn,
+          false,
+          newCounts,
+          newAiPeeks,
+          newPlayerPeeks,
+          newAiScore,
+          newPlayerScore,
+          fp,
+          newAiKk,
+          newPlayerKk,
+        );
+      } else {
+        // 通常: depth+1、相手に交代
+        dfs(
+          depth + 1,
+          !isAITurn,
+          false,
+          newCounts,
+          newAiPeeks,
+          newPlayerPeeks,
+          newAiScore,
+          newPlayerScore,
+          fp,
+          newAiKk,
+          newPlayerKk,
+        );
+      }
     }
   }
 
   dfs(
     0,
+    true,
     true,
     initCounts,
     peeksDoneAI,
