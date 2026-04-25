@@ -235,11 +235,11 @@ export class GameScene extends Phaser.Scene {
     if (!this._isOnlineRoomMode()) {
       // ソロ対戦: AI難易度バナーを表示
       const diffLabels = {
-        easy: "弱い",
-        normal: "普通",
-        hard: "強い",
-        oni: "鬼",
-        robo: "ロボ",
+        easy: "小鬼",
+        normal: "夜叉",
+        hard: "羅刹",
+        oni: "鬼神",
+        robo: "傀儡",
       };
       const diffColors = {
         easy: 0x3a9e66,
@@ -1480,6 +1480,9 @@ export class GameScene extends Phaser.Scene {
     const stones = [...state.pits[pitIndex].stones];
     if (stones.length === 0) return;
 
+    // 千日手チェック（プレイヤーが撒く直前）
+    if (this._checkSennitteAndHandle()) return;
+
     this._clearTurnLaneGuidance();
     state.pits[pitIndex].stones = [];
     this.mode = "sowing";
@@ -2063,11 +2066,75 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // 千日手チェック（AI撒く直前）
+    if (this._checkSennitteAndHandle()) return;
+
     // 全難易度: ターン開始時に相手の意図を更新（ぽいぽい石選択に使う）
     this._aiUpdateMemo(state);
 
     const chosen = this._aiPickPit(validPits, state);
     this._aiStartSowing(chosen);
+  }
+
+  /**
+   * 千日手チェック。
+   * 0=問題なし → false を返す（呼び元は処理続行）
+   * 1=2回目 → 警告表示して操作ロック、true を返す（呼び元は中断）
+   * 2以上=3回目以降 → 引き分け強制終了、true を返す
+   */
+  _checkSennitteAndHandle() {
+    const level = this.gameState.checkSennitte();
+    if (level === 0) return false;
+
+    const ui = this.scene.get("UIScene");
+    this.mode = "sennitte-lock"; // 操作ロック
+
+    if (level >= 2) {
+      // 引き分け
+      ui.showCenterBanner("引き分け", 0x888888, "同じ局面が繰り返されました");
+      this.time.delayedCall(2500, () => {
+        this._forceDraw();
+      });
+      return true;
+    }
+
+    // 警告（1回目）
+    ui.showCenterBanner("警告", 0xff8800, "同じ操作が繰り返されました");
+    this.time.delayedCall(2500, () => {
+      ui.showCenterBanner(
+        "警告",
+        0xff4400,
+        "この操作を続けると無効試合となります",
+      );
+      this.time.delayedCall(2500, () => {
+        this.mode = "turn";
+        ui.clearCenterBanner();
+        // 操作ロック解除後にターンを戻す
+        if (!this.playerTurn) {
+          this.time.delayedCall(500, () => this._aiTurn());
+        }
+      });
+    });
+    return true;
+  }
+
+  /** 引き分け強制終了 */
+  _forceDraw() {
+    this.mode = "final-phase";
+    const ui = this.scene.get("UIScene");
+    const W = 1080,
+      H = 1920;
+
+    // 引き分け画面を表示して3秒後にホームへ
+    ui.showCenterBanner(
+      "無効試合",
+      0x666666,
+      "同じ局面が繰り返されました — 引き分け",
+    );
+    this.time.delayedCall(3000, () => {
+      this.scene.stop("UIScene");
+      this.scene.start("LobbyScene");
+    });
   }
 
   /** 難易度に応じてAIがどの路から撒くか決定する */

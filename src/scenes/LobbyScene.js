@@ -174,36 +174,36 @@ export class LobbyScene extends Phaser.Scene {
     const items = [
       {
         y: 570,
-        label: "弱い",
-        sub: "のんびり楽しめます",
+        label: "小鬼",
+        sub: "初戦にぴったりな相手",
         fill: 0x3a6e4a,
         diff: "easy",
       },
       {
         y: 760,
-        label: "普通",
-        sub: "バランスのよい相手",
+        label: "夜叉",
+        sub: "実力を見せつけよう",
         fill: 0x2e4f7a,
         diff: "normal",
       },
       {
         y: 950,
-        label: "強い",
-        sub: "手強い相手に挑戦！",
+        label: "羅刹",
+        sub: "手加減無用！全力で！",
         fill: 0x7a3f45,
         diff: "hard",
       },
       {
         y: 1140,
-        label: "鬼",
-        sub: "最強クラスの鬼AI",
+        label: "鬼神",
+        sub: "最強…　倒せるだろうか？",
         fill: 0x2a1a2e,
         diff: "oni",
       },
       {
         y: 1330,
-        label: "ロボ",
-        sub: "自己学習した進化AI",
+        label: "傀儡",
+        sub: "成長する操り人形",
         fill: 0x0d2a3e,
         diff: "robo",
       },
@@ -239,6 +239,30 @@ export class LobbyScene extends Phaser.Scene {
 
       const zone = this.add.zone(W / 2, item.y + 2, 620, 165).setInteractive();
       zone.on("pointerdown", () => {
+        // 傀儡は現在調整中
+        if (item.diff === "robo") {
+          const msg = this.add
+            .text(W / 2, 960, "🔧 傀儡は調整中です\nしばらくお待ちください", {
+              fontSize: "42px",
+              color: "#ffcc44",
+              fontFamily: DISPLAY_FONT,
+              align: "center",
+              stroke: "#000000",
+              strokeThickness: 6,
+            })
+            .setOrigin(0.5)
+            .setAlpha(0);
+          this.tweens.add({ targets: msg, alpha: 1, duration: 300 });
+          this.time.delayedCall(2200, () => {
+            this.tweens.add({
+              targets: msg,
+              alpha: 0,
+              duration: 300,
+              onComplete: () => msg.destroy(),
+            });
+          });
+          return;
+        }
         // 先後手選択サブパネルを表示
         const subObjs = [];
 

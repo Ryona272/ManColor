@@ -19,7 +19,38 @@ export class GameState {
     this.placementHistory = [];
     this.centerPeekProgress = { self: 0, opp: 0 };
     this.state.discard = [];
+    // 千日手検出
+    this._sennitteMap = new Map(); // hash → 出現回数
+    this._sennitteLastStoreTotal = -1; // 前回記録時の賽壇総石数（self+opp）
     this._initBoard();
+  }
+
+  /**
+   * 千日手検出 — 各ターン開始時（撒く前）に呼ぶ
+   * どちらかの賽壇の石数が増えたらリセット（ぽいぽいで減るのは無視）。
+   * 同数期間中に同一盤面ハッシュが出現した回数を返す。
+   * @returns {number} 0=問題なし, 1=2回目(警告), 2以上=3回目(引き分け)
+   */
+  checkSennitte() {
+    const storeTotal =
+      this.state.pits[5].stones.length + this.state.pits[11].stones.length;
+
+    // 賽壇の合計が増えた（ざくざくで石が移動した）→ 過去の記録をリセット
+    if (storeTotal > this._sennitteLastStoreTotal) {
+      this._sennitteMap.clear();
+    }
+    this._sennitteLastStoreTotal = storeTotal;
+
+    // 盤面ハッシュ: 各pitの石の色の多重集合（順序不問）をパイプ区切りで連結
+    const hash = this.state.pits
+      .map((pit) => [...pit.stones.map((s) => s.color)].sort().join(","))
+      .join("|");
+
+    const count = (this._sennitteMap.get(hash) ?? 0) + 1;
+    this._sennitteMap.set(hash, count);
+
+    // 1=初出(問題なし), 2=2回目(警告), 3以上=3回目(引き分け)
+    return count - 1; // 0=OK, 1=警告, 2=引き分け
   }
 
   /** 初期配置: 自分の路5マスに3個ずつランダム配置 → 全部表にする */

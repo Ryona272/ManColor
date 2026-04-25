@@ -50,6 +50,71 @@ function _invertFortune(fortune) {
   };
 }
 
+/**
+ * 重み付きランダムでpit選択（Robo用）
+ * 各pitに対してざくざく/ぐるぐる/ちらちら着地を優先するバイアスをかける
+ */
+function _pickPitWeighted(validPits, state, params, role) {
+  const myStore = role === "opp" ? 11 : 5;
+  const oppStore = role === "opp" ? 5 : 11;
+  const myLaneMin = role === "opp" ? 6 : 0;
+  const myLaneMax = role === "opp" ? 10 : 4;
+
+  const weights = validPits.map((pit) => {
+    const n = state.pits[pit].stones.length;
+    if (n === 0) return 0;
+    const lastPit = (pit + n) % 12;
+    let w = 1.0;
+
+    // ぐるぐる着地
+    if (lastPit === myStore) w *= params.roboGuruguruBias ?? 1;
+    // ちらちら着地
+    if (lastPit === oppStore) w *= params.roboChirachiraBias ?? 1;
+    // ざくざく着地（自陣空き路 + 鏡に石あり）
+    if (
+      lastPit >= myLaneMin &&
+      lastPit <= myLaneMax &&
+      state.pits[lastPit].stones.length === 0
+    ) {
+      const mirror = role === "opp" ? lastPit - 6 : lastPit + 6;
+      if (state.pits[mirror].stones.length > 0)
+        w *= params.roboZakuzakuBias ?? 1;
+    }
+    return w;
+  });
+
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0)
+    return validPits[Math.floor(Math.random() * validPits.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < validPits.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return validPits[i];
+  }
+  return validPits[validPits.length - 1];
+}
+
+/**
+ * ざくざく後の配置先を重み付きランダムで選ぶ（Robo用）
+ * roboPlacementGuruBias: 配置するとぐるぐるセットアップになる路を優先
+ */
+function _pickPlacementWeighted(myLaneMin, myLaneMax, myStore, state, params) {
+  const lanes = [];
+  for (let i = myLaneMin; i <= myLaneMax; i++) lanes.push(i);
+  const weights = lanes.map((pit) => {
+    const newCount = state.pits[pit].stones.length + 1;
+    const wouldGuru = (pit + newCount) % 12 === myStore;
+    return wouldGuru ? (params.roboPlacementGuruBias ?? 1) : 1.0;
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < lanes.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return lanes[i];
+  }
+  return lanes[lanes.length - 1];
+}
+
 /** くたくた発動: 指定プレイヤーの路の石を全て賽壇に移す */
 function _applyKutakuta(gs, player) {
   const laneIndexes = player === "self" ? [0, 1, 2, 3, 4] : [6, 7, 8, 9, 10];
@@ -72,6 +137,7 @@ function _applyKutakuta(gs, player) {
 export function runGameRoboVsOni(
   roboParams = DEFAULT_ROBO_PARAMS,
   roboRole = "opp",
+  oniDepth = 3,
 ) {
   const gs = new GameState();
 
@@ -85,6 +151,11 @@ export function runGameRoboVsOni(
     turn++;
     const state = gs.getState();
     const fortune = state.fortune;
+
+    // 千日手チェック（2=引き分け）
+    if (gs.checkSennitte() >= 2) {
+      return { roboScore: 0, oniScore: 0, winner: "draw" };
+    }
 
     // ─── sente ターン (pit0-4) ─────────────────────────────────
     if (selfTurn) {
@@ -107,16 +178,8 @@ export function runGameRoboVsOni(
 
       let chosen;
       if (roboRole === "self") {
-        // Robo as sente
-        chosen = pickPitRoboV1(
-          validPits,
-          state,
-          selfPeeks,
-          oppPeeks,
-          fortune,
-          roboParams,
-          "self",
-        );
+        // Robo as sente: 重み付きランダム選択
+        chosen = _pickPitWeighted(validPits, state, roboParams, "self");
       } else {
         // Oni as sente: OniV3 は "opp"(pit6-10) 視点固定なので反転
         const invState = _invertState(state);
@@ -128,6 +191,7 @@ export function runGameRoboVsOni(
           selfPeeks,
           oppPeeks,
           invFortune,
+          oniDepth,
         );
         chosen = invChosen - 6;
       }
@@ -144,12 +208,31 @@ export function runGameRoboVsOni(
       }
       const lastPit = sowResult.lastPit;
 
-      // ざくざく（sente 側: ランダム配置）
+      // ざくざく（sente 側）
       const capturedSente = gs.checkCaptureForPlayer("self", lastPit);
       if (capturedSente.length > 0) {
         gs.startPlacement(capturedSente);
+        if (roboRole === "opp") {
+          // Oni as sente: decidePlacementsV3 で戦略的配置（視点を反転して使用）
+          const invState = _invertState(gs.getState());
+          const invFortune = _invertFortune(gs.getState().fortune);
+          const invPlacements = decidePlacementsV3(
+            capturedSente,
+            invState,
+            invFortune,
+            memoSente,
+          );
+          for (const { pitIndex } of invPlacements) {
+            if (!gs.isPlacementActive()) break;
+            gs.placePendingStone(pitIndex - 6, 0);
+          }
+        }
+        // Robo as sente / 残り: 重み付き配置
         while (gs.isPlacementActive()) {
-          gs.placePendingStone(Math.floor(Math.random() * 5), 0);
+          gs.placePendingStone(
+            _pickPlacementWeighted(0, 4, 5, gs.getState(), roboParams),
+            0,
+          );
         }
       }
 
@@ -158,30 +241,47 @@ export function runGameRoboVsOni(
 
       // ちらちら/ぽいぽい (pit11 着地)
       if (lastPit === 11) {
-        const specialAction = decideSpecialAction(
-          gs.getState(),
-          memoSente,
-          fortune,
-          selfPeeks,
-          true,
-          "self",
-          DEFAULT_PARAMS,
-        );
-        if (specialAction.action === "chirachira") {
-          gs.revealNextCenterForPlayer("self");
-        } else if (specialAction.action === "poipoi") {
-          gs.removeStoneFromPit(
-            specialAction.removePitIndex,
-            specialAction.removeStoneIndex,
+        if (roboRole === "self") {
+          // Robo as sente: easy 同等 — ちらちらは常に実行（peeks<3）、尽きたらランダムぽいぽい
+          if (selfPeeks < 3) {
+            gs.revealNextCenterForPlayer("self");
+          } else {
+            // ちらちら使い切り → 相手賞壇からランダムに1個除去
+            const pit5stones = gs.getState().pits[5].stones;
+            if (pit5stones.length > 0) {
+              gs.removeStoneFromPit(
+                5,
+                Math.floor(Math.random() * pit5stones.length),
+              );
+            }
+          }
+        } else {
+          // Oni as sente: decideSpecialAction で判断
+          const specialAction = decideSpecialAction(
+            gs.getState(),
+            memoSente,
+            fortune,
+            selfPeeks,
+            true,
+            "self",
+            DEFAULT_PARAMS,
           );
+          if (specialAction.action === "chirachira") {
+            gs.revealNextCenterForPlayer("self");
+          } else if (specialAction.action === "poipoi") {
+            gs.removeStoneFromPit(
+              specialAction.removePitIndex,
+              specialAction.removeStoneIndex,
+            );
+          }
         }
       }
 
-      // くたくた
+      // くたくた (sente: easy 同等 — 自分が上回ったら発動)
       if (gs.canActivateKutakuta("self")) {
         const s = gs.getState().pits[5].stones.length;
         const o = gs.getState().pits[11].stones.length;
-        if (s > o + (DEFAULT_PARAMS.kutakutaThresholdOffset ?? -6)) {
+        if (s > o) {
           _applyKutakuta(gs, "self");
         }
       }
@@ -209,19 +309,18 @@ export function runGameRoboVsOni(
 
       let chosen;
       if (roboRole === "opp") {
-        // Robo as gote
-        chosen = pickPitRoboV1(
+        // Robo as gote: 重み付きランダム選択
+        chosen = _pickPitWeighted(validPits, state, roboParams, "opp");
+      } else {
+        // Oni as gote: 標準 opp 視点のまま
+        chosen = pickPitV3(
           validPits,
           state,
           oppPeeks,
           selfPeeks,
           fortune,
-          roboParams,
-          "opp",
+          oniDepth,
         );
-      } else {
-        // Oni as gote: 標準 opp 視点のまま
-        chosen = pickPitV3(validPits, state, oppPeeks, selfPeeks, fortune);
       }
 
       if (chosen < 6 || chosen > 10) {
@@ -244,22 +343,29 @@ export function runGameRoboVsOni(
       }
       const lastPit = cursor;
 
-      // ざくざく（gote 側: decidePlacementsV3 で戦略的配置）
+      // ざくざく（gote 側）
       const capturedGote = gs.checkCaptureForPlayer("opp", lastPit);
       if (capturedGote.length > 0) {
         gs.startPlacement(capturedGote);
-        const placements = decidePlacementsV3(
-          capturedGote,
-          gs.getState(),
-          fortune,
-          memoGote,
-        );
-        for (const { pitIndex } of placements) {
-          if (!gs.isPlacementActive()) break;
-          gs.placePendingStone(pitIndex, 0);
+        if (roboRole === "self") {
+          // Oni as gote: decidePlacementsV3 で戦略的配置
+          const placements = decidePlacementsV3(
+            capturedGote,
+            gs.getState(),
+            fortune,
+            memoGote,
+          );
+          for (const { pitIndex } of placements) {
+            if (!gs.isPlacementActive()) break;
+            gs.placePendingStone(pitIndex, 0);
+          }
         }
+        // Robo as gote / 残り: 重み付き配置
         while (gs.isPlacementActive()) {
-          gs.placePendingStone(6 + Math.floor(Math.random() * 5), 0);
+          gs.placePendingStone(
+            _pickPlacementWeighted(6, 10, 11, gs.getState(), roboParams),
+            0,
+          );
         }
       }
 
@@ -268,30 +374,47 @@ export function runGameRoboVsOni(
 
       // ちらちら/ぽいぽい (pit5 着地)
       if (lastPit === 5) {
-        const specialAction = decideSpecialAction(
-          gs.getState(),
-          memoGote,
-          fortune,
-          oppPeeks,
-          true,
-          "opp",
-          DEFAULT_PARAMS,
-        );
-        if (specialAction.action === "chirachira") {
-          gs.revealNextCenterForPlayer("opp");
-        } else if (specialAction.action === "poipoi") {
-          gs.removeStoneFromPit(
-            specialAction.removePitIndex,
-            specialAction.removeStoneIndex,
+        if (roboRole === "opp") {
+          // Robo as gote: easy 同等 — ちらちらは常に実行（peeks<3）、尽きたらランダムぽいぽい
+          if (oppPeeks < 3) {
+            gs.revealNextCenterForPlayer("opp");
+          } else {
+            // ちらちら使い切り → 相手賞壇からランダムに1個除去
+            const pit11stones = gs.getState().pits[11].stones;
+            if (pit11stones.length > 0) {
+              gs.removeStoneFromPit(
+                11,
+                Math.floor(Math.random() * pit11stones.length),
+              );
+            }
+          }
+        } else {
+          // Oni as gote: decideSpecialAction で判断
+          const specialAction = decideSpecialAction(
+            gs.getState(),
+            memoGote,
+            fortune,
+            oppPeeks,
+            true,
+            "opp",
+            DEFAULT_PARAMS,
           );
+          if (specialAction.action === "chirachira") {
+            gs.revealNextCenterForPlayer("opp");
+          } else if (specialAction.action === "poipoi") {
+            gs.removeStoneFromPit(
+              specialAction.removePitIndex,
+              specialAction.removeStoneIndex,
+            );
+          }
         }
       }
 
-      // くたくた
+      // くたくた (gote: easy 同等 — 自分が上回ったら発動)
       if (gs.canActivateKutakuta("opp")) {
         const s = gs.getState().pits[5].stones.length;
         const o = gs.getState().pits[11].stones.length;
-        if (o > s + (DEFAULT_PARAMS.kutakutaThresholdOffset ?? -6)) {
+        if (o > s) {
           _applyKutakuta(gs, "opp");
         }
       }
@@ -316,20 +439,24 @@ export function runGameRoboVsOni(
 /**
  * N ゲームを先手・後手均等に実行して集計を返す
  */
-export function runManyRoboVsOni(roboParams = DEFAULT_ROBO_PARAMS, n = 500) {
+export function runManyRoboVsOni(
+  roboParams = DEFAULT_ROBO_PARAMS,
+  n = 500,
+  oniDepth = 3,
+) {
   let roboWins = 0,
     oniWins = 0,
     draws = 0;
   const half = Math.floor(n / 2);
 
   for (let i = 0; i < half; i++) {
-    const r = runGameRoboVsOni(roboParams, "opp");
+    const r = runGameRoboVsOni(roboParams, "opp", oniDepth);
     if (r.winner === "robo") roboWins++;
     else if (r.winner === "oni") oniWins++;
     else draws++;
   }
   for (let i = 0; i < n - half; i++) {
-    const r = runGameRoboVsOni(roboParams, "self");
+    const r = runGameRoboVsOni(roboParams, "self", oniDepth);
     if (r.winner === "robo") roboWins++;
     else if (r.winner === "oni") oniWins++;
     else draws++;

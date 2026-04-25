@@ -951,6 +951,7 @@ export function pickPitV3(
     depth,
     isAITurn,
     isFirstMove,
+    chainDepth,
     counts,
     aiPeeks,
     playerPeeks,
@@ -1011,12 +1012,13 @@ export function pickPitV3(
 
       const fp = isFirstMove ? pit : firstPit;
 
-      if (lastPit === storeIndex) {
-        // ぐるぐる: depth を消費しない、同プレイヤー継続
+      if (lastPit === storeIndex && chainDepth < 10) {
+        // ぐるぐる: depth を消費しない、同プレイヤー継続（チェーン上限10）
         dfs(
           depth,
           isAITurn,
           false,
+          chainDepth + 1,
           newCounts,
           newAiPeeks,
           newPlayerPeeks,
@@ -1027,11 +1029,12 @@ export function pickPitV3(
           newPlayerKk,
         );
       } else {
-        // 通常: depth+1、相手に交代
+        // 通常 or ぐるぐる上限到達: depth+1、相手に交代
         dfs(
           depth + 1,
           !isAITurn,
           false,
+          0,
           newCounts,
           newAiPeeks,
           newPlayerPeeks,
@@ -1049,6 +1052,7 @@ export function pickPitV3(
     0,
     true,
     true,
+    0,
     initCounts,
     peeksDoneAI,
     peeksDonePlayer,

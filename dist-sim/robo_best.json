@@ -1,14 +1,10 @@
 {
-  "gen": 20,
-  "winPct": 61.9,
+  "gen": 50,
+  "winPct": 26.7,
   "params": {
-    "roboGuruguruScore": 8,
-    "roboChirachiraScore": 15,
-    "roboChirachiraNegBonus": 4,
-    "roboChirachiraLimit": 10,
-    "roboZakuzakuBase": 7,
-    "roboKutakutaBonus": 2,
-    "roboTopN": 3,
-    "roboDepth": 5
+    "roboGuruguruBias": 20,
+    "roboZakuzakuBias": 0,
+    "roboChirachiraBias": 4,
+    "roboPlacementGuruBias": 3
   }
 }
