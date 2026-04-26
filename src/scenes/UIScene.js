@@ -1,4 +1,5 @@
 import { STONE_COLORS } from "../data/constants.js";
+import { getPlayerName } from "../net/firebaseAuth.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -2351,6 +2352,13 @@ export class UIScene extends Phaser.Scene {
     this._clearResultOverlay();
     this.clearCenterBanner();
 
+    // スコアカウンターパネルを非表示
+    if (this.scoreLabelObjects) {
+      this.scoreLabelObjects.forEach((l) => {
+        if (l?.active) l.setVisible(false);
+      });
+    }
+
     const W = 1080;
     const H = 1920;
     const container = this.add.container(0, 0);
@@ -2401,17 +2409,21 @@ export class UIScene extends Phaser.Scene {
     const oppLayout = this.gameScene._getStoneLayout(11, oppStones.length);
     let delay = 0;
 
+    const selfLabel =
+      this.gameScene.selfPlayerName || getPlayerName() || "あなた";
+    const oppLabel = this.gameScene.oppPlayerName || "AI";
+
     // 合計スコアカウンター表示パネル
     const panel = this.add.graphics();
     panel.fillStyle(0x080d18, 0.88);
     panel.lineStyle(2, 0x8899bb, 0.7);
-    panel.fillRoundedRect(W / 2 - 260, H / 2 - 56, 520, 112, 18);
-    panel.strokeRoundedRect(W / 2 - 260, H / 2 - 56, 520, 112, 18);
+    panel.fillRoundedRect(W / 2 - 320, H / 2 - 60, 640, 120, 18);
+    panel.strokeRoundedRect(W / 2 - 320, H / 2 - 60, 640, 120, 18);
     panel.setDepth(DEPTH_MESSAGE);
     this.scoreLabelObjects.push(panel);
 
     const selfCounterText = this.add
-      .text(W / 2 - 100, H / 2, "あなた: 0点", {
+      .text(W / 2 - 140, H / 2, `${selfLabel}: 0点`, {
         fontSize: "34px",
         color: "#f0e68c",
         fontFamily: "sans-serif",
@@ -2423,7 +2435,7 @@ export class UIScene extends Phaser.Scene {
     this.scoreLabelObjects.push(selfCounterText);
 
     const oppCounterText = this.add
-      .text(W / 2 + 100, H / 2, "相手: 0点", {
+      .text(W / 2 + 140, H / 2, `${oppLabel}: 0点`, {
         fontSize: "34px",
         color: "#ffaaaa",
         fontFamily: "sans-serif",
@@ -2498,10 +2510,10 @@ export class UIScene extends Phaser.Scene {
         // カウンター更新
         if (isOpp) {
           oppRunning += pts;
-          oppCounterText.setText(`相手: ${oppRunning}点`);
+          oppCounterText.setText(`${oppLabel}: ${oppRunning}点`);
         } else {
           selfRunning += pts;
-          selfCounterText.setText(`あなた: ${selfRunning}点`);
+          selfCounterText.setText(`${selfLabel}: ${selfRunning}点`);
         }
       });
       delay += 180;
