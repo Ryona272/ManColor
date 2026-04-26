@@ -11,7 +11,10 @@ import {
   decidePlacementsKisinV1 as aiDecidePlacementsKisin,
   optimizeSowOrderKisinV1 as aiOptimizeSowOrderKisin,
 } from "../logic/GameAI.js";
-import { DEFAULT_ROBO_PARAMS, DEFAULT_TEST_KYUBI_PARAMS } from "../sim/SimParams.js";
+import {
+  DEFAULT_ROBO_PARAMS,
+  DEFAULT_TEST_KYUBI_PARAMS,
+} from "../sim/SimParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -2630,7 +2633,6 @@ export class GameScene extends Phaser.Scene {
               (a, b) => st.pits[b].stones.length - st.pits[a].stones.length,
             );
             pitIndex = sortedByCount[0];
-          }
           }
         }
       } else if (["oni", "kyubi", "robo", "hard"].includes(this.aiDifficulty)) {
