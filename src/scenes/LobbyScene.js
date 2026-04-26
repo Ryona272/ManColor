@@ -196,7 +196,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 1140,
         label: "鬼神",
-        sub: "最強…　倒せるだろうか？",
+        sub: "武の権化… 倒せる？",
         fill: 0x2a1a2e,
         diff: "oni",
         cx: W / 2 - 157,
@@ -205,12 +205,11 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 1140,
         label: "九尾",
-        sub: "調整中",
+        sub: "知の権化… 倒せる？",
         fill: 0x3a1a40,
         diff: "kyubi",
         cx: W / 2 + 157,
         bw: 305,
-        locked: true,
       },
       {
         y: 1330,
