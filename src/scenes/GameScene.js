@@ -1441,7 +1441,8 @@ export class GameScene extends Phaser.Scene {
       this.mode === "sowing" ||
       this.mode === "special-choice" ||
       this.mode === "kutakuta-choice" ||
-      this.mode === "final-phase"
+      this.mode === "final-phase" ||
+      this.mode === "sennitte-lock"
     ) {
       return;
     }
@@ -1642,6 +1643,8 @@ export class GameScene extends Phaser.Scene {
     if (!last) {
       // まだ1個も置いていない最初の状態なら、元の路へ戻して再選択可能にする
       if (this.sowSourcePitIndex != null && this.sowPending.length > 0) {
+        // 選択時に記録した千日手ハッシュをアンドゥ（盤面が元に戻るので）
+        this.gameState.undoSennitteCheck();
         this.gameState.getState().pits[this.sowSourcePitIndex].stones = [
           ...this.sowPending,
         ];

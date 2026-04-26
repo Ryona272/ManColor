@@ -22,6 +22,7 @@ export class GameState {
     // 千日手検出
     this._sennitteMap = new Map(); // hash → 出現回数
     this._sennitteLastStoreTotal = -1; // 前回記録時の賽壇総石数（self+opp）
+    this._sennitteLastHash = null; // 直前に記録したハッシュ（undoSennitteCheck用）
     this._initBoard();
   }
 
@@ -48,9 +49,25 @@ export class GameState {
 
     const count = (this._sennitteMap.get(hash) ?? 0) + 1;
     this._sennitteMap.set(hash, count);
+    this._sennitteLastHash = hash; // アンドゥ用に保持
 
     // 1=初出(問題なし), 2=2回目(警告), 3以上=3回目(引き分け)
     return count - 1; // 0=OK, 1=警告, 2=引き分け
+  }
+
+  /**
+   * 直前の checkSennitte() による記録を1回分取り消す。
+   * 路選択をキャンセル（戻る）した際に呼ぶ。
+   */
+  undoSennitteCheck() {
+    if (!this._sennitteLastHash) return;
+    const count = this._sennitteMap.get(this._sennitteLastHash) ?? 0;
+    if (count <= 1) {
+      this._sennitteMap.delete(this._sennitteLastHash);
+    } else {
+      this._sennitteMap.set(this._sennitteLastHash, count - 1);
+    }
+    this._sennitteLastHash = null;
   }
 
   /** 初期配置: 自分の路5マスに3個ずつランダム配置 → 全部表にする */
