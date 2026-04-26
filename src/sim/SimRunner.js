@@ -11,11 +11,11 @@
 
 import { GameState } from "../logic/GameState.js";
 import {
-  createMemo,
-  updateMemo,
-  pickPit,
-  decidePlacements,
-  decideSpecialAction,
+  createMemoV1 as createMemo,
+  updateMemoV1 as updateMemo,
+  pickPitBasicV1 as pickPit,
+  decidePlacementsBasicV1 as decidePlacements,
+  decideSpecialActionV1 as decideSpecialAction,
 } from "./SimAI.js";
 import { DEFAULT_PARAMS } from "./SimParams.js";
 

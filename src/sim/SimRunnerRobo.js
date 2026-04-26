@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SimRunnerRobo.js
  * RoboV1 vs OniV3 のヘッドレス対戦ループ（フル実装版）
  *
@@ -15,18 +15,30 @@
 
 import { GameState } from "../logic/GameState.js";
 import {
-  createMemo,
-  updateMemo,
-  pickPitV3,
-  pickPitRoboV1,
-  decidePlacementsV3,
-  decideSpecialAction,
+  createMemoV1 as createMemo,
+  updateMemoV1 as updateMemo,
+  pickPitKisinV1 as pickPitV3,
+  pickPitKugutsuV1,
+  decidePlacementsKisinV1 as decidePlacementsV3,
+  decideSpecialActionV1 as decideSpecialAction,
+  optimizeSowOrderKisinV1 as optimizeSowOrderV3,
 } from "./SimAI.js";
 import { DEFAULT_ROBO_PARAMS, DEFAULT_PARAMS } from "./SimParams.js";
 
 const MAX_TURNS = 300;
 
 // ─── ヘルパー ────────────────────────────────────────────────────
+
+/** 路インデックスから各石の着地先一覧を作成 */
+function _buildSowTargets(startPit, stoneCount) {
+  const targets = [];
+  let cursor = startPit;
+  for (let i = 0; i < stoneCount; i++) {
+    cursor = (cursor + 1) % 12;
+    targets.push(cursor);
+  }
+  return targets;
+}
 
 /** pit0-5 と pit6-11 を入れ替え（sente ↔ gote 視点変換） */
 function _invertState(state) {
@@ -201,6 +213,23 @@ export function runGameRoboVsOni(
         continue;
       }
 
+      // Oni as sente の撒き順最適化（実ゲームと同じロジック）
+      if (roboRole === "opp") {
+        const _invS = _invertState(state);
+        const _invF = _invertFortune(fortune);
+        const _tgts = _buildSowTargets(
+          chosen,
+          state.pits[chosen].stones.length,
+        );
+        state.pits[chosen].stones = optimizeSowOrderV3(
+          state.pits[chosen].stones,
+          _tgts.map((t) => (t + 6) % 12),
+          _invS,
+          _invF,
+          memoSente,
+        );
+      }
+
       const sowResult = gs.sow(chosen);
       if (!sowResult) {
         selfTurn = false;
@@ -334,7 +363,17 @@ export function runGameRoboVsOni(
         selfTurn = true;
         continue;
       }
-      const stones = [...pitData.stones];
+      // Oni as gote の撒き順最適化（実ゲームと同じロジック）
+      let stones = [...pitData.stones];
+      if (roboRole === "self") {
+        stones = optimizeSowOrderV3(
+          stones,
+          _buildSowTargets(chosen, stones.length),
+          state,
+          fortune,
+          memoGote,
+        );
+      }
       pitData.stones = [];
       let cursor = chosen;
       for (const s of stones) {
@@ -481,7 +520,12 @@ export function runManyRoboVsOni(
  * @param {number} depthGote
  * @returns {{ senteScore, goteScore, winner: "sente"|"gote"|"draw" }}
  */
-export function runGameOniVsOni(depthSente, depthGote) {
+export function runGameOniVsOni(
+  depthSente,
+  depthGote,
+  senteOpts = {},
+  goteOpts = {},
+) {
   const gs = new GameState();
   const memoSente = createMemo();
   const memoGote = createMemo();
@@ -529,6 +573,22 @@ export function runGameOniVsOni(depthSente, depthGote) {
       if (chosen < 0 || chosen > 4) {
         selfTurn = false;
         continue;
+      }
+
+      // 撒き順最適化（実ゲームと同じロジック）
+      {
+        const _tgts = _buildSowTargets(
+          chosen,
+          state.pits[chosen].stones.length,
+        );
+        state.pits[chosen].stones = optimizeSowOrderV3(
+          state.pits[chosen].stones,
+          _tgts.map((t) => (t + 6) % 12),
+          invState,
+          invFortune,
+          memoSente,
+          senteOpts,
+        );
       }
 
       const sowResult = gs.sow(chosen);
@@ -613,7 +673,15 @@ export function runGameOniVsOni(depthSente, depthGote) {
         selfTurn = true;
         continue;
       }
-      const stones = [...pitData.stones];
+      // 撒き順最適化（実ゲームと同じロジック）
+      const stones = optimizeSowOrderV3(
+        [...pitData.stones],
+        _buildSowTargets(chosen, pitData.stones.length),
+        state,
+        fortune,
+        memoGote,
+        goteOpts,
+      );
       pitData.stones = [];
       let cursor = chosen;
       for (const s of stones) {
@@ -689,7 +757,13 @@ export function runGameOniVsOni(depthSente, depthGote) {
  * depthA vs depthB を n ゲーム（半数ずつ先後交代）実行して集計
  * @returns {{ depthAWins, depthBWins, draws, depthAWinPct, depthBWinPct }}
  */
-export function runManyOniVsOni(depthA, depthB, n = 1000) {
+export function runManyOniVsOni(
+  depthA,
+  depthB,
+  n = 1000,
+  optsA = {},
+  optsB = {},
+) {
   let aWins = 0,
     bWins = 0,
     draws = 0;
@@ -697,14 +771,14 @@ export function runManyOniVsOni(depthA, depthB, n = 1000) {
 
   // 前半: A=sente, B=gote
   for (let i = 0; i < half; i++) {
-    const r = runGameOniVsOni(depthA, depthB);
+    const r = runGameOniVsOni(depthA, depthB, optsA, optsB);
     if (r.winner === "sente") aWins++;
     else if (r.winner === "gote") bWins++;
     else draws++;
   }
   // 後半: B=sente, A=gote
   for (let i = 0; i < n - half; i++) {
-    const r = runGameOniVsOni(depthB, depthA);
+    const r = runGameOniVsOni(depthB, depthA, optsB, optsA);
     if (r.winner === "sente") bWins++;
     else if (r.winner === "gote") aWins++;
     else draws++;

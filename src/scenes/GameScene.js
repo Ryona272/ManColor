@@ -1,21 +1,17 @@
-import Phaser from "phaser";
+﻿import Phaser from "phaser";
 import { GameState } from "../logic/GameState.js";
 import { roomClient } from "../net/roomClient.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
-  pickPit as simPickPit,
-  pickPitV3 as simPickPitV3,
-  pickPitHardV1 as simPickPitHardV1,
-  pickPitRoboV1 as simPickPitRoboV1,
-  decidePlacementsV3 as simDecidePlacementsV3,
-  optimizeSowOrderV3 as simOptimizeSowOrderV3,
-  updateMemo as simUpdateMemo,
-} from "../sim/SimAI.js";
-import {
-  PRESETS,
-  DEFAULT_PARAMS,
-  DEFAULT_ROBO_PARAMS,
-} from "../sim/SimParams.js";
+  updateMemoV1 as aiUpdateMemo,
+  pickPitKisinV1 as aiPickPitKisin,
+  pickPitKugutsuV1 as aiPickPitKugutsu,
+  pickPitRasetsuV1 as aiPickPitRasetsu,
+  pickPitTestKyubiV1 as aiPickPitTestKyubi,
+  decidePlacementsKisinV1 as aiDecidePlacementsKisin,
+  optimizeSowOrderKisinV1 as aiOptimizeSowOrderKisin,
+} from "../logic/GameAI.js";
+import { DEFAULT_ROBO_PARAMS, DEFAULT_TEST_KYUBI_PARAMS } from "../sim/SimParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -2148,19 +2144,27 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.aiDifficulty === "hard") {
       // 強い: HardV1（ぐるぐる・ざくざく特化、3手番先読み）
-      return this._aiPickPitHardV1(validPits, state);
+      return this._aiPickPitRasetsuV1(validPits, state);
     }
     if (this.aiDifficulty === "oni") {
-      // 鬼: OniV3 AI
-      return this._aiPickPitOniV3(validPits, state);
+      // 鬼神: OniV1 AI
+      return this._aiPickPitKisinV1(validPits, state);
+    }
+    if (this.aiDifficulty === "kyubi") {
+      // 九尾: ちらちら全力優先 + Kisin DFS
+      return this._aiPickPitKyubiV1(validPits, state);
+    }
+    if (this.aiDifficulty === "testKyubi") {
+      // testKyubi: 防御・妨害特化テスト版
+      return this._aiPickPitTestKyubiV1(validPits, state);
     }
     if (this.aiDifficulty === "robo") {
       // ロボ: RoboV1 AI（機械学習最適化パラメータ）
-      return this._aiPickPitRoboV1(validPits, state);
+      return this._aiPickPitKugutsuV1(validPits, state);
     }
     if (this.aiDifficulty === "normal") {
       // 普通: 技優先→賽壇近い順
-      return this._aiPickPitOni(validPits, state);
+      return this._aiPickPitKisin(validPits, state);
     }
     return validPits[Math.floor(Math.random() * validPits.length)];
   }
@@ -2175,7 +2179,7 @@ export class GameScene extends Phaser.Scene {
     const oppSeenCenter = (state.fortune?.center ?? [])
       .filter((fc) => fc.seenBy?.includes("opp"))
       .map((fc) => fc.color);
-    simUpdateMemo(this._aiMemo, state, oppSeenCenter);
+    aiUpdateMemo(this._aiMemo, state, oppSeenCenter);
   }
 
   /**
@@ -2311,7 +2315,7 @@ export class GameScene extends Phaser.Scene {
    * 普通 AI: 技（ぐるぐる・ざくざく）が発動できる路をランダム選択。
    * 技がなければ賽壇(pit11)に近い順に選ぶ。
    */
-  _aiPickPitOni(validPits, state) {
+  _aiPickPitKisin(validPits, state) {
     // 技が発動できる路をランダム選択
     const techPits = validPits.filter((p) => {
       const count = state.pits[p].stones.length;
@@ -2363,15 +2367,15 @@ export class GameScene extends Phaser.Scene {
    * HardV1 AI: 3手番先読み（ぐるぐる・ざくざく特化）
    * ちらちら機会があれば即選択（上限2）、それ以外はAI→Player→AIのDFS
    */
-  _aiPickPitHardV1(validPits, state) {
+  _aiPickPitRasetsuV1(validPits, state) {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
-    return simPickPitHardV1(validPits, state, peeksDoneAI);
+    return aiPickPitRasetsu(validPits, state, peeksDoneAI);
   }
 
   /**
    * RoboV1 AI: パラメータ化OniV3 (DEFAULT_ROBO_PARAMS 使用)
    */
-  _aiPickPitRoboV1(validPits, state) {
+  _aiPickPitKugutsuV1(validPits, state) {
     const fortune = {
       center: this.gameState.getState().fortune.center,
       opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
@@ -2379,7 +2383,7 @@ export class GameScene extends Phaser.Scene {
     };
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
-    return simPickPitRoboV1(
+    return aiPickPitKugutsu(
       validPits,
       state,
       peeksDoneAI,
@@ -2391,11 +2395,47 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * 九尾 AI: ちらちらを必ず3回全部実施、その後は Kisin DFS で最適手を選択
+   */
+  _aiPickPitKyubiV1(validPits, state) {
+    const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+    if (peeksDone < 3) {
+      const chirachiraPits = validPits.filter((p) => {
+        const count = state.pits[p].stones.length;
+        return (p + count) % 12 === 5;
+      });
+      if (chirachiraPits.length > 0) return chirachiraPits[0];
+    }
+    return this._aiPickPitKisinV1(validPits, state);
+  }
+
+  /**
+   * testKyubi AI: 防御・妨害特化テスト版
+   * - ちらちら初回必達（peeksDone===0 なら pit5着地を強制）
+   * - ざくざく高評価(+15)、ぐるぐる低評価(+2)
+   * - 相手ざくざくリスクにペナルティ（-12/石）
+   */
+  _aiPickPitTestKyubiV1(validPits, state) {
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
+    const fortune = this.gameState.fortune ?? null;
+    return aiPickPitTestKyubi(
+      validPits,
+      state,
+      peeksDoneAI,
+      peeksDonePlayer,
+      fortune,
+      DEFAULT_TEST_KYUBI_PARAMS,
+      4,
+    );
+  }
+
+  /**
    * 鬼V3 AI: 5手番先読みによるピット選択
    * AI→Player→AI→Player→AIの順で各上余3手を列挙（3^5=243パス）
    * AI累計スコア−Player累計スコアが最大のパスの最初の路を返す
    */
-  _aiPickPitOniV3(validPits, state) {
+  _aiPickPitKisinV1(validPits, state) {
     const fortune = {
       center: this.gameState.getState().fortune.center,
       opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
@@ -2404,7 +2444,7 @@ export class GameScene extends Phaser.Scene {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
 
-    return simPickPitV3(
+    return aiPickPitKisin(
       validPits,
       state,
       peeksDoneAI,
@@ -2418,14 +2458,18 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 撒き先が確定した後、どの石をどの穴に割り当てるか最適化する。
-   * ロボ以外の全難易度で OniV3 の石並び替えを適用。
+   * ロボ以外の全難易度で OniV1 の石並び替えを適用。
    */
-  _aiOptimizeSowOrder(stones, targets) {
+  _aiOptimizeSowOrderKisin(stones, targets) {
     if (stones.length <= 1) return stones;
 
-    if (this.aiDifficulty === "robo") return stones;
+    // 小鬼・夜叉・傀儡は石順ランダム（撒き順最適化なし）
+    if (["easy", "normal", "robo"].includes(this.aiDifficulty)) return stones;
 
-    // ロボ以外: V3の全着地先対応石並び替えを共通で使用
+    // testKyubi も Kisin 撒き順最適化を使用
+    // （easy/normal/robo はスキップ済み）
+
+    // 羅刹・鬼神・九尾: 着地先対応石並び替えを使用
     const state = this.gameState.getState();
     const fortune = {
       center: state.fortune.center,
@@ -2434,8 +2478,12 @@ export class GameScene extends Phaser.Scene {
     };
     const memo = {
       inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
+      playerAvoidedColor: this._aiMemo?.playerAvoidedColor,
     };
-    return simOptimizeSowOrderV3(stones, targets, state, fortune, memo);
+    return aiOptimizeSowOrderKisin(stones, targets, state, fortune, memo, {
+      dynamicUnknownPenalty: true,
+      unknownPenaltyScale: 30,
+    });
   }
 
   _aiStartSowing(pitIndex) {
@@ -2445,7 +2493,7 @@ export class GameScene extends Phaser.Scene {
 
     this.mode = "sowing";
     const targets = this._buildSowTargets(pitIndex, stones.length);
-    this.sowPending = this._aiOptimizeSowOrder(stones, targets);
+    this.sowPending = this._aiOptimizeSowOrderKisin(stones, targets);
     this.sowTargets = targets;
     this.sowHistory = [];
     this.sowSourcePitIndex = pitIndex;
@@ -2556,8 +2604,37 @@ export class GameScene extends Phaser.Scene {
       let pitIndex;
       let stoneIndex = 0; // デフォルト: 最初の石を配置
 
-      if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
-        // 鬼/ロボ: V3 配置 — 石の色選択も最適化
+      if (this.aiDifficulty === "testKyubi") {
+        // testKyubi: ちらちらセットアップ → ぐるぐるセットアップ → 石多い路 → Kisin
+        const st = this.gameState.getState();
+        // 優先1: ちらちらセットアップ (q+nc)%12===5 (gote→pit5着地)
+        const chirachiraSetup = oppLanes.filter((q) => {
+          const newCount = st.pits[q].stones.length + 1;
+          return (q + newCount) % 12 === 5;
+        });
+        if (chirachiraSetup.length > 0) {
+          chirachiraSetup.sort((a, b) => b - a);
+          pitIndex = chirachiraSetup[0];
+        } else {
+          // 優先2: ぐるぐるセットアップ (q+nc)%12===11 (gote→pit11着地)
+          const guruSetup = oppLanes.filter((q) => {
+            const newCount = st.pits[q].stones.length + 1;
+            return (q + newCount) % 12 === 11;
+          });
+          if (guruSetup.length > 0) {
+            guruSetup.sort((a, b) => b - a);
+            pitIndex = guruSetup[0];
+          } else {
+            // 優先3: 石が多い路に集中（ざくざく連打しやすくする）
+            const sortedByCount = [...oppLanes].sort(
+              (a, b) => st.pits[b].stones.length - st.pits[a].stones.length,
+            );
+            pitIndex = sortedByCount[0];
+          }
+          }
+        }
+      } else if (["oni", "kyubi", "robo", "hard"].includes(this.aiDifficulty)) {
+        // 鬼神/九尾/傀儡/羅刹: 石の色選択も最適化
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
         const fortune = {
@@ -2569,7 +2646,12 @@ export class GameScene extends Phaser.Scene {
           inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
           playerAvoidedColor: this._aiMemo?.playerAvoidedColor,
         };
-        const placements = simDecidePlacementsV3(pendingNow, st, fortune, memo);
+        const placements = aiDecidePlacementsKisin(
+          pendingNow,
+          st,
+          fortune,
+          memo,
+        );
         if (placements.length > 0) {
           pitIndex = placements[0].pitIndex;
           stoneIndex = placements[0].stoneIndex;
@@ -2667,7 +2749,106 @@ export class GameScene extends Phaser.Scene {
     const state = this.gameState.getState();
     this.time.delayedCall(900, () => {
       if (this.gameState.canUseChirachira("opp")) {
-        // 鬼: ぽいぽいの方が価値が高い場合はぽいぽいを優先する
+        // 九尾: ちらちらを必ず3回全部実施、その後は戦略的こびふり
+        if (this.aiDifficulty === "kyubi") {
+          const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+          if (peeksDone < 3) {
+            const revealInfo = this.gameState.revealNextCenterForPlayer("opp");
+            const VIEW_FROM_ME = ["左", "真ん中", "右"];
+            const desc = revealInfo ? 相手がを確認 : "相手が占い石を確認！";
+            this._announceTechnique("ちらちら！", 0xe87070, desc);
+            this._renderStones();
+            this.time.delayedCall(800, () => this._aiFinishTurn(false));
+            return;
+          }
+          // 3回完了後 → 戦略的こびふり（情報なくても必ず相手賽壇に手を入れる）
+          if (state.pits[5].stones.length > 0) {
+            const inferred = this._aiMemo?.inferredPlayerColor;
+            const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+            const knownNegColor = this._aiKnownNegativeColor();
+            const knownPos = this._aiKnownPositiveColors();
+            const playerSeenPositive = state.fortune.center
+              .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
+              .map((fc) => fc.color);
+            let selectedIndex = 0;
+            let highestValue = -Infinity;
+            state.pits[5].stones.forEach((stone, index) => {
+              let val = 1; // 情報なくても必ず取る
+              if (ownFortune && stone.color === ownFortune) val = 50;
+              else if (inferred && stone.color === inferred) val = 30;
+              else if (knownPos.includes(stone.color)) val = 15;
+              else if (playerSeenPositive.includes(stone.color)) val = 10;
+              if (knownNegColor && stone.color === knownNegColor) val = -99;
+              if (val > highestValue) {
+                highestValue = val;
+                selectedIndex = index;
+              }
+            });
+            if (highestValue >= 0) {
+              this.gameState.removeStoneFromPit(5, selectedIndex);
+              this._announceTechnique(
+                "こびふり！",
+                0xe87070,
+                "相手が石を一つ排除！",
+              );
+              this._renderStones();
+            } else {
+              this._aiPoipoiOwnStore(
+                state,
+                this.gameState.getFortuneColorForPlayer("opp"),
+                this._aiKnownNegativeColor(),
+                this._aiKnownPositiveColors(),
+              );
+            }
+          }
+          this.time.delayedCall(800, () => this._aiFinishTurn(false));
+          return;
+        }
+
+        // testKyubi: 常にちらちら優先（情報収集特化）、全確認後は積極こびふり
+        if (this.aiDifficulty === "testKyubi") {
+          const revealInfo = this.gameState.revealNextCenterForPlayer("opp");
+          if (revealInfo !== null) {
+            const VIEW_FROM_ME = ["左", "真ん中", "右"];
+            const desc = `相手が${VIEW_FROM_ME[revealInfo.index]}を確認`;
+            this._announceTechnique("ちらちら！", 0xe87070, desc);
+            this._renderStones();
+            this.time.delayedCall(800, () => this._aiFinishTurn(false));
+            return;
+          }
+          // センター全確認済み → 積極こびふり
+          if (state.pits[5].stones.length > 0) {
+            const inferred = this._aiMemo?.inferredPlayerColor;
+            const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+            const knownNegColor = this._aiKnownNegativeColor();
+            const knownPos = this._aiKnownPositiveColors();
+            let selectedIndex = 0;
+            let highestValue = -Infinity;
+            state.pits[5].stones.forEach((stone, index) => {
+              let val = 0;
+              if (ownFortune && stone.color === ownFortune) val = 50;
+              else if (inferred && stone.color === inferred) val = 30;
+              else if (knownPos.includes(stone.color)) val = 15;
+              if (knownNegColor && stone.color === knownNegColor) val = -99;
+              if (val > highestValue) {
+                highestValue = val;
+                selectedIndex = index;
+              }
+            });
+            if (highestValue > 0) {
+              this.gameState.removeStoneFromPit(5, selectedIndex);
+              this._announceTechnique(
+                "こびふり！",
+                0xe87070,
+                "相手が石を一つ排除！",
+              );
+              this._renderStones();
+            }
+          }
+          this.time.delayedCall(800, () => this._aiFinishTurn(false));
+          return;
+        }
+        // 鬼神/傀儡: こびふりの方が価値が高い場合はこびふりを優先する
         if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           // 自陣(pit6-10)の石が少ない場合は強制解除（点数稼ぎを優先）

@@ -1,4 +1,4 @@
-import {
+﻿import {
   getPlayerName,
   setPlayerName,
   getStoredUser,
@@ -199,6 +199,27 @@ export class LobbyScene extends Phaser.Scene {
         sub: "最強…　倒せるだろうか？",
         fill: 0x2a1a2e,
         diff: "oni",
+        cx: W / 2 - 157,
+        bw: 305,
+      },
+      {
+        y: 1140,
+        label: "九尾",
+        sub: "調整中",
+        fill: 0x3a1a40,
+        diff: "kyubi",
+        cx: W / 2 + 157,
+        bw: 305,
+        locked: true,
+      },
+      {
+        y: 1330,
+        label: "testKyubi",
+        sub: "防御・妨害テスト版",
+        fill: 0x1a2e3a,
+        diff: "testKyubi",
+        cx: W / 2 - 157,
+        bw: 305,
       },
       {
         y: 1330,
@@ -206,50 +227,75 @@ export class LobbyScene extends Phaser.Scene {
         sub: "成長する操り人形",
         fill: 0x0d2a3e,
         diff: "robo",
+        locked: true,
       },
     ];
 
     const cleanup = () => objs.forEach((o) => o.destroy());
 
     for (const item of items) {
+      const cx = item.cx ?? W / 2;
+      const bw = item.bw ?? 620;
+      const rx = cx - bw / 2;
+
       const g = this.add.graphics();
       g.fillStyle(item.fill, 0.9);
       g.lineStyle(2, 0xf2dfbe, 0.65);
-      g.fillRoundedRect(W / 2 - 310, item.y - 80, 620, 165, 22);
-      g.strokeRoundedRect(W / 2 - 310, item.y - 80, 620, 165, 22);
+      g.fillRoundedRect(rx, item.y - 80, bw, 165, 22);
+      g.strokeRoundedRect(rx, item.y - 80, bw, 165, 22);
       objs.push(g);
 
+      // 調整中バッジ
+      if (item.locked) {
+        const badge = this.add
+          .text(cx, item.y - 16, "🔧 調整中", {
+            fontSize: "28px",
+            color: "#ffcc44",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5);
+        objs.push(badge);
+      }
+
+      const labelFontSize = bw < 400 ? "52px" : "60px";
       const t1 = this.add
-        .text(W / 2, item.y - 16, item.label, {
-          fontSize: "60px",
+        .text(cx, item.locked ? item.y - 52 : item.y - 16, item.label, {
+          fontSize: labelFontSize,
           color: "#fff8e6",
           fontFamily: DISPLAY_FONT,
         })
         .setOrigin(0.5);
       objs.push(t1);
 
-      const t2 = this.add
-        .text(W / 2, item.y + 44, item.sub, {
-          fontSize: "28px",
-          color: "#d7e2f1",
-          fontFamily: UI_FONT,
-        })
-        .setOrigin(0.5);
-      objs.push(t2);
+      if (!item.locked) {
+        const t2 = this.add
+          .text(cx, item.y + 44, item.sub, {
+            fontSize: "28px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0.5);
+        objs.push(t2);
+      }
 
-      const zone = this.add.zone(W / 2, item.y + 2, 620, 165).setInteractive();
+      const zone = this.add.zone(cx, item.y + 2, bw, 165).setInteractive();
       zone.on("pointerdown", () => {
-        // 傀儡は現在調整中
-        if (item.diff === "robo") {
+        // 調整中は選択不可
+        if (item.locked) {
           const msg = this.add
-            .text(W / 2, 960, "🔧 傀儡は調整中です\nしばらくお待ちください", {
-              fontSize: "42px",
-              color: "#ffcc44",
-              fontFamily: DISPLAY_FONT,
-              align: "center",
-              stroke: "#000000",
-              strokeThickness: 6,
-            })
+            .text(
+              W / 2,
+              960,
+              `🔧 ${item.label}は調整中です\nしばらくお待ちください`,
+              {
+                fontSize: "42px",
+                color: "#ffcc44",
+                fontFamily: DISPLAY_FONT,
+                align: "center",
+                stroke: "#000000",
+                strokeThickness: 6,
+              },
+            )
             .setOrigin(0.5)
             .setAlpha(0);
           this.tweens.add({ targets: msg, alpha: 1, duration: 300 });

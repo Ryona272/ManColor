@@ -1,0 +1,29 @@
+{
+  "sweep": "final",
+  "tkWinPct": 45.13,
+  "kisinWinPct": 52.73,
+  "avgTkScore": 10.35,
+  "avgKisinScore": 13.08,
+  "params": {
+    "tkGuruguruScore": 1,
+    "tkChirachiraScore": 9,
+    "tkChirachiraOptScore": 4,
+    "tkChirachiraForce": 2,
+    "tkZakuzakuBase": 16,
+    "tkOppZakuzakuPenalty": 12,
+    "tkGuruguruBlockBonus": 8,
+    "tkOppGuruguruPenalty": 5,
+    "tkOppChirachiraPenalty": 9,
+    "tkChirachiraNegBonus": 8,
+    "tkOppChirachiraNegBonus": 8,
+    "tkTakeZakuzakuBias": 5,
+    "tkMagatamaBias": 7,
+    "tkMusubiGuruguruBias": 3,
+    "tkChirachiraSetupBias": 3,
+    "tkZakuzakuStoneBias": 2,
+    "tkPoipoiOwnFortune": 50,
+    "tkPoipoiInferred": 30,
+    "tkPoipoiKnownPos": 15,
+    "tkKutakutaBias": 1
+  }
+}

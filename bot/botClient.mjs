@@ -17,11 +17,11 @@
 
 import { WebSocket } from "ws";
 import {
-  pickPit,
-  decidePlacements,
-  decideSpecialAction,
-  createMemo,
-  updateMemo,
+  pickPitBasicV1 as pickPit,
+  decidePlacementsBasicV1 as decidePlacements,
+  decideSpecialActionV1 as decideSpecialAction,
+  createMemoV1 as createMemo,
+  updateMemoV1 as updateMemo,
 } from "../src/sim/SimAI.js";
 import { DEFAULT_PARAMS } from "../src/sim/SimParams.js";
 

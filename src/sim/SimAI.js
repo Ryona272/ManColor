@@ -1,13 +1,13 @@
-/**
+﻿/**
  * SimAI.js
- * Phaser 非依存の純粋関数 AI（GameState を直接操作）
- * GameScene の _aiPickPitOniV2 / _aiPlaceNextStone / _aiHandleSpecialChoice
- * をパラメータ化して完全移植
+ * Phaser 髱樔ｾ晏ｭ倥・邏皮ｲ矩未謨ｰ AI・・ameState 繧堤峩謗･謫堺ｽ懶ｼ・
+ * GameScene 縺ｮ _aiPickPitKisinV2 / _aiPlaceNextStone / _aiHandleSpecialChoice
+ * 繧偵ヱ繝ｩ繝｡繝ｼ繧ｿ蛹悶＠縺ｦ螳悟・遘ｻ讀・
  */
 
 import { DEFAULT_PARAMS } from "./SimParams.js";
 
-// ─── ユーティリティ ────────────────────────────────────────────
+// 笏笏笏 繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 function simulateSow(pits, pitIndex) {
   const nPits = pits.map((p) => ({ stones: [...p.stones] }));
@@ -52,7 +52,7 @@ function evalFollowupOpp(pits) {
       const depth = countGuruguruChain(p2, 11, 1);
       bonus += 10 + depth * 12;
     }
-    // 次ターンにちらちら/ぽいぽいできる路がある
+    // 谺｡繧ｿ繝ｼ繝ｳ縺ｫ縺｡繧峨■繧・縺ｽ縺・⊃縺・〒縺阪ｋ霍ｯ縺後≠繧・
     if (last === 5) {
       bonus += 14;
     }
@@ -75,7 +75,7 @@ function evalFollowupSelf(pits) {
       const depth = countGuruguruChain(p2, 5, 1);
       bonus += 10 + depth * 12;
     }
-    // 次ターンにちらちら/ぽいぽいできる路がある（AIへの脅威として計上）
+    // 谺｡繧ｿ繝ｼ繝ｳ縺ｫ縺｡繧峨■繧・縺ｽ縺・⊃縺・〒縺阪ｋ霍ｯ縺後≠繧具ｼ・I縺ｸ縺ｮ閼・ｨ√→縺励※險井ｸ奇ｼ・
     if (last === 11) {
       bonus += 14;
     }
@@ -87,12 +87,12 @@ function evalFollowupSelf(pits) {
   return bonus;
 }
 
-// ─── メモ管理 ──────────────────────────────────────────────────
+// 笏笏笏 繝｡繝｢邂｡逅・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 /**
- * プレイヤーの最善応手を予測して撒き後盤面を返す
- * ぐるぐる連鎖 > ちらちら > ざくざく の優先度でシミュレート
- * role="opp" 視点なので self（pit0-4）が相手（プレイヤー）
+ * 繝励Ξ繧､繝､繝ｼ縺ｮ譛蝟・ｿ懈焔繧剃ｺ域ｸｬ縺励※謦偵″蠕檎乢髱｢繧定ｿ斐☆
+ * 縺舌ｋ縺舌ｋ騾｣骼・> 縺｡繧峨■繧・> 縺悶￥縺悶￥ 縺ｮ蜆ｪ蜈亥ｺｦ縺ｧ繧ｷ繝溘Η繝ｬ繝ｼ繝・
+ * role="opp" 隕也せ縺ｪ縺ｮ縺ｧ self・・it0-4・峨′逶ｸ謇具ｼ医・繝ｬ繧､繝､繝ｼ・・
  */
 function predictPlayerResponse(pits) {
   let bestPit = -1;
@@ -103,20 +103,20 @@ function predictPlayerResponse(pits) {
     const last = (q + cnt) % 12;
     let s = 0;
     const { pits: p2 } = simulateSow(pits, q);
-    // ぐるぐる: 連鎖深度²で評価
+    // 縺舌ｋ縺舌ｋ: 騾｣骼匁ｷｱ蠎ｦﾂｲ縺ｧ隧穂ｾ｡
     if (last === 5) {
       const depth = countGuruguruChain(p2, 5, 1);
       s += 50 + (1 + depth) * (1 + depth) * 18;
       s += evalFollowupSelf(p2) * 1.2;
     }
-    // ちらちら準備 (pit11 着地)
+    // 縺｡繧峨■繧画ｺ門ｙ (pit11 逹蝨ｰ)
     if (last === 11) s += 36;
-    // ざくざく
+    // 縺悶￥縺悶￥
     if (last >= 0 && last <= 4 && pits[last].stones.length === 0) {
       const mirror = pits[last + 6]?.stones.length ?? 0;
       s += 15 + mirror * 4;
     }
-    // 撒き後の次手脅威
+    // 謦偵″蠕後・谺｡謇玖у螽・
     s += evalFollowupSelf(p2) * 0.4;
     if (s > bestScore) {
       bestScore = s;
@@ -127,46 +127,17 @@ function predictPlayerResponse(pits) {
   return simulateSow(pits, bestPit).pits;
 }
 
-export function createMemo() {
-  return {
-    playerColorFreq: {},
-    inferredPlayerColor: null,
-    playerAvoidedColor: null,
-  };
-}
-
-/**
- * ターン開始時にプレイヤー色傾向を更新
- * @param {string[]} excludeColors - 確定済み中央石の色（個人占いではないと確認済み）
- */
-export function updateMemo(memo, state, excludeColors = []) {
-  const storeFreq = {};
-  for (const s of state.pits[5].stones) {
-    storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
-  }
-  const laneFreq = {};
-  for (let i = 0; i < 5; i++) {
-    for (const s of state.pits[i].stones) {
-      laneFreq[s.color] = (laneFreq[s.color] ?? 0) + 1;
-    }
-  }
-  for (const [color, count] of Object.entries(storeFreq)) {
-    memo.playerColorFreq[color] =
-      (memo.playerColorFreq[color] ?? 0) + count * 3;
-  }
-  for (const [color, count] of Object.entries(laneFreq)) {
-    memo.playerColorFreq[color] = (memo.playerColorFreq[color] ?? 0) + count;
-  }
-  // 確定済み中央石の色は個人占いではない → inferredから除外
-  const sorted = Object.entries(memo.playerColorFreq)
-    .filter(([color]) => !excludeColors.includes(color))
-    .sort((a, b) => b[1] - a[1]);
-  memo.inferredPlayerColor = sorted[0]?.[0] ?? null;
-  memo.playerAvoidedColor =
-    sorted.length >= 3 ? sorted[sorted.length - 1][0] : null;
-}
-
-// ─── ちらちら・ぽいぽい知識 ────────────────────────────────────
+// ゲーム AI は src/logic/GameAI.js に分離
+export {
+  createMemoV1,
+  updateMemoV1,
+  pickPitKisinV1,
+  pickPitKugutsuV1,
+  pickPitRasetsuV1,
+  pickPitTestKyubiV1,
+  decidePlacementsKisinV1,
+  optimizeSowOrderKisinV1,
+} from "../logic/GameAI.js";
 
 function knownNegativeColor(fortune, role = "opp") {
   for (const fc of fortune.center) {
@@ -181,13 +152,13 @@ function knownPositiveColors(fortune, role = "opp") {
     .map((fc) => fc.color);
 }
 
-// ─── ピット選択（OniV2相当） ────────────────────────────────────
+// 笏笏笏 繝斐ャ繝磯∈謚橸ｼ・niV2逶ｸ蠖難ｼ・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 /**
- * role: "self"（pit0-4 → pit5）または "opp"（pit6-10 → pit11）で動かす AI
- * この実装は役割逆転も可能にするため role パラメータを受け取る
+ * role: "self"・・it0-4 竊・pit5・峨∪縺溘・ "opp"・・it6-10 竊・pit11・峨〒蜍輔°縺・AI
+ * 縺薙・螳溯｣・・蠖ｹ蜑ｲ騾・ｻ｢繧ょ庄閭ｽ縺ｫ縺吶ｋ縺溘ａ role 繝代Λ繝｡繝ｼ繧ｿ繧貞女縺大叙繧・
  */
-export function pickPit(
+export function pickPitBasicV1(
   role,
   validPits,
   state,
@@ -210,8 +181,8 @@ export function pickPit(
   const knownNeg = knownNegativeColor(fortune, role);
   const knownPos = knownPositiveColors(fortune, role);
 
-  // role に合わせた follow-up 評価関数を選択
-  // evalFollowupOpp = pit6-10視点、evalFollowupSelf = pit0-4視点
+  // role 縺ｫ蜷医ｏ縺帙◆ follow-up 隧穂ｾ｡髢｢謨ｰ繧帝∈謚・
+  // evalFollowupOpp = pit6-10隕也せ縲‘valFollowupSelf = pit0-4隕也せ
   const evalOwnFollowup = isOpp ? evalFollowupOpp : evalFollowupSelf;
   const evalOppThreat = isOpp ? evalFollowupSelf : evalFollowupOpp;
 
@@ -233,7 +204,7 @@ export function pickPit(
     return cnt > 0 && (q + cnt) % 12 === oppStoreIndex;
   }).length;
 
-  // ちらちら被弾数（撒く前）: 相手路のうち自賽壇に着地できる穴の数
+  // 縺｡繧峨■繧芽｢ｫ蠑ｾ謨ｰ・域鋳縺丞燕・・ 逶ｸ謇玖ｷｯ縺ｮ縺・■閾ｪ雉ｽ螢・↓逹蝨ｰ縺ｧ縺阪ｋ遨ｴ縺ｮ謨ｰ
   const chirachiraNow = Array.from(
     { length: oppLaneMax - oppLaneMin + 1 },
     (_, i) => oppLaneMin + i,
@@ -242,7 +213,7 @@ export function pickPit(
     return cnt > 0 && (q + cnt) % 12 === storeIndex;
   }).length;
 
-  // 自分のちらちら準備数（撒く前）: 自路のうちpit5（相手賽壇）に着地できる穴の数
+  // 閾ｪ蛻・・縺｡繧峨■繧画ｺ門ｙ謨ｰ・域鋳縺丞燕・・ 閾ｪ霍ｯ縺ｮ縺・■pit5・育嶌謇玖ｳｽ螢・ｼ峨↓逹蝨ｰ縺ｧ縺阪ｋ遨ｴ縺ｮ謨ｰ
   const ownChirachiraNow = Array.from(
     { length: laneMax - laneMin + 1 },
     (_, i) => laneMin + i,
@@ -251,7 +222,7 @@ export function pickPit(
     return cnt > 0 && (q + cnt) % 12 === oppStoreIndex;
   }).length;
 
-  // くたくた発動判定: 相手路の色を2色以下に整理している + 賽壇差条件を満たす場合に発動リスクあり
+  // 縺上◆縺上◆逋ｺ蜍募愛螳・ 逶ｸ謇玖ｷｯ縺ｮ濶ｲ繧・濶ｲ莉･荳九↓謨ｴ逅・＠縺ｦ縺・ｋ + 雉ｽ螢・ｷｮ譚｡莉ｶ繧呈ｺ縺溘☆蝣ｴ蜷医↓逋ｺ蜍輔Μ繧ｹ繧ｯ縺ゅｊ
   const playerLaneColors = new Set();
   for (let q = oppLaneMin; q <= oppLaneMax; q++) {
     for (const s of state.pits[q].stones) playerLaneColors.add(s.color);
@@ -264,26 +235,26 @@ export function pickPit(
     playerLaneConsolidated &&
     playerStoreNow > aiStoreNow + (params.kutakutaThresholdOffset ?? -6);
 
-  // 両賽壇合計石数チェック: 7個以上ならちらちらを諦めてぐるぐる専念
+  // 荳｡雉ｽ螢・粋險育浹謨ｰ繝√ぉ繝・け: 7蛟倶ｻ･荳翫↑繧峨■繧峨■繧峨ｒ隲ｦ繧√※縺舌ｋ縺舌ｋ蟆ょｿｵ
   const totalSaidanStones = aiStoreNow + playerStoreNow;
   const chirachiraAbandoned =
     totalSaidanStones >= (params.saidanAbandonThreshold ?? 7);
 
-  // 序盤フラグ
+  // 蠎冗乢繝輔Λ繧ｰ
   const isEarlyGame =
     peeksDone < params.earlyGamePeekThreshold &&
     !inferred &&
     knownPos.length === 0;
 
-  // ─── 気分（ターンごとのランダム重み: 心理戦用）───
-  // 占い色重視度を毎ターンゆらがせる → 行動パターンが読まれにくい
+  // 笏笏笏 豌怜・・医ち繝ｼ繝ｳ縺斐→縺ｮ繝ｩ繝ｳ繝繝驥阪∩: 蠢・炊謌ｦ逕ｨ・俄楳笏笏
+  // 蜊縺・牡驥崎ｦ門ｺｦ繧呈ｯ弱ち繝ｼ繝ｳ繧・ｉ縺後○繧・竊・陦悟虚繝代ち繝ｼ繝ｳ縺瑚ｪｭ縺ｾ繧後↓縺上＞
   const moodRoll = Math.random();
-  // fortune意識度: 0.3（今回は敢え無視 = ブラフ・躺増）～ 1.7（強く重視 = 安全路密著）
+  // fortune諢剰ｭ伜ｺｦ: 0.3・井ｻ雁屓縺ｯ謨｢縺育┌隕・= 繝悶Λ繝輔・霄ｺ蠅暦ｼ会ｽ・1.7・亥ｼｷ縺城㍾隕・= 螳牙・霍ｯ蟇・送・・
   const moodFortuneMult = 0.3 + moodRoll * 1.4;
-  // 賽壇着地の自占い色ボーナス用: 下限0.85（ブラフ時でも基本的に自占い色は賽壇に入れる）
+  // 雉ｽ螢・捩蝨ｰ縺ｮ閾ｪ蜊縺・牡繝懊・繝翫せ逕ｨ: 荳矩剞0.85・医ヶ繝ｩ繝墓凾縺ｧ繧ょ渕譛ｬ逧・↓閾ｪ蜊縺・牡縺ｯ雉ｽ螢・↓蜈･繧後ｋ・・
   const moodFortuneStoreMult = Math.max(0.85, moodFortuneMult);
-  // 占い重視度が高いときは序盤グルグルベースを微縮してfortune路が屏に入りやすくする
-  // （moodFortuneMult=1.7→約-21%、=1.0→変化なし、<1.0→変化なし）
+  // 蜊縺・㍾隕門ｺｦ縺碁ｫ倥＞縺ｨ縺阪・蠎冗乢繧ｰ繝ｫ繧ｰ繝ｫ繝吶・繧ｹ繧貞ｾｮ邵ｮ縺励※fortune霍ｯ縺悟ｱ上↓蜈･繧翫ｄ縺吶￥縺吶ｋ
+  // ・・oodFortuneMult=1.7竊堤ｴ・21%縲・1.0竊貞､牙喧縺ｪ縺励・1.0竊貞､牙喧縺ｪ縺暦ｼ・
   const moodGuruguruMult = isEarlyGame
     ? 1.0 - Math.max(0, moodFortuneMult - 1.0) * 0.3
     : 1.0;
@@ -292,7 +263,7 @@ export function pickPit(
   let bestScore = -Infinity;
   const pitScores = [];
 
-  // 全手共通: 撒く前のプレイヤー脅威度ベースライン
+  // 蜈ｨ謇句・騾・ 謦偵￥蜑阪・繝励Ξ繧､繝､繝ｼ閼・ｨ∝ｺｦ繝吶・繧ｹ繝ｩ繧､繝ｳ
   const basePlayerThreat = evalOppThreat(state.pits);
 
   for (const p of validPits) {
@@ -303,26 +274,26 @@ export function pickPit(
 
     const { pits: pitsAfter } = simulateSow(state.pits, p);
 
-    // ─── 2手先読み: プレイヤーの最善応手後の盤面を評価 ───
+    // 笏笏笏 2謇句・隱ｭ縺ｿ: 繝励Ξ繧､繝､繝ｼ縺ｮ譛蝟・ｿ懈焔蠕後・逶､髱｢繧定ｩ穂ｾ｡ 笏笏笏
     const pitsAfterResponse = predictPlayerResponse(pitsAfter);
-    // 応手後にAIが取れる行動の質
+    // 蠢懈焔蠕後↓AI縺悟叙繧後ｋ陦悟虚縺ｮ雉ｪ
     const lookaheadOwnThreat = evalOwnFollowup(pitsAfterResponse);
-    // 応手後にプレイヤーが取れる行動の質（2手先の脅威）
+    // 蠢懈焔蠕後↓繝励Ξ繧､繝､繝ｼ縺悟叙繧後ｋ陦悟虚縺ｮ雉ｪ・・謇句・縺ｮ閼・ｨ・ｼ・
     const lookaheadPlayerThreat = evalOppThreat(pitsAfterResponse);
     score += lookaheadOwnThreat * (params.lookaheadOwnMult ?? 0.35);
     score -= lookaheadPlayerThreat * (params.lookaheadPlayerMult ?? 0.55);
 
-    // ─── 全手共通: 撒いた後のプレイヤー脅威増加を硬ペナルティとして適用───
-    // 通常手で相手路に石が流れ込んでグルグル連鎖が増える場合も送んない
+    // 笏笏笏 蜈ｨ謇句・騾・ 謦偵＞縺溷ｾ後・繝励Ξ繧､繝､繝ｼ閼・ｨ∝｢怜刈繧堤｡ｬ繝壹リ繝ｫ繝・ぅ縺ｨ縺励※驕ｩ逕ｨ笏笏笏
+    // 騾壼ｸｸ謇九〒逶ｸ謇玖ｷｯ縺ｫ遏ｳ縺梧ｵ√ｌ霎ｼ繧薙〒繧ｰ繝ｫ繧ｰ繝ｫ騾｣骼悶′蠅励∴繧句ｴ蜷医ｂ騾√ｓ縺ｪ縺・
     const playerThreatAfter = evalOppThreat(pitsAfter);
     {
       const threatGrowth = playerThreatAfter - basePlayerThreat;
       if (threatGrowth > 0)
         score -= threatGrowth * (params.playerThreatGrowthMult ?? 1.0);
     }
-    // ─── プレイヤーぐるぐる変化（破壊ボーナス）───
-    // 自分がぐるぐるする手（lastPit===storeIndex）では生成ペナルティを無効化：
-    // ぐるぐる > 妨害 の優先順位を維持する
+    // 笏笏笏 繝励Ξ繧､繝､繝ｼ縺舌ｋ縺舌ｋ螟牙喧・育ｴ螢翫・繝ｼ繝翫せ・俄楳笏笏
+    // 閾ｪ蛻・′縺舌ｋ縺舌ｋ縺吶ｋ謇具ｼ・astPit===storeIndex・峨〒縺ｯ逕滓・繝壹リ繝ｫ繝・ぅ繧堤┌蜉ｹ蛹厄ｼ・
+    // 縺舌ｋ縺舌ｋ > 螯ｨ螳ｳ 縺ｮ蜆ｪ蜈磯・ｽ阪ｒ邯ｭ謖√☆繧・
     {
       let playerGuruguruAfter = 0;
       for (let q = oppLaneMin; q <= oppLaneMax; q++) {
@@ -331,10 +302,10 @@ export function pickPit(
       }
       const disrupted = playerGuruguruNow - playerGuruguruAfter;
       if (disrupted > 0) score += disrupted * params.guruguruDisrupt;
-      // 新規ぐるぐる倉の増加は playerThreatGrowth で聖流負担済み
+      // 譁ｰ隕上＄繧九＄繧句峨・蠅怜刈縺ｯ playerThreatGrowth 縺ｧ閨匁ｵ∬ｲ諡・ｸ医∩
     }
 
-    // ─── ちらちら被弾防止（撒いた後に増えた被弾可能穴をペナルティ）───
+    // 笏笏笏 縺｡繧峨■繧芽｢ｫ蠑ｾ髦ｲ豁｢・域鋳縺・◆蠕後↓蠅励∴縺溯｢ｫ蠑ｾ蜿ｯ閭ｽ遨ｴ繧偵・繝翫Ν繝・ぅ・俄楳笏笏
     {
       let chirachiraAfter = 0;
       for (let q = oppLaneMin; q <= oppLaneMax; q++) {
@@ -346,9 +317,9 @@ export function pickPit(
         defPenalty -= newChirachira * (params.oppChirachiraCreate ?? 12);
     }
 
-    // ─── 自分のちらちら準備破壊防止（撒いた結果ちらちら狙い路が崩れたらペナルティ）───
-    // lastPit === oppStoreIndex の手は意図的な使用なので免除
-    // chirachiraAbandoned かつ peeks済み2回以上 → ちらちら諦め済みなのでペナルティ不要
+    // 笏笏笏 閾ｪ蛻・・縺｡繧峨■繧画ｺ門ｙ遐ｴ螢企亟豁｢・域鋳縺・◆邨先棡縺｡繧峨■繧臥漁縺・ｷｯ縺悟ｴｩ繧後◆繧峨・繝翫Ν繝・ぅ・俄楳笏笏
+    // lastPit === oppStoreIndex 縺ｮ謇九・諢丞峙逧・↑菴ｿ逕ｨ縺ｪ縺ｮ縺ｧ蜈埼勁
+    // chirachiraAbandoned 縺九▽ peeks貂医∩2蝗樔ｻ･荳・竊・縺｡繧峨■繧芽ｫｦ繧∵ｸ医∩縺ｪ縺ｮ縺ｧ繝壹リ繝ｫ繝・ぅ荳崎ｦ・
     if (lastPit !== oppStoreIndex && !(chirachiraAbandoned && peeksDone >= 2)) {
       let ownChirachiraAfter = 0;
       for (let q = laneMin; q <= laneMax; q++) {
@@ -359,7 +330,7 @@ export function pickPit(
       if (lost > 0) defPenalty -= lost * (params.ownChirachiraLost ?? 20);
     }
 
-    // ─── くたくた妨害（相手がくたくた発動可能なら相手路への着地を避ける）───
+    // 笏笏笏 縺上◆縺上◆螯ｨ螳ｳ・育嶌謇九′縺上◆縺上◆逋ｺ蜍募庄閭ｽ縺ｪ繧臥嶌謇玖ｷｯ縺ｸ縺ｮ逹蝨ｰ繧帝∩縺代ｋ・俄楳笏笏
     if (playerCanKutakuta) {
       for (let i = 0; i < count; i++) {
         const landingPit = (p + 1 + i) % 12;
@@ -369,7 +340,7 @@ export function pickPit(
       }
     }
 
-    // ─── ぐるぐる ───
+    // 笏笏笏 縺舌ｋ縺舌ｋ 笏笏笏
     if (lastPit === storeIndex) {
       const chainCount = countGuruguruChain(pitsAfter, storeIndex);
       if (isEarlyGame) {
@@ -392,10 +363,10 @@ export function pickPit(
       if (colorsAfter.size <= 2 && colorsAfter.size > 0) score += 18;
     }
 
-    // ─── pit5着地（ちらちら/ぽいぽい）───
+    // 笏笏笏 pit5逹蝨ｰ・医■繧峨■繧・縺ｽ縺・⊃縺・ｼ俄楳笏笏
     if (lastPit === oppStoreIndex) {
-      // 両賽壇合計7個以上かつ2回済み → ちらちら完全放棄・ぽいぽいのみ
-      // ※ peeksDone < 2 の場合は「たまたま着地」でもちらちらを実行する（上限2回）
+      // 荳｡雉ｽ螢・粋險・蛟倶ｻ･荳翫°縺､2蝗樊ｸ医∩ 竊・縺｡繧峨■繧牙ｮ悟・謾ｾ譽・・縺ｽ縺・⊃縺・・縺ｿ
+      // 窶ｻ peeksDone < 2 縺ｮ蝣ｴ蜷医・縲後◆縺ｾ縺溘∪逹蝨ｰ縲阪〒繧ゅ■繧峨■繧峨ｒ螳溯｡後☆繧具ｼ井ｸ企剞2蝗橸ｼ・
       if (chirachiraAbandoned && peeksDone >= 2) {
         const playerStoreHasFortune =
           inferred &&
@@ -426,7 +397,7 @@ export function pickPit(
       }
     }
 
-    // ─── ざくざく ───
+    // 笏笏笏 縺悶￥縺悶￥ 笏笏笏
     if (
       lastPit >= laneMin &&
       lastPit <= laneMax &&
@@ -442,10 +413,10 @@ export function pickPit(
       for (const s of mirrorStones) {
         if (ownFortune && s.color === ownFortune)
           score += params.zakuzakuOwnFortune;
-        // 相手の推定占い色（+3石）を奪う
+        // 逶ｸ謇九・謗ｨ螳壼頃縺・牡・・3遏ｳ・峨ｒ螂ｪ縺・
         if (inferred && s.color === inferred) score += params.zakuzakuInferred;
         if (knownPos.includes(s.color)) score += params.zakuzakuKnownPos;
-        // 相手賽壇に既にある色の石を奪う（相手の戦略否定）
+        // 逶ｸ謇玖ｳｽ螢・↓譌｢縺ｫ縺ゅｋ濶ｲ縺ｮ遏ｳ繧貞･ｪ縺・ｼ育嶌謇九・謌ｦ逡･蜷ｦ螳夲ｼ・
         if (oppStoreColorSet.has(s.color))
           score += params.zakuzakuOppStoreColor ?? 5;
       }
@@ -454,12 +425,12 @@ export function pickPit(
       score -= evalOppThreat(pitsAfter) * playerThreatMult;
     }
 
-    // ─── ざくざく防御（撒き元の鏡穴に石があれば非線形ペナルティ）───
+    // 笏笏笏 縺悶￥縺悶￥髦ｲ蠕｡・域鋳縺榊・縺ｮ髀｡遨ｴ縺ｫ遏ｳ縺後≠繧後・髱樒ｷ壼ｽ｢繝壹リ繝ｫ繝・ぅ・俄楳笏笏
     if (lastPit !== oppStoreIndex) {
       const playerMirrorOfP = isOpp ? p - 6 : p + 6;
       if (state.pits[playerMirrorOfP].stones.length > 0) {
         const c = state.pits[playerMirrorOfP].stones.length;
-        // 非線形: 1→-13, 2→-20, 3→-31, 4→-46, 5→-65
+        // 髱樒ｷ壼ｽ｢: 1竊・13, 2竊・20, 3竊・31, 4竊・46, 5竊・65
         score -= 10 + c * c * 2 + c;
         if (inferred) {
           const inferredHere = state.pits[playerMirrorOfP].stones.filter(
@@ -470,14 +441,14 @@ export function pickPit(
       }
     }
 
-    // ─── 石の着地先が相手空き路のミラー → 被ざくざくリスク（石数考慮）───
+    // 笏笏笏 遏ｳ縺ｮ逹蝨ｰ蜈医′逶ｸ謇狗ｩｺ縺崎ｷｯ縺ｮ繝溘Λ繝ｼ 竊・陲ｫ縺悶￥縺悶￥繝ｪ繧ｹ繧ｯ・育浹謨ｰ閠・・・俄楳笏笏
     for (let i = 0; i < count; i++) {
       const landingPit = (p + 1 + i) % 12;
       if (landingPit >= laneMin && landingPit <= laneMax) {
         const landedMirrorPlayer = isOpp ? landingPit - 6 : landingPit + 6;
         if (emptyPlayerPits.has(landedMirrorPlayer)) {
           const stonesInPit = pitsAfter[landingPit].stones.length;
-          // 3石以上で急増: 1→-10, 2→-12, 3→-25, 4→-44, 5→-69
+          // 3遏ｳ莉･荳翫〒諤･蠅・ 1竊・10, 2竊・12, 3竊・25, 4竊・44, 5竊・69
           score -=
             stonesInPit >= 3
               ? stonesInPit * stonesInPit * 3 - 2
@@ -486,21 +457,21 @@ export function pickPit(
       }
     }
 
-    // ─── 被ざくざく露出（撒き後に即取られ可能な高石穴）───
-    // 自陣に石が多くて相手の対応穴が空 → 相手は次の手番で即座にざくざく可能
+    // 笏笏笏 陲ｫ縺悶￥縺悶￥髴ｲ蜃ｺ・域鋳縺榊ｾ後↓蜊ｳ蜿悶ｉ繧悟庄閭ｽ縺ｪ鬮倡浹遨ｴ・俄楳笏笏
+    // 閾ｪ髯｣縺ｫ遏ｳ縺悟､壹￥縺ｦ逶ｸ謇九・蟇ｾ蠢懃ｩｴ縺檎ｩｺ 竊・逶ｸ謇九・谺｡縺ｮ謇狗分縺ｧ蜊ｳ蠎ｧ縺ｫ縺悶￥縺悶￥蜿ｯ閭ｽ
     for (let q = laneMin; q <= laneMax; q++) {
       const exposed = pitsAfter[q].stones.length;
-      if (exposed < 3) continue; // 3石未満は安全圏
+      if (exposed < 3) continue; // 3遏ｳ譛ｪ貅縺ｯ螳牙・蝨・
       const playerMirror = isOpp ? q - 6 : q + 6;
       if (pitsAfter[playerMirror].stones.length === 0) {
-        // 石数^2 乗数: 3→-39, 4→-60, 5→-87, 6→-120
+        // 遏ｳ謨ｰ^2 荵玲焚: 3竊・39, 4竊・60, 5竊・87, 6竊・120
         defPenalty -=
           (params.zakuzakuExposedBase ?? 12) +
           exposed * exposed * (params.zakuzakuExposedMult ?? 3);
       }
     }
 
-    // ─── 路の色品質評価（知識ベース: 占い/推測/確定情報を活用）───
+    // 笏笏笏 霍ｯ縺ｮ濶ｲ蜩∬ｳｪ隧穂ｾ｡・育衍隴倥・繝ｼ繧ｹ: 蜊縺・謗ｨ貂ｬ/遒ｺ螳壽ュ蝣ｱ繧呈ｴｻ逕ｨ・俄楳笏笏
     for (const s of state.pits[p].stones) {
       if (ownFortune && s.color === ownFortune)
         score += (params.pitColorOwnFortune ?? 2) * moodFortuneMult;
@@ -509,7 +480,7 @@ export function pickPit(
       if (knownPos.includes(s.color)) score += params.pitColorKnownPos ?? 1.5;
       if (knownNeg && s.color === knownNeg)
         score -= params.pitColorKnownNeg ?? 6;
-      // ownFortune / knownPos が確定している色は playerAvoidedColor で上書きしない
+      // ownFortune / knownPos 縺檎｢ｺ螳壹＠縺ｦ縺・ｋ濶ｲ縺ｯ playerAvoidedColor 縺ｧ荳頑嶌縺阪＠縺ｪ縺・
       if (
         playerAvoidedColor &&
         s.color === playerAvoidedColor &&
@@ -519,7 +490,7 @@ export function pickPit(
         score -= params.pitColorAvoided ?? 3;
     }
 
-    // ─── 石の色評価 ───
+    // 笏笏笏 遏ｳ縺ｮ濶ｲ隧穂ｾ｡ 笏笏笏
     for (let i = 0; i < count; i++) {
       const landingPit = (p + 1 + i) % 12;
       const stoneColor = state.pits[p].stones[i]?.color;
@@ -547,7 +518,7 @@ export function pickPit(
           )
             score += cancelCount * params.midCancelMult;
           if (knownNeg && stoneColor === knownNeg) score += params.midKnownNeg;
-          // ownFortune / knownPos が確定している色は playerAvoidedColor で上書きしない
+          // ownFortune / knownPos 縺檎｢ｺ螳壹＠縺ｦ縺・ｋ濶ｲ縺ｯ playerAvoidedColor 縺ｧ荳頑嶌縺阪＠縺ｪ縺・
           if (
             playerAvoidedColor &&
             stoneColor === playerAvoidedColor &&
@@ -564,7 +535,7 @@ export function pickPit(
         }
       }
 
-      // 相手賽壇に推測占い色・ちらちらプラス色が流れ込まないようにする
+      // 逶ｸ謇玖ｳｽ螢・↓謗ｨ貂ｬ蜊縺・牡繝ｻ縺｡繧峨■繧峨・繝ｩ繧ｹ濶ｲ縺梧ｵ√ｌ霎ｼ縺ｾ縺ｪ縺・ｈ縺・↓縺吶ｋ
       if (inferred && stoneColor === inferred && landingPit === oppStoreIndex)
         score -= 20;
       if (knownPos.includes(stoneColor) && landingPit === oppStoreIndex)
@@ -576,7 +547,7 @@ export function pickPit(
       )
         score -= 6;
 
-      // 自路に着地する石の色評価（将来の賽壇入り品質）
+      // 閾ｪ霍ｯ縺ｫ逹蝨ｰ縺吶ｋ遏ｳ縺ｮ濶ｲ隧穂ｾ｡・亥ｰ・擂縺ｮ雉ｽ螢・・繧雁刀雉ｪ・・
       if (landingPit >= laneMin && landingPit <= laneMax) {
         if (ownFortune && stoneColor === ownFortune)
           score += params.laneOwnFortune ?? 3;
@@ -584,11 +555,11 @@ export function pickPit(
           score += params.laneInferred ?? 4;
         else if (knownPos.includes(stoneColor))
           score += params.laneKnownPos ?? 2;
-        // 確定マイナス石が自路に残ると将来-3点確定
+        // 遒ｺ螳壹・繧､繝翫せ遏ｳ縺瑚・霍ｯ縺ｫ谿九ｋ縺ｨ蟆・擂-3轤ｹ遒ｺ螳・
         if (knownNeg && stoneColor === knownNeg)
           score -= params.laneKnownNegPenalty ?? 8;
-        // 相手が避けている色（推定マイナス）を自路に貯めない
-        // ただし ownFortune / knownPos で確定済みなら上書きしない
+        // 逶ｸ謇九′驕ｿ縺代※縺・ｋ濶ｲ・域耳螳壹・繧､繝翫せ・峨ｒ閾ｪ霍ｯ縺ｫ雋ｯ繧√↑縺・
+        // 縺溘□縺・ownFortune / knownPos 縺ｧ遒ｺ螳壽ｸ医∩縺ｪ繧我ｸ頑嶌縺阪＠縺ｪ縺・
         if (
           playerAvoidedColor &&
           stoneColor === playerAvoidedColor &&
@@ -598,7 +569,7 @@ export function pickPit(
           score -= params.laneAvoidedPenalty ?? 5;
       }
 
-      // 確定マイナス石を相手路・相手賽壇に送り込めたらボーナス
+      // 遒ｺ螳壹・繧､繝翫せ遏ｳ繧堤嶌謇玖ｷｯ繝ｻ逶ｸ謇玖ｳｽ螢・↓騾√ｊ霎ｼ繧√◆繧峨・繝ｼ繝翫せ
       if (
         knownNeg &&
         stoneColor === knownNeg &&
@@ -613,8 +584,8 @@ export function pickPit(
     pitScores.push({ pit: p, score, defPenalty });
   }
 
-  // 防御ペナルティはタイブレーカーとしてのみ適用:
-  // 最良攻撃スコアから window 以内の手にのみ defPenalty を加算して最終選択
+  // 髦ｲ蠕｡繝壹リ繝ｫ繝・ぅ縺ｯ繧ｿ繧､繝悶Ξ繝ｼ繧ｫ繝ｼ縺ｨ縺励※縺ｮ縺ｿ驕ｩ逕ｨ:
+  // 譛濶ｯ謾ｻ謦・せ繧ｳ繧｢縺九ｉ window 莉･蜀・・謇九↓縺ｮ縺ｿ defPenalty 繧貞刈邂励＠縺ｦ譛邨る∈謚・
   const _maxOff = Math.max(...pitScores.map((x) => x.score));
   const _window = params.defensiveTiebreakWindow ?? 8;
   for (const { pit, score: os, defPenalty: dp } of pitScores) {
@@ -629,11 +600,11 @@ export function pickPit(
 }
 
 /**
- * ざくざく後の石配置（ヘッドレス版）
- * 手持ち stones を oppLanes（6-10）に最適配置して返す
- * 戻り値: { pitIndex, stone }[] の配置リスト
+ * 縺悶￥縺悶￥蠕後・遏ｳ驟咲ｽｮ・医・繝・ラ繝ｬ繧ｹ迚茨ｼ・
+ * 謇区戟縺｡ stones 繧・oppLanes・・-10・峨↓譛驕ｩ驟咲ｽｮ縺励※霑斐☆
+ * 謌ｻ繧雁､: { pitIndex, stone }[] 縺ｮ驟咲ｽｮ繝ｪ繧ｹ繝・
  */
-export function decidePlacements(
+export function decidePlacementsBasicV1(
   stones,
   state,
   memo,
@@ -642,9 +613,9 @@ export function decidePlacements(
   role = "opp",
 ) {
   const isOpp = role === "opp";
-  const laneOffset = isOpp ? 6 : 0; // 自分の路の先頭インデックス
-  const storeIndex = isOpp ? 11 : 5; // 自分の賽壇
-  const oppStoreIndex = isOpp ? 5 : 11; // 相手の賽壇（playerStoreカウント用）
+  const laneOffset = isOpp ? 6 : 0; // 閾ｪ蛻・・霍ｯ縺ｮ蜈磯ｭ繧､繝ｳ繝・ャ繧ｯ繧ｹ
+  const storeIndex = isOpp ? 11 : 5; // 閾ｪ蛻・・雉ｽ螢・
+  const oppStoreIndex = isOpp ? 5 : 11; // 逶ｸ謇九・雉ｽ螢・ｼ・layerStore繧ｫ繧ｦ繝ｳ繝育畑・・
 
   const result = [];
   const ownFortune = isOpp ? fortune.opp.color : fortune.self.color;
@@ -656,7 +627,7 @@ export function decidePlacements(
     playerStoreColorCount[s.color] = (playerStoreColorCount[s.color] ?? 0) + 1;
   }
 
-  // 仮の路状態（配置しながら更新）
+  // 莉ｮ縺ｮ霍ｯ迥ｶ諷具ｼ磯・鄂ｮ縺励↑縺後ｉ譖ｴ譁ｰ・・
   const pitCounts = Array.from(
     { length: 5 },
     (_, i) => state.pits[laneOffset + i].stones.length,
@@ -672,7 +643,7 @@ export function decidePlacements(
       const targetPit = (q + newCount) % 12;
 
       if (targetPit === storeIndex) {
-        // ぐるぐるセットアップ
+        // 縺舌ｋ縺舌ｋ繧ｻ繝・ヨ繧｢繝・・
         s += 18;
         if (ownFortune && stone.color === ownFortune) s += 12;
         if (inferred && stone.color === inferred) s += 20;
@@ -700,11 +671,11 @@ export function decidePlacements(
 }
 
 /**
- * ちらちら/ぽいぽい選択（ヘッドレス版）
- * 戻り値: "chirachira" | "poipoi" | "none"
- * ぽいぽい時は removePitIndex も返す
+ * 縺｡繧峨■繧・縺ｽ縺・⊃縺・∈謚橸ｼ医・繝・ラ繝ｬ繧ｹ迚茨ｼ・
+ * 謌ｻ繧雁､: "chirachira" | "poipoi" | "none"
+ * 縺ｽ縺・⊃縺・凾縺ｯ removePitIndex 繧りｿ斐☆
  */
-export function decideSpecialAction(
+export function decideSpecialActionV1(
   state,
   memo,
   fortune,
@@ -714,14 +685,14 @@ export function decideSpecialAction(
   params = null,
 ) {
   const p = params || {};
-  const oppStoreIndex = role === "opp" ? 5 : 11; // ぽいぽいで狙う相手の賽壇
+  const oppStoreIndex = role === "opp" ? 5 : 11; // 縺ｽ縺・⊃縺・〒迢吶≧逶ｸ謇九・雉ｽ螢・
 
   if (peeksDone >= 3) {
-    // ちらちら回数なし → ぽいぽいのみ
+    // 縺｡繧峨■繧牙屓謨ｰ縺ｪ縺・竊・縺ｽ縺・⊃縺・・縺ｿ
     return _resolvePoipoi(state, memo, fortune, role, p);
   }
 
-  // 自陣の石が少ない場合は強制ちらちらを解除（点数稼ぎ優先）
+  // 閾ｪ髯｣縺ｮ遏ｳ縺悟ｰ代↑縺・ｴ蜷医・蠑ｷ蛻ｶ縺｡繧峨■繧峨ｒ隗｣髯､・育せ謨ｰ遞ｼ縺主━蜈茨ｼ・
   const ownLaneMin = role === "opp" ? 6 : 0;
   const ownLaneMax = role === "opp" ? 10 : 4;
   const selfLaneStones = state.pits
@@ -729,11 +700,11 @@ export function decideSpecialAction(
     .reduce((sum, pit) => sum + pit.stones.length, 0);
   const laneRich = selfLaneStones >= (p.forceChirachiraMinLane ?? 3);
   if (isOni && laneRich && peeksDone < (p.forceChirachiraThreshold ?? 2)) {
-    // 鬼: 自陣に石がある間だけ強制ちらちら
+    // 鬯ｼ: 閾ｪ髯｣縺ｫ遏ｳ縺後≠繧矩俣縺縺大ｼｷ蛻ｶ縺｡繧峨■繧・
     return { action: "chirachira" };
   }
 
-  // ぽいぽいの価値を計算してちらちらと比較
+  // 縺ｽ縺・⊃縺・・萓｡蛟､繧定ｨ育ｮ励＠縺ｦ縺｡繧峨■繧峨→豈碑ｼ・
   const inferred = memo.inferredPlayerColor;
   const playerHasInferred =
     inferred &&
@@ -769,7 +740,7 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   const vInferred = params.poipoiStoneInferred ?? 22;
   const vKnownPos = params.poipoiStoneKnownPos ?? 4;
 
-  // 相手賽壇から取る石の最良値（高いほど取る価値あり）
+  // 逶ｸ謇玖ｳｽ螢・°繧牙叙繧狗浹縺ｮ譛濶ｯ蛟､・磯ｫ倥＞縺ｻ縺ｩ蜿悶ｋ萓｡蛟､縺ゅｊ・・
   let bestOppIdx = -1;
   let bestOppVal = 0;
   state.pits[oppStoreIndex].stones.forEach((stone, index) => {
@@ -784,14 +755,14 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
     }
   });
 
-  // 自分の賽壇から捨てる石の最良値（高いほど捨てる価値あり）
-  // knownNeg(-4確定)なら捨てた方が得 → 相手から取る+3より価値が高い場合がある
+  // 閾ｪ蛻・・雉ｽ螢・°繧画昏縺ｦ繧狗浹縺ｮ譛濶ｯ蛟､・磯ｫ倥＞縺ｻ縺ｩ謐ｨ縺ｦ繧倶ｾ｡蛟､縺ゅｊ・・
+  // knownNeg(-4遒ｺ螳・縺ｪ繧画昏縺ｦ縺滓婿縺悟ｾ・竊・逶ｸ謇九°繧牙叙繧・3繧医ｊ萓｡蛟､縺碁ｫ倥＞蝣ｴ蜷医′縺ゅｋ
   let bestOwnIdx = -1;
   let bestOwnVal = 0;
   state.pits[ownStoreIndex].stones.forEach((stone, index) => {
     let val = 0;
-    if (knownNeg && stone.color === knownNeg) val = 40; // -4確定石を捨てる価値は高い
-    // 自占い色 / knownPos は捨てたくない（負の価値）
+    if (knownNeg && stone.color === knownNeg) val = 40; // -4遒ｺ螳夂浹繧呈昏縺ｦ繧倶ｾ｡蛟､縺ｯ鬮倥＞
+    // 閾ｪ蜊縺・牡 / knownPos 縺ｯ謐ｨ縺ｦ縺溘￥縺ｪ縺・ｼ郁ｲ縺ｮ萓｡蛟､・・
     if (ownFortune && stone.color === ownFortune) val = -99;
     if (knownPos.includes(stone.color)) val = -99;
     if (val > bestOwnVal) {
@@ -800,7 +771,7 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
     }
   });
 
-  // 自分の賽壇から捨てる方が価値が高い場合はそちらを選択
+  // 閾ｪ蛻・・雉ｽ螢・°繧画昏縺ｦ繧区婿縺御ｾ｡蛟､縺碁ｫ倥＞蝣ｴ蜷医・縺昴■繧峨ｒ驕ｸ謚・
   if (bestOwnIdx >= 0 && bestOwnVal > bestOppVal) {
     return {
       action: "poipoi",
@@ -817,907 +788,25 @@ function _resolvePoipoi(state, memo, fortune, role = "opp", params = {}) {
   };
 }
 
-// ─── OniV3: 5手番先読み ────────────────────────────────────────────────────
+// 笏笏笏 OniV3: 5謇狗分蜈郁ｪｭ縺ｿ 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 /**
- * OniV3 ピット選択 - 5手番先読み
+ * OniV3 繝斐ャ繝磯∈謚・- 5謇狗分蜈郁ｪｭ縺ｿ
  *
- * 手番順: AI → Player → AI → Player → AI (計5手番)
- * 各手番で評価の高い上位3手を候補とし、3^5 = 243 パスを全列挙。
- * AI累計スコアとPlayer累計スコアの差が最大になるパスの最初の路を返す。
+ * 謇狗分鬆・ AI 竊・Player 竊・AI 竊・Player 竊・AI (險・謇狗分)
+ * 蜷・焔逡ｪ縺ｧ隧穂ｾ｡縺ｮ鬮倥＞荳贋ｽ・謇九ｒ蛟呵｣懊→縺励・^5 = 243 繝代せ繧貞・蛻玲嫌縲・
+ * AI邏ｯ險医せ繧ｳ繧｢縺ｨPlayer邏ｯ險医せ繧ｳ繧｢縺ｮ蟾ｮ縺梧怙螟ｧ縺ｫ縺ｪ繧九ヱ繧ｹ縺ｮ譛蛻昴・霍ｯ繧定ｿ斐☆縲・
  *
- * ★評価基準（AI・プレイヤー共通）
- *   ぐるぐる発動      : +5
- *   ちらちら発動      : +9  (上限2回)
- *   2回目でマイナス確定: +8  (fortune参照)
- *   ざくざく発動      : +7
- *   くたくた可能に変化 : +2  (新たに発動可能状態になった時のみ)
+ * 笘・ｩ穂ｾ｡蝓ｺ貅厄ｼ・I繝ｻ繝励Ξ繧､繝､繝ｼ蜈ｱ騾夲ｼ・
+ *   縺舌ｋ縺舌ｋ逋ｺ蜍・     : +5
+ *   縺｡繧峨■繧臥匱蜍・     : +9  (荳企剞2蝗・
+ *   2蝗樒岼縺ｧ繝槭う繝翫せ遒ｺ螳・ +8  (fortune蜿ら・)
+ *   縺悶￥縺悶￥逋ｺ蜍・     : +7
+ *   縺上◆縺上◆蜿ｯ閭ｽ縺ｫ螟牙喧 : +2  (譁ｰ縺溘↓逋ｺ蜍募庄閭ｽ迥ｶ諷九↓縺ｪ縺｣縺滓凾縺ｮ縺ｿ)
  *
- * @param {number[]} validPits - AIが選べる路インデックス（turn0のみ制限）
- * @param {object}   state     - GameState のスナップショット
- * @param {number}   peeksDoneAI     - AIのちらちら完了回数
- * @param {number}   peeksDonePlayer - プレイヤーのちらちら完了回数
+ * @param {number[]} validPits - AI縺碁∈縺ｹ繧玖ｷｯ繧､繝ｳ繝・ャ繧ｯ繧ｹ・・urn0縺ｮ縺ｿ蛻ｶ髯撰ｼ・
+ * @param {object}   state     - GameState 縺ｮ繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ
+ * @param {number}   peeksDoneAI     - AI縺ｮ縺｡繧峨■繧牙ｮ御ｺ・屓謨ｰ
+ * @param {number}   peeksDonePlayer - 繝励Ξ繧､繝､繝ｼ縺ｮ縺｡繧峨■繧牙ｮ御ｺ・屓謨ｰ
  * @param {object}   fortune   - { center: [{bonus, seenBy},...] }
  */
-export function pickPitV3(
-  validPits,
-  state,
-  peeksDoneAI,
-  peeksDonePlayer,
-  fortune,
-  maxDepth = 5,
-) {
-  // 初期pit石数（カウントのみ、高速シミュレーション用）
-  const initCounts = state.pits.map((p) => p.stones.length);
-
-  // AIの2回目ちらちらでマイナス色を確定できるか
-  const hasUnconfirmedNegForAI = fortune.center.some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes("opp"),
-  );
-  // プレイヤーの2回目ちらちらでマイナス色を確定できるか
-  const hasUnconfirmedNegForPlayer = fortune.center.some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes("self"),
-  );
-
-  // ─── 高速撒きシミュレーション（石数カウントのみ）───
-  function fastSow(counts, pitIndex) {
-    const nc = counts.slice();
-    const n = nc[pitIndex];
-    if (n === 0) return { counts: nc, lastPit: -1 };
-    nc[pitIndex] = 0;
-    let cur = pitIndex;
-    for (let i = 0; i < n; i++) {
-      cur = (cur + 1) % 12;
-      nc[cur]++;
-    }
-    return { counts: nc, lastPit: cur };
-  }
-
-  // ─── 一手のスコア計算 ───
-  // isAI: true=AI(pit6-10→pit11), false=Player(pit0-4→pit5)
-  // peeks: その役のちらちら完了回数
-  function scoreSow(counts, pit, isAI, peeks) {
-    const laneMin = isAI ? 6 : 0;
-    const laneMax = isAI ? 10 : 4;
-    const storeIndex = isAI ? 11 : 5;
-    const oppStoreIndex = isAI ? 5 : 11;
-    const n = counts[pit];
-    const lastPit = (pit + n) % 12;
-    let score = 0;
-
-    // ぐるぐる: +5
-    if (lastPit === storeIndex) score += 5;
-
-    // ちらちら: +9 (上限2回), 2回目にマイナス確定なら+8追加
-    if (lastPit === oppStoreIndex && peeks < 2) {
-      score += 9;
-      if (peeks === 1) {
-        score += isAI
-          ? hasUnconfirmedNegForAI
-            ? 8
-            : 0
-          : hasUnconfirmedNegForPlayer
-            ? 8
-            : 0;
-      }
-    }
-
-    // ざくざく: +7 + 取れた石数×1 (着地先が自陣の空きかつ鏡に石あり)
-    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
-      const mirror = isAI ? lastPit - 6 : lastPit + 6;
-      if (counts[mirror] > 0) score += 7 + counts[mirror];
-    }
-
-    return { score, lastPit };
-  }
-
-  // ─── 全手を取得（選択可能な路すべてを評価）───
-  function getTopMoves(counts, isAI, peeks, restrictTo) {
-    const laneMin = isAI ? 6 : 0;
-    const laneMax = isAI ? 10 : 4;
-    const pool =
-      restrictTo ??
-      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
-
-    const scored = [];
-    for (const p of pool) {
-      if (counts[p] === 0) continue;
-      const { score } = scoreSow(counts, p, isAI, peeks);
-      scored.push({ pit: p, score });
-    }
-    return scored;
-  }
-
-  // ─── くたくた発動可能チェック ───
-  // AI: aiStore >= playerStore - 6 (鬼の猶予)
-  // Player: playerStore >= aiStore
-  function canKutakutaAI(counts) {
-    return counts[11] >= counts[5] - 6;
-  }
-  function canKutakutaPlayer(counts) {
-    return counts[5] >= counts[11];
-  }
-
-  // ─── DFS（再帰深さ5）───
-  let bestFirstPit = validPits[0];
-  let bestNet = -Infinity;
-
-  // prevAiKk / prevPlayerKk: 前手番終了時点でのくたくた発動可能フラグ
-  // （新たに可能になった時だけ+2を加算するため）
-  const initAiKk = canKutakutaAI(initCounts);
-  const initPlayerKk = canKutakutaPlayer(initCounts);
-
-  function dfs(
-    depth,
-    isAITurn,
-    isFirstMove,
-    chainDepth,
-    counts,
-    aiPeeks,
-    playerPeeks,
-    aiScore,
-    playerScore,
-    firstPit,
-    prevAiKk,
-    prevPlayerKk,
-  ) {
-    if (depth === maxDepth) {
-      const net = aiScore - playerScore;
-      if (net > bestNet) {
-        bestNet = net;
-        bestFirstPit = firstPit;
-      }
-      return;
-    }
-
-    const isAI = isAITurn;
-    const storeIndex = isAI ? 11 : 5;
-    const peeks = isAI ? aiPeeks : playerPeeks;
-    const oppStoreIndex = isAI ? 5 : 11;
-
-    // 手の候補（最初の1手のみvalidPitsに制限）
-    const topMoves = isFirstMove
-      ? getTopMoves(counts, true, aiPeeks, validPits)
-      : getTopMoves(counts, isAI, peeks, null);
-
-    if (topMoves.length === 0) {
-      // 打てる手なし → このブランチは評価しない
-      return;
-    }
-
-    for (const { pit } of topMoves) {
-      const { score, lastPit } = scoreSow(counts, pit, isAI, peeks);
-      const { counts: newCounts } = fastSow(counts, pit);
-
-      // ちらちら回数更新
-      let newAiPeeks = aiPeeks;
-      let newPlayerPeeks = playerPeeks;
-      if (lastPit === oppStoreIndex && peeks < 2) {
-        if (isAI) newAiPeeks++;
-        else newPlayerPeeks++;
-      }
-
-      // くたくた新規解放: +2
-      const newAiKk = canKutakutaAI(newCounts);
-      const newPlayerKk = canKutakutaPlayer(newCounts);
-      const aiKkBonus = !prevAiKk && newAiKk ? 2 : 0;
-      const playerKkBonus = !prevPlayerKk && newPlayerKk ? 2 : 0;
-
-      const newAiScore = isAI
-        ? aiScore + score + aiKkBonus
-        : aiScore + aiKkBonus;
-      const newPlayerScore = !isAI
-        ? playerScore + score + playerKkBonus
-        : playerScore + playerKkBonus;
-
-      const fp = isFirstMove ? pit : firstPit;
-
-      if (lastPit === storeIndex && chainDepth < 10) {
-        // ぐるぐる: depth を消費しない、同プレイヤー継続（チェーン上限10）
-        dfs(
-          depth,
-          isAITurn,
-          false,
-          chainDepth + 1,
-          newCounts,
-          newAiPeeks,
-          newPlayerPeeks,
-          newAiScore,
-          newPlayerScore,
-          fp,
-          newAiKk,
-          newPlayerKk,
-        );
-      } else {
-        // 通常 or ぐるぐる上限到達: depth+1、相手に交代
-        dfs(
-          depth + 1,
-          !isAITurn,
-          false,
-          0,
-          newCounts,
-          newAiPeeks,
-          newPlayerPeeks,
-          newAiScore,
-          newPlayerScore,
-          fp,
-          newAiKk,
-          newPlayerKk,
-        );
-      }
-    }
-  }
-
-  dfs(
-    0,
-    true,
-    true,
-    0,
-    initCounts,
-    peeksDoneAI,
-    peeksDonePlayer,
-    0,
-    0,
-    validPits[0],
-    initAiKk,
-    initPlayerKk,
-  );
-
-  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
-}
-
-// ─── RoboV1: OniV3完全パラメータ化クローン ───────────────────────────────
-
-/**
- * RoboV1 ピット選択 - OniV3を完全パラメータ化したモデル
- *
- * OniV3と同じ先読みDFS構造だが、全スコア値が可変パラメータ。
- * ちらちら上限も roboChirachiraLimit で制御（無制限可）。
- * role="opp" なら pit6-10 が AI レーン、role="self" なら pit0-4 が AI レーン。
- *
- * @param {number[]} validPits      - AIが選べる路インデックス
- * @param {object}   state          - GameState スナップショット
- * @param {number}   peeksDoneAI    - AIのちらちら完了回数
- * @param {number}   peeksDonePlayer- プレイヤーのちらちら完了回数
- * @param {object}   fortune        - { center: [{bonus, seenBy},...] }
- * @param {object}   params         - DEFAULT_ROBO_PARAMS 相当のパラメータ
- * @param {string}   role           - "opp" (デフォルト) | "self"
- */
-export function pickPitRoboV1(
-  validPits,
-  state,
-  peeksDoneAI,
-  peeksDonePlayer,
-  fortune,
-  params,
-  role = "opp",
-) {
-  const p = params;
-  const isOppRole = role === "opp";
-
-  // レーン・賽壇インデックス
-  const aiLaneMin = isOppRole ? 6 : 0;
-  const aiLaneMax = isOppRole ? 10 : 4;
-  const aiStore = isOppRole ? 11 : 5;
-  const playerStore = isOppRole ? 5 : 11;
-  const plLaneMin = isOppRole ? 0 : 6;
-  const plLaneMax = isOppRole ? 4 : 10;
-
-  // fortuneキー
-  const aiFortKey = isOppRole ? "opp" : "self";
-  const plFortKey = isOppRole ? "self" : "opp";
-
-  const initCounts = state.pits.map((pt) => pt.stones.length);
-
-  // マイナス色未確定チェック
-  const hasUnconfirmedNegForAI = (fortune.center ?? []).some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes(aiFortKey),
-  );
-  const hasUnconfirmedNegForPlayer = (fortune.center ?? []).some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes(plFortKey),
-  );
-
-  // ─── 高速撒きシミュレーション ───
-  function fastSow(counts, pitIndex) {
-    const nc = counts.slice();
-    const n = nc[pitIndex];
-    if (n === 0) return { counts: nc, lastPit: -1 };
-    nc[pitIndex] = 0;
-    let cur = pitIndex;
-    for (let i = 0; i < n; i++) {
-      cur = (cur + 1) % 12;
-      nc[cur]++;
-    }
-    return { counts: nc, lastPit: cur };
-  }
-
-  // ─── 1手スコア計算 ───
-  function scoreSow(counts, pit, isAI, peeks) {
-    const laneMin = isAI ? aiLaneMin : plLaneMin;
-    const laneMax = isAI ? aiLaneMax : plLaneMax;
-    const storeIdx = isAI ? aiStore : playerStore;
-    const oppStoreIdx = isAI ? playerStore : aiStore;
-    const n = counts[pit];
-    const lastPit = (pit + n) % 12;
-    let score = 0;
-
-    // ぐるぐる
-    if (lastPit === storeIdx) score += p.roboGuruguruScore;
-
-    // ちらちら（上限 roboChirachiraLimit）
-    if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
-      score += p.roboChirachiraScore;
-      const hasNeg = isAI ? hasUnconfirmedNegForAI : hasUnconfirmedNegForPlayer;
-      if (hasNeg) score += p.roboChirachiraNegBonus;
-    }
-
-    // ざくざく: 着地先が自陣の空きかつ鏡に石あり
-    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
-      const mirror = isAI
-        ? isOppRole
-          ? lastPit - 6
-          : lastPit + 6
-        : isOppRole
-          ? lastPit + 6
-          : lastPit - 6;
-      if (counts[mirror] > 0) {
-        score += p.roboZakuzakuBase;
-      }
-    }
-
-    return { score, lastPit };
-  }
-
-  // ─── 上位N手取得 ───
-  function getTopMoves(counts, isAI, topN, peeks, restrictTo) {
-    const laneMin = isAI ? aiLaneMin : plLaneMin;
-    const laneMax = isAI ? aiLaneMax : plLaneMax;
-    const pool =
-      restrictTo ??
-      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
-    const scored = [];
-    for (const pt of pool) {
-      if (counts[pt] === 0) continue;
-      const { score } = scoreSow(counts, pt, isAI, peeks);
-      scored.push({ pit: pt, score });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, topN);
-  }
-
-  // ─── くたくた発動可能チェック ───
-  function canKutakutaAI(counts) {
-    return counts[aiStore] >= counts[playerStore] - 6;
-  }
-  function canKutakutaPlayer(counts) {
-    return counts[playerStore] >= counts[aiStore];
-  }
-
-  // ─── DFS ───
-  const topN = Math.max(1, Math.round(p.roboTopN));
-  const depth = Math.max(1, Math.round(p.roboDepth));
-
-  let bestFirstPit = validPits[0];
-  let bestNet = -Infinity;
-
-  const initAiKk = canKutakutaAI(initCounts);
-  const initPlayerKk = canKutakutaPlayer(initCounts);
-
-  function dfs(
-    d,
-    counts,
-    aiPeeks,
-    playerPeeks,
-    aiScore,
-    playerScore,
-    firstPit,
-    prevAiKk,
-    prevPlayerKk,
-  ) {
-    if (d === depth) {
-      const net = aiScore - playerScore;
-      if (net > bestNet) {
-        bestNet = net;
-        bestFirstPit = firstPit;
-      }
-      return;
-    }
-
-    const isAI = d % 2 === 0;
-    const peeks = isAI ? aiPeeks : playerPeeks;
-    const oppStoreIdx = isAI ? playerStore : aiStore;
-
-    const topMoves =
-      d === 0
-        ? getTopMoves(counts, true, topN, peeks, validPits)
-        : getTopMoves(counts, isAI, topN, peeks, null);
-
-    if (topMoves.length === 0) {
-      dfs(
-        d + 1,
-        counts,
-        aiPeeks,
-        playerPeeks,
-        aiScore,
-        playerScore,
-        firstPit,
-        prevAiKk,
-        prevPlayerKk,
-      );
-      return;
-    }
-
-    for (const { pit } of topMoves) {
-      const { score, lastPit } = scoreSow(counts, pit, isAI, peeks);
-      const { counts: newCounts } = fastSow(counts, pit);
-
-      let newAiPeeks = aiPeeks;
-      let newPlayerPeeks = playerPeeks;
-      if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
-        if (isAI) newAiPeeks++;
-        else newPlayerPeeks++;
-      }
-
-      const newAiKk = canKutakutaAI(newCounts);
-      const newPlayerKk = canKutakutaPlayer(newCounts);
-      const aiKkBonus = !prevAiKk && newAiKk ? p.roboKutakutaBonus : 0;
-      const playerKkBonus =
-        !prevPlayerKk && newPlayerKk ? p.roboKutakutaBonus : 0;
-
-      const newAiScore = isAI
-        ? aiScore + score + aiKkBonus
-        : aiScore + aiKkBonus;
-      const newPlayerScore = !isAI
-        ? playerScore + score + playerKkBonus
-        : playerScore + playerKkBonus;
-
-      const fp = d === 0 ? pit : firstPit;
-      dfs(
-        d + 1,
-        newCounts,
-        newAiPeeks,
-        newPlayerPeeks,
-        newAiScore,
-        newPlayerScore,
-        fp,
-        newAiKk,
-        newPlayerKk,
-      );
-    }
-  }
-
-  dfs(
-    0,
-    initCounts,
-    peeksDoneAI,
-    peeksDonePlayer,
-    0,
-    0,
-    validPits[0],
-    initAiKk,
-    initPlayerKk,
-  );
-
-  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
-}
-
-// ─── HardV1: 3手番先読み（ぐるぐる・ざくざく特化） ──────────────────────
-
-/**
- * HardV1 ピット選択 - 3手番先読み
- *
- * 手番順: AI → Player → AI (計3手番)
- * 各手番で評価の高い上位3手を候補とし、3^3 = 27 パスを全列挙。
- * AI累計スコア - Player累計スコアが最大のパスの最初の路を返す。
- *
- * ★特殊ルール
- *   DFS前にちらちら(pit5着地)できる路があれば即選択（上限2回）。
- *
- * ★評価基準（ぐるぐる・ざくざくのみ）
- *   ぐるぐる発動      : +5
- *   ざくざく発動      : +7 + 取れた石数
- *
- * @param {number[]} validPits    - AIが選べる路インデックス
- * @param {object}   state        - GameState のスナップショット
- * @param {number}   peeksDoneAI  - AIのちらちら完了回数
- */
-export function pickPitHardV1(validPits, state, peeksDoneAI) {
-  const initCounts = state.pits.map((p) => p.stones.length);
-
-  // ちらちら強制チェック: たまたまpit5着地できる路があれば即選択（上限2）
-  if (peeksDoneAI < 2) {
-    const chirachiraPit = validPits.find((p) => {
-      const n = initCounts[p];
-      return n > 0 && (p + n) % 12 === 5;
-    });
-    if (chirachiraPit !== undefined) return chirachiraPit;
-  }
-
-  // ─── 高速撒きシミュレーション ───
-  function fastSow(counts, pitIndex) {
-    const nc = counts.slice();
-    const n = nc[pitIndex];
-    if (n === 0) return { counts: nc, lastPit: -1 };
-    nc[pitIndex] = 0;
-    let cur = pitIndex;
-    for (let i = 0; i < n; i++) {
-      cur = (cur + 1) % 12;
-      nc[cur]++;
-    }
-    return { counts: nc, lastPit: cur };
-  }
-
-  // ─── スコア計算（ぐるぐる・ざくざくのみ）───
-  function scoreSow(counts, pit, isAI) {
-    const laneMin = isAI ? 6 : 0;
-    const laneMax = isAI ? 10 : 4;
-    const storeIndex = isAI ? 11 : 5;
-    const n = counts[pit];
-    const lastPit = (pit + n) % 12;
-    let score = 0;
-
-    // ぐるぐる: +5
-    if (lastPit === storeIndex) score += 5;
-
-    // ざくざく: +7 + 取れた石数
-    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
-      const mirror = isAI ? lastPit - 6 : lastPit + 6;
-      if (counts[mirror] > 0) score += 7 + counts[mirror];
-    }
-
-    return { score, lastPit };
-  }
-
-  // ─── 上位N手取得 ───
-  function getTopMoves(counts, isAI, n, restrictTo) {
-    const laneMin = isAI ? 6 : 0;
-    const laneMax = isAI ? 10 : 4;
-    const pool =
-      restrictTo ??
-      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
-    const scored = [];
-    for (const p of pool) {
-      if (counts[p] === 0) continue;
-      const { score } = scoreSow(counts, p, isAI);
-      scored.push({ pit: p, score });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, n);
-  }
-
-  // ─── DFS（深さ3: AI→Player→AI）───
-  let bestFirstPit = validPits[0];
-  let bestNet = -Infinity;
-
-  function dfs(depth, counts, aiScore, playerScore, firstPit) {
-    if (depth === 3) {
-      const net = aiScore - playerScore;
-      if (net > bestNet) {
-        bestNet = net;
-        bestFirstPit = firstPit;
-      }
-      return;
-    }
-
-    const isAI = depth % 2 === 0; // depth 0,2 = AI; 1 = Player
-    const topMoves =
-      depth === 0
-        ? getTopMoves(counts, true, 3, validPits)
-        : getTopMoves(counts, isAI, 3, null);
-
-    if (topMoves.length === 0) {
-      dfs(depth + 1, counts, aiScore, playerScore, firstPit);
-      return;
-    }
-
-    for (const { pit } of topMoves) {
-      const { score } = scoreSow(counts, pit, isAI);
-      const { counts: newCounts } = fastSow(counts, pit);
-      const newAiScore = isAI ? aiScore + score : aiScore;
-      const newPlayerScore = !isAI ? playerScore + score : playerScore;
-      const fp = depth === 0 ? pit : firstPit;
-      dfs(depth + 1, newCounts, newAiScore, newPlayerScore, fp);
-    }
-  }
-
-  dfs(0, initCounts, 0, 0, validPits[0]);
-
-  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
-}
-
-// ─── OniV3: ざくざく後石配置 ──────────────────────────────────────────────
-
-/**
- * decidePlacementsV3 - ざくざく後の石配置（V3版）
- *
- * 自分の賽壇(pit11)に近い側から優先して各レーンを評価し、
- * ちらちら or ぐるぐる のどちらを狙うか決定して stone を割り当てる。
- * 石の色選択は③（自分の路）ルールに従う。
- *
- * ①  現在の石数 > ぐるぐる必要数  → ちらちら狙い
- *    ①-a  相手次手番でこの路にたどり着ける  → ちらちら必要数 - 1 まで補充
- *    ①-b  たどり着けない              → ちらちら必要数 まで補充
- * ②  現在の石数 <= ぐるぐる必要数  → ぐるぐる狙い
- *    ②-a  相手次手番でこの路にたどり着ける  → ぐるぐる必要数 - 1 まで補充
- *    ②-b  たどり着けない              → ぐるぐる必要数 まで補充
- *
- * @param {object[]} stones  - 配置する石の配列
- * @param {object}   state   - 現在の盤面スナップショット
- * @param {object}   fortune - fortune 情報 (center, opp, self)
- * @param {object}   memo    - AI メモ (inferredPlayerColor 等)
- * @returns {{ pitIndex: number, stoneIndex: number }[]}
- *   stoneIndex は入力 stones 配列のインデックス
- */
-export function decidePlacementsV3(stones, state, fortune, memo) {
-  if (stones.length === 0) return [];
-
-  // AI レーン: pit11 に近い順
-  const aiLanes = [10, 9, 8, 7, 6];
-
-  // ─── fortune 知識 ───
-  const ownFortune = fortune?.opp?.color ?? null;
-  const inferredPlayer = memo?.inferredPlayerColor ?? null;
-  let knownNeg = null;
-  const knownPos = [];
-  for (const fc of fortune?.center ?? []) {
-    if (fc.seenBy?.includes("opp")) {
-      if (fc.bonus < 0) knownNeg = fc.color;
-      else if (fc.bonus > 0) knownPos.push(fc.color);
-    }
-  }
-
-  function stoneClass(stone) {
-    const c = stone.color;
-    if (knownNeg && c === knownNeg) return "neg";
-    if (inferredPlayer && c === inferredPlayer) return "inferred";
-    if (ownFortune && c === ownFortune) return "own";
-    if (knownPos.includes(c)) return "pos";
-    return "unknown";
-  }
-
-  // ③ 自分の路ルール: 賽壇近いほど良い石、遠いほど悪い石
-  function scoreForLane(stone, pit, currentCount) {
-    const stepsToStore = 11 - pit; // pit10=1 … pit6=5
-    const cls = stoneClass(stone);
-    if (cls === "neg") {
-      // マイナス石は竹(pit10)に単独で置かない; 遠い路を優先
-      if (pit === 10 && currentCount === 0) return -200;
-      return stepsToStore * 8 + (currentCount > 0 ? 15 : -20);
-    }
-    if (cls === "inferred" || cls === "own" || cls === "pos") {
-      return (6 - stepsToStore) * 8; // pit10→40, pit6→8
-    }
-    return Math.random() * 0.1; // 未確定: ランダム
-  }
-
-  // pit からぐるぐる/ちらちら発動に必要な石数
-  function guruCount(pit) {
-    return (11 - pit + 12) % 12;
-  }
-  function chirachiraCount(pit) {
-    return (5 - pit + 12) % 12;
-  }
-
-  // 相手の次手番にこの pit へ石が届くか（ぐるぐる連鎖1レベル込み）
-  function playerCanReach(counts, targetPit) {
-    for (let p = 0; p <= 4; p++) {
-      const c = counts[p];
-      if (c === 0) continue;
-      for (let i = 1; i <= c; i++) {
-        if ((p + i) % 12 === targetPit) return true;
-      }
-      if ((p + c) % 12 === 5) {
-        for (let p2 = 0; p2 <= 4; p2++) {
-          const c2 = counts[p2];
-          if (c2 === 0) continue;
-          for (let i = 1; i <= c2; i++) {
-            if ((p2 + i) % 12 === targetPit) return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  const counts = state.pits.map((p) => p.stones.length);
-
-  // Phase 1: どの pit に何個置くか（戦術的決定）
-  const pitAllocs = []; // { pit, count }[]
-  let toDistribute = stones.length;
-
-  for (const pit of aiLanes) {
-    if (toDistribute === 0) break;
-    const cur = counts[pit];
-    const gNeeded = guruCount(pit);
-    const cNeeded = chirachiraCount(pit);
-    const canReach = playerCanReach(counts, pit);
-
-    let target;
-    if (cur > gNeeded) {
-      target = canReach ? cNeeded - 1 : cNeeded;
-    } else {
-      target = canReach ? gNeeded - 1 : gNeeded;
-    }
-
-    const toPlace = Math.min(Math.max(0, target - cur), toDistribute);
-    if (toPlace > 0) {
-      pitAllocs.push({ pit, count: toPlace });
-      toDistribute -= toPlace;
-    }
-  }
-  // 余り石: 賽壇近い順に追加
-  while (toDistribute > 0) {
-    const fallbackPit = aiLanes.find((p) => counts[p] > 0) ?? aiLanes[0];
-    const existing = pitAllocs.find((a) => a.pit === fallbackPit);
-    if (existing) existing.count++;
-    else pitAllocs.push({ pit: fallbackPit, count: 1 });
-    toDistribute--;
-  }
-
-  // Phase 2: 各 pit スロットに最適な色の石を割り当てる
-  const available = stones.map((_, i) => i); // 未割り当て石のインデックス
-  const result = [];
-
-  for (const { pit, count } of pitAllocs) {
-    for (let slot = 0; slot < count; slot++) {
-      if (available.length === 0) break;
-      const currentCount = counts[pit];
-
-      let bestAvailIdx = 0;
-      let bestScore = -Infinity;
-      for (let ai = 0; ai < available.length; ai++) {
-        const sc = scoreForLane(stones[available[ai]], pit, currentCount);
-        if (sc > bestScore) {
-          bestScore = sc;
-          bestAvailIdx = ai;
-        }
-      }
-
-      result.push({ pitIndex: pit, stoneIndex: available[bestAvailIdx] });
-      available.splice(bestAvailIdx, 1);
-      counts[pit]++;
-    }
-  }
-
-  return result;
-}
-
-// ─── OniV3: 撒き石の並び替え ──────────────────────────────────────────────
-
-/**
- * optimizeSowOrderV3 - 撒き前の石並び替え（V3版）
- *
- * 各石が着地する pit に応じて最適な色の石を割り当てる。
- * 優先ルール（①〜④）:
- *   ① 自分の賽壇 (pit 11)
- *      推測プレイヤー占い色 > 自占い色 > 確認済み+中央石 > 未確定(ランダム)
- *      ※ マイナス確定石は絶対入れない
- *   ② 相手の賽壇 (pit 5)
- *      マイナス確定 > 確認済み+中央石 > 未確定(相手賽壇にない色優先) > 相手占い色 > 自占い色
- *   ③ 自分の路 (pit 6-10)
- *      占い/+色は賽壇に近く、マイナス色は遠く
- *      マイナス石は竹(pit10)に単独で置かない; 単独しか置けない場合も竹には置かない
- *   ④ 相手の路 (pit 0-4)
- *      占い/+色は相手賽壇から遠く、マイナス色は相手賽壇に近く
- *      マイナス石は相手の竹(pit4)に単独で置けると理想的
- *
- * @param {object[]} stones  - 撒く石の配列
- * @param {number[]} targets - 各石が着地する pit インデックスの配列
- * @param {object}   state   - 現在の盤面スナップショット
- * @param {object}   fortune - fortune 情報
- * @param {object}   memo    - AI メモ
- * @returns {object[]} 並び替えた stones 配列（targets[i] に stones[i] が着地）
- */
-export function optimizeSowOrderV3(stones, targets, state, fortune, memo) {
-  if (stones.length <= 1) return stones;
-
-  // ─── fortune 知識 ───
-  const ownFortune = fortune?.opp?.color ?? null;
-  const inferredPlayer = memo?.inferredPlayerColor ?? null;
-  let knownNeg = null;
-  const knownPos = [];
-  for (const fc of fortune?.center ?? []) {
-    if (fc.seenBy?.includes("opp")) {
-      if (fc.bonus < 0) knownNeg = fc.color;
-      else if (fc.bonus > 0) knownPos.push(fc.color);
-    }
-  }
-  const playerStoreColors = new Set(state.pits[5].stones.map((s) => s.color));
-
-  function stoneClass(stone) {
-    const c = stone.color;
-    if (knownNeg && c === knownNeg) return "neg";
-    if (inferredPlayer && c === inferredPlayer) return "inferred";
-    if (ownFortune && c === ownFortune) return "own";
-    if (knownPos.includes(c)) return "pos";
-    return "unknown";
-  }
-
-  function scoreFor(stone, targetPit) {
-    const cls = stoneClass(stone);
-
-    // ① 自分の賽壇
-    if (targetPit === 11) {
-      if (cls === "neg") return -200;
-      if (cls === "inferred") return 100;
-      if (cls === "own") return 80;
-      if (cls === "pos") return 60;
-      return 10 + Math.random() * 0.1; // 未確定: ランダム
-    }
-
-    // ② 相手の賽壇
-    if (targetPit === 5) {
-      if (cls === "neg") return 90;
-      if (cls === "pos") return 50;
-      if (cls === "inferred") return -100;
-      if (cls === "own") return -80;
-      // 未確定: 相手賽壇にない色を優先
-      return (
-        (playerStoreColors.has(stone.color) ? -5 : 5) + Math.random() * 0.1
-      );
-    }
-
-    // ③ 自分の路 (pit 6-10)
-    if (targetPit >= 6 && targetPit <= 10) {
-      const stepsToStore = 11 - targetPit; // pit10=1 … pit6=5
-      const currentCount = state.pits[targetPit].stones.length;
-      if (cls === "neg") {
-        if (targetPit === 10 && currentCount === 0) return -200; // 竹に単独厳禁
-        return stepsToStore * 8 + (currentCount > 0 ? 15 : -20);
-      }
-      if (cls === "inferred" || cls === "own" || cls === "pos") {
-        return (6 - stepsToStore) * 8; // pit10→40 … pit6→8
-      }
-      return Math.random() * 0.1;
-    }
-
-    // ④ 相手の路 (pit 0-4)
-    if (targetPit >= 0 && targetPit <= 4) {
-      const stepsToOppStore = 5 - targetPit; // pit4=1 … pit0=5
-      const currentCount = state.pits[targetPit].stones.length;
-      if (cls === "neg") {
-        // 竹(pit4)に単独で置けると理想
-        const aloneBonus = targetPit === 4 && currentCount === 0 ? 25 : 0;
-        return (6 - stepsToOppStore) * 8 + aloneBonus; // 相手賽壇に近いほど高得点
-      }
-      if (cls === "inferred" || cls === "own" || cls === "pos") {
-        return stepsToOppStore * 5; // 相手賽壇から遠いほど高得点
-      }
-      return Math.random() * 0.1;
-    }
-
-    return 0;
-  }
-
-  // 重要度順にターゲットを処理: pit11 > pit5 > AI路(近い順) > 相手路
-  function targetPriority(pit) {
-    if (pit === 11) return 1000;
-    if (pit === 5) return 800;
-    if (pit >= 6 && pit <= 10) return 400 + (11 - pit); // pit10→405
-    if (pit >= 0 && pit <= 4) return 100 + (5 - pit); // pit4→101
-    return 0;
-  }
-
-  const positions = targets.map((pit, pos) => ({ pit, pos }));
-  positions.sort((a, b) => targetPriority(b.pit) - targetPriority(a.pit));
-
-  const available = stones.map((s, i) => ({ s, i }));
-  const result = new Array(stones.length);
-
-  for (const { pit, pos } of positions) {
-    if (available.length === 0) break;
-    let bestIdx = 0;
-    let bestScore = -Infinity;
-    for (let ai = 0; ai < available.length; ai++) {
-      const sc = scoreFor(available[ai].s, pit);
-      if (sc > bestScore) {
-        bestScore = sc;
-        bestIdx = ai;
-      }
-    }
-    result[pos] = available[bestIdx].s;
-    available.splice(bestIdx, 1);
-  }
-
-  return result;
-}
