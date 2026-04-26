@@ -1899,10 +1899,9 @@ export class UIScene extends Phaser.Scene {
       const gs = this.gameScene;
       const isSmartAi =
         gs.matchMode === "solo" &&
-        (gs.aiDifficulty === "hard" ||
-          gs.aiDifficulty === "normal" ||
-          gs.aiDifficulty === "oni" ||
-          gs.aiDifficulty === "robo");
+        (gs.aiDifficulty === "rasetsu" ||
+          gs.aiDifficulty === "yasha" ||
+          gs.aiDifficulty === "kugutsu");
       if (isSmartAi) {
         // 1. ゲーム中の観察から推測した色を優先
         if (gs._aiMemo?.inferredPlayerColor) {
@@ -2411,7 +2410,19 @@ export class UIScene extends Phaser.Scene {
 
     const selfLabel =
       this.gameScene.selfPlayerName || getPlayerName() || "あなた";
-    const oppLabel = this.gameScene.oppPlayerName || "AI";
+    const _aiDiffLabels = {
+      easy: "小鬼",
+      normal: "夜叉",
+      hard: "羅刹",
+      oni: "鬼神",
+      kyubi: "九尾",
+      robo: "傀儡",
+    };
+    const oppLabel =
+      this.gameScene.oppPlayerName ||
+      (this.gameScene.aiDifficulty &&
+        _aiDiffLabels[this.gameScene.aiDifficulty]) ||
+      "AI";
 
     // 合計スコアカウンター表示パネル
     const panel = this.add.graphics();

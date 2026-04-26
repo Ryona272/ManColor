@@ -21,6 +21,7 @@ export class FriendLobbyScene extends Phaser.Scene {
     this.spinAngle = 0;
     this.connectionStatusText = null;
     this._everConnected = false;
+    this._spinnerDone = false;
     this.roomPanel = null;
     this.roomStatusText = null;
     this.memberCountText = null;
@@ -682,13 +683,14 @@ export class FriendLobbyScene extends Phaser.Scene {
     });
 
     this.connectionStatusText = this.add
-      .text(cx, cy + 76, "サーバーに接続中...\n(時間がかかる場合があります)", {
+      .text(cx, cy + 125, "サーバーに接続中...\n(時間がかかる場合があります)", {
         fontSize: "36px",
         color: "#ff6666",
         fontFamily: UI_FONT,
         align: "center",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setWordWrapWidth(680);
   }
 
   _drawSpinnerArc(angleDeg) {
@@ -713,8 +715,11 @@ export class FriendLobbyScene extends Phaser.Scene {
       this._everConnected = true;
     }
 
-    // スピナーは初回接続中のみ表示。一度つながったあとは出さない
-    const showSpinner = !this._everConnected && state === "connecting";
+    // スピナーは未接続の間（connecting / reconnecting）ずっと表示。
+    // connected になったら _everConnected = true で以降は出さない。
+    const showSpinner =
+      !this._everConnected &&
+      (state === "connecting" || state === "reconnecting");
 
     this._spinTrack?.setVisible(showSpinner);
     this.spinGraphics?.setVisible(showSpinner);

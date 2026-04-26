@@ -4,17 +4,17 @@ import { roomClient } from "../net/roomClient.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
   updateMemoV1 as aiUpdateMemo,
-  pickPitKisinV1 as aiPickPitKisin,
-  pickPitKugutsuV1 as aiPickPitKugutsu,
-  pickPitRasetsuV1 as aiPickPitRasetsu,
-  pickPitTestKyubiV1 as aiPickPitTestKyubi,
-  decidePlacementsKisinV1 as aiDecidePlacementsKisin,
-  optimizeSowOrderKisinV1 as aiOptimizeSowOrderKisin,
+  pickPitParamDfsV1 as aiPickPitKisin,
+  pickPitBalancedDfsV1 as aiPickPitKugutsu,
+  pickPitTechDfsV1 as aiPickPitRasetsu,
+  pickPitDisruptDfsV1 as aiPickPitTestKyubi,
+  decidePlacementsFortuneV1 as aiDecidePlacementsKisin,
+  optimizeSowOrderFortuneV1 as aiOptimizeSowOrderKisin,
 } from "../logic/GameAI.js";
 import {
-  DEFAULT_ROBO_PARAMS,
+  DEFAULT_KISIN_PARAMS,
   DEFAULT_TEST_KYUBI_PARAMS,
-} from "../sim/SimParams.js";
+} from "../data/GameParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -90,7 +90,7 @@ export class GameScene extends Phaser.Scene {
     this.hasShownOnlineInitialTurnBanner = false;
     this.rematchRequestedLocal = false;
     this.personalFortunesRevealedSticky = false;
-    this.aiDifficulty = "normal";
+    this.aiDifficulty = "yasha";
     this.playerFirst = true;
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     this.hasShownOnlineInitialTurnBanner = false;
     this.rematchRequestedLocal = false;
     this.personalFortunesRevealedSticky = false;
-    this.aiDifficulty = data?.aiDifficulty ?? "normal";
+    this.aiDifficulty = data?.aiDifficulty ?? "yasha";
     this.playerFirst = data?.playerFirst ?? true;
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
@@ -234,18 +234,20 @@ export class GameScene extends Phaser.Scene {
     if (!this._isOnlineRoomMode()) {
       // ソロ対戦: AI難易度バナーを表示
       const diffLabels = {
-        easy: "小鬼",
-        normal: "夜叉",
-        hard: "羅刹",
-        oni: "鬼神",
-        robo: "傀儡",
+        kooni: "小鬼",
+        yasha: "夜叉",
+        rasetsu: "羅刹",
+        kisin: "鬼神",
+        kyubi: "九尾",
+        kugutsu: "傀儡",
       };
       const diffColors = {
-        easy: 0x3a9e66,
-        normal: 0x4a7bbf,
-        hard: 0xbf4a55,
-        oni: 0x4a0e6e,
-        robo: 0x0d3a5e,
+        kooni: 0x3a9e66,
+        yasha: 0x4a7bbf,
+        rasetsu: 0xbf4a55,
+        kisin: 0x9e1535,
+        kyubi: 0x7a3ab0,
+        kugutsu: 0x0d3a5e,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
       const color = diffColors[this.aiDifficulty] ?? 0x4a7bbf;
@@ -2141,15 +2143,15 @@ export class GameScene extends Phaser.Scene {
 
   /** 難易度に応じてAIがどの路から撒くか決定する */
   _aiPickPit(validPits, state) {
-    if (this.aiDifficulty === "easy") {
+    if (this.aiDifficulty === "kooni") {
       // 弱い: 完全ランダム
       return validPits[Math.floor(Math.random() * validPits.length)];
     }
-    if (this.aiDifficulty === "hard") {
+    if (this.aiDifficulty === "rasetsu") {
       // 強い: HardV1（ぐるぐる・ざくざく特化、3手番先読み）
       return this._aiPickPitRasetsuV1(validPits, state);
     }
-    if (this.aiDifficulty === "oni") {
+    if (this.aiDifficulty === "kisin") {
       // 鬼神: OniV1 AI
       return this._aiPickPitKisinV1(validPits, state);
     }
@@ -2161,11 +2163,11 @@ export class GameScene extends Phaser.Scene {
       // testKyubi: 防御・妨害特化テスト版
       return this._aiPickPitTestKyubiV1(validPits, state);
     }
-    if (this.aiDifficulty === "robo") {
-      // ロボ: RoboV1 AI（機械学習最適化パラメータ）
+    if (this.aiDifficulty === "kugutsu") {
+      // 傀儡: KugutsuV1 AI（最適化パラメータ）
       return this._aiPickPitKugutsuV1(validPits, state);
     }
-    if (this.aiDifficulty === "normal") {
+    if (this.aiDifficulty === "yasha") {
       // 普通: 技優先→賽壇近い順
       return this._aiPickPitKisin(validPits, state);
     }
@@ -2178,6 +2180,8 @@ export class GameScene extends Phaser.Scene {
    * 各ターン開始時に呼ばれる。
    */
   _aiUpdateMemo(state) {
+    // 鬼神は色読みなし（武力型）
+    if (this.aiDifficulty === "kisin") return;
     // opp(AI)が確認済みの中央石色 = self(プレイヤー)の個人占いではない
     const oppSeenCenter = (state.fortune?.center ?? [])
       .filter((fc) => fc.seenBy?.includes("opp"))
@@ -2392,8 +2396,7 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      DEFAULT_ROBO_PARAMS,
-      "opp",
+      3,
     );
   }
 
@@ -2456,7 +2459,8 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      3,
+      DEFAULT_KISIN_PARAMS,
+      "opp",
     );
   }
 
@@ -2470,7 +2474,8 @@ export class GameScene extends Phaser.Scene {
     if (stones.length <= 1) return stones;
 
     // 小鬼・夜叉・傀儡は石順ランダム（撒き順最適化なし）
-    if (["easy", "normal", "robo"].includes(this.aiDifficulty)) return stones;
+    if (["kooni", "yasha", "kugutsu"].includes(this.aiDifficulty))
+      return stones;
 
     // testKyubi も Kisin 撒き順最適化を使用
     // （easy/normal/robo はスキップ済み）
@@ -2638,7 +2643,9 @@ export class GameScene extends Phaser.Scene {
             pitIndex = sortedByCount[0];
           }
         }
-      } else if (["oni", "kyubi", "robo", "hard"].includes(this.aiDifficulty)) {
+      } else if (
+        ["kisin", "kyubi", "kugutsu", "rasetsu"].includes(this.aiDifficulty)
+      ) {
         // 鬼神/九尾/傀儡/羅刹: 石の色選択も最適化
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
@@ -2663,7 +2670,7 @@ export class GameScene extends Phaser.Scene {
         } else {
           pitIndex = oppLanes[0];
         }
-      } else if (this.aiDifficulty === "hard") {
+      } else if (this.aiDifficulty === "rasetsu") {
         // 強い: ざくざくリスクを避けつつぐるぐるセットアップレーンを優先
         const st = this.gameState.getState();
         const guruSetup = oppLanes.filter((q) => {
@@ -2682,7 +2689,7 @@ export class GameScene extends Phaser.Scene {
           const pool = nonEmpty.length > 0 ? nonEmpty : oppLanes;
           pitIndex = pool[Math.floor(Math.random() * pool.length)];
         }
-      } else if (this.aiDifficulty === "normal") {
+      } else if (this.aiDifficulty === "yasha") {
         // 普通: 自占い色ならぐるぐるセットアップレーンへ優先配置、それ以外は非空優先ランダム
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
@@ -2854,7 +2861,7 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         // 鬼神/傀儡: こびふりの方が価値が高い場合はこびふりを優先する
-        if (this.aiDifficulty === "oni" || this.aiDifficulty === "robo") {
+        if (this.aiDifficulty === "kisin" || this.aiDifficulty === "kugutsu") {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           // 自陣(pit6-10)の石が少ない場合は強制解除（点数稼ぎを優先）
           const selfLaneStones = state.pits
@@ -3049,8 +3056,11 @@ export class GameScene extends Phaser.Scene {
     if (!extraTurn && this.gameState.canActivateKutakuta("opp")) {
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
-      // AIの賽壇 > プレイヤーの賽壇 なら発動
-      if (oppStoreCount > selfStoreCount) {
+      const shouldActivate =
+        this.aiDifficulty === "kisin"
+          ? oppStoreCount >= selfStoreCount * 2
+          : oppStoreCount > selfStoreCount;
+      if (shouldActivate) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
         this.time.delayedCall(450, () =>
           this.scene.get("UIScene").showResult(),

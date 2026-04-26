@@ -52,10 +52,12 @@ export class RandomLobbyScene extends Phaser.Scene {
     this.statusText = this.add
       .text(W / 2, H / 2 + 220, "接続中...", {
         fontSize: "40px",
-        color: "#c8d7f1",
+        color: "#ff4444",
         fontFamily: UI_FONT,
+        align: "center",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setWordWrapWidth(760);
 
     // Waiting player count hint
     this.hintText = this.add

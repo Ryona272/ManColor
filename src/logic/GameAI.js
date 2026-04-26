@@ -45,7 +45,7 @@ export function updateMemoV1(memo, state, excludeColors = []) {
 
 // 笏笏笏 縺｡繧峨■繧峨・縺ｽ縺・⊃縺・衍隴・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
-export function pickPitKisinV1(
+export function pickPitBalancedDfsV1(
   validPits,
   state,
   peeksDoneAI,
@@ -290,7 +290,7 @@ export function pickPitKisinV1(
  * @param {string}   role           - "opp" (繝・ヵ繧ｩ繝ｫ繝・ | "self"
  */
 
-export function pickPitKugutsuV1(
+export function pickPitParamDfsV1(
   validPits,
   state,
   peeksDoneAI,
@@ -349,13 +349,13 @@ export function pickPitKugutsuV1(
     let score = 0;
 
     // 縺舌ｋ縺舌ｋ
-    if (lastPit === storeIdx) score += p.roboGuruguruScore;
+    if (lastPit === storeIdx) score += p.kisinGuruguruScore;
 
-    // 縺｡繧峨■繧会ｼ井ｸ企剞 roboChirachiraLimit・・
-    if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
-      score += p.roboChirachiraScore;
+    // 縺｡繧峨■繧会ｼ井ｸ企剞 kisinChirachiraLimit・・
+    if (lastPit === oppStoreIdx && peeks < p.kisinChirachiraLimit) {
+      score += p.kisinChirachiraScore;
       const hasNeg = isAI ? hasUnconfirmedNegForAI : hasUnconfirmedNegForPlayer;
-      if (hasNeg) score += p.roboChirachiraNegBonus;
+      if (hasNeg) score += p.kisinChirachiraNegBonus;
     }
 
     // 縺悶￥縺悶￥: 逹蝨ｰ蜈医′閾ｪ髯｣縺ｮ遨ｺ縺阪°縺､髀｡縺ｫ遏ｳ縺ゅｊ
@@ -368,7 +368,7 @@ export function pickPitKugutsuV1(
           ? lastPit + 6
           : lastPit - 6;
       if (counts[mirror] > 0) {
-        score += p.roboZakuzakuBase;
+        score += p.kisinZakuzakuBase;
       }
     }
 
@@ -401,8 +401,8 @@ export function pickPitKugutsuV1(
   }
 
   // 笏笏笏 DFS 笏笏笏
-  const topN = Math.max(1, Math.round(p.roboTopN));
-  const depth = Math.max(1, Math.round(p.roboDepth));
+  const topN = Math.max(1, Math.round(p.kisinTopN));
+  const depth = Math.max(1, Math.round(p.kisinDepth));
 
   let bestFirstPit = validPits[0];
   let bestNet = -Infinity;
@@ -460,16 +460,16 @@ export function pickPitKugutsuV1(
 
       let newAiPeeks = aiPeeks;
       let newPlayerPeeks = playerPeeks;
-      if (lastPit === oppStoreIdx && peeks < p.roboChirachiraLimit) {
+      if (lastPit === oppStoreIdx && peeks < p.kisinChirachiraLimit) {
         if (isAI) newAiPeeks++;
         else newPlayerPeeks++;
       }
 
       const newAiKk = canKutakutaAI(newCounts);
       const newPlayerKk = canKutakutaPlayer(newCounts);
-      const aiKkBonus = !prevAiKk && newAiKk ? p.roboKutakutaBonus : 0;
+      const aiKkBonus = !prevAiKk && newAiKk ? p.kisinKutakutaBonus : 0;
       const playerKkBonus =
-        !prevPlayerKk && newPlayerKk ? p.roboKutakutaBonus : 0;
+        !prevPlayerKk && newPlayerKk ? p.kisinKutakutaBonus : 0;
 
       const newAiScore = isAI
         ? aiScore + score + aiKkBonus
@@ -529,7 +529,7 @@ export function pickPitKugutsuV1(
  * @param {number}   peeksDoneAI  - AI縺ｮ縺｡繧峨■繧牙ｮ御ｺ・屓謨ｰ
  */
 
-export function pickPitRasetsuV1(validPits, state, peeksDoneAI) {
+export function pickPitTechDfsV1(validPits, state, peeksDoneAI) {
   const initCounts = state.pits.map((p) => p.stones.length);
 
   // 縺｡繧峨■繧牙ｼｷ蛻ｶ繝√ぉ繝・け: 縺溘∪縺溘∪pit5逹蝨ｰ縺ｧ縺阪ｋ霍ｯ縺後≠繧後・蜊ｳ驕ｸ謚橸ｼ井ｸ企剞2・・
@@ -657,7 +657,7 @@ export function pickPitRasetsuV1(validPits, state, peeksDoneAI) {
  *   stoneIndex 縺ｯ蜈･蜉・stones 驟榊・縺ｮ繧､繝ｳ繝・ャ繧ｯ繧ｹ
  */
 
-export function decidePlacementsKisinV1(stones, state, fortune, memo) {
+export function decidePlacementsFortuneV1(stones, state, fortune, memo) {
   if (stones.length === 0) return [];
 
   // AI 繝ｬ繝ｼ繝ｳ: pit11 縺ｫ霑代＞鬆・
@@ -824,7 +824,7 @@ export function decidePlacementsKisinV1(stones, state, fortune, memo) {
  * @returns {object[]} 荳ｦ縺ｳ譖ｿ縺医◆ stones 驟榊・・・argets[i] 縺ｫ stones[i] 縺檎捩蝨ｰ・・
  */
 
-export function optimizeSowOrderKisinV1(
+export function optimizeSowOrderFortuneV1(
   stones,
   targets,
   state,
@@ -988,7 +988,7 @@ export function optimizeSowOrderKisinV1(
  * @param {object}  params      scoring parameters (DEFAULT_TEST_KYUBI_PARAMS)
  * @param {number}  maxDepth    DFS depth (default 3)
  */
-export function pickPitTestKyubiV1(
+export function pickPitDisruptDfsV1(
   validPits,
   state,
   peeksDoneAI,
