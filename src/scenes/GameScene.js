@@ -2401,15 +2401,18 @@ export class GameScene extends Phaser.Scene {
    * 九尾 AI: ちらちらを必ず3回全部実施、その後は Kisin DFS で最適手を選択
    */
   _aiPickPitKyubiV1(validPits, state) {
-    const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
-    if (peeksDone < 3) {
-      const chirachiraPits = validPits.filter((p) => {
-        const count = state.pits[p].stones.length;
-        return (p + count) % 12 === 5;
-      });
-      if (chirachiraPits.length > 0) return chirachiraPits[0];
-    }
-    return this._aiPickPitKisinV1(validPits, state);
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
+    const fortune = this.gameState.fortune ?? null;
+    return aiPickPitTestKyubi(
+      validPits,
+      state,
+      peeksDoneAI,
+      peeksDonePlayer,
+      fortune,
+      DEFAULT_TEST_KYUBI_PARAMS,
+      4,
+    );
   }
 
   /**

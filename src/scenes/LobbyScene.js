@@ -214,15 +214,6 @@ export class LobbyScene extends Phaser.Scene {
       },
       {
         y: 1330,
-        label: "testKyubi",
-        sub: "防御・妨害テスト版",
-        fill: 0x1a2e3a,
-        diff: "testKyubi",
-        cx: W / 2 - 157,
-        bw: 305,
-      },
-      {
-        y: 1330,
         label: "傀儡",
         sub: "成長する操り人形",
         fill: 0x0d2a3e,
