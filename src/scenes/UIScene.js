@@ -2411,12 +2411,13 @@ export class UIScene extends Phaser.Scene {
     const selfLabel =
       this.gameScene.selfPlayerName || getPlayerName() || "あなた";
     const _aiDiffLabels = {
-      easy: "小鬼",
-      normal: "夜叉",
-      hard: "羅刹",
-      oni: "鬼神",
+      kooni: "小鬼",
+      yasha: "夜叉",
+      rasetsu: "羅刹",
+      kisin: "鬼神",
       kyubi: "九尾",
-      robo: "傀儡",
+      kugutsu: "傀儡",
+      testKyubi: "九尾",
     };
     const oppLabel =
       this.gameScene.oppPlayerName ||

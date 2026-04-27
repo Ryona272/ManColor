@@ -4,6 +4,7 @@
   "private": true,
   "description": "ManColor - Mancala-style board game",
   "scripts": {
+    "sim": "node simulate.mjs",
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0 --port 3000 --strictPort",
     "room:server": "node server/roomServer.js",

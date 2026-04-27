@@ -4,16 +4,20 @@ import { roomClient } from "../net/roomClient.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
   updateMemoV1 as aiUpdateMemo,
-  pickPitParamDfsV1 as aiPickPitKisin,
-  pickPitBalancedDfsV1 as aiPickPitKugutsu,
+  KisinV2 as aiPickPitKisin,
+  KugutsuV1 as aiPickPitKugutsu,
   pickPitTechDfsV1 as aiPickPitRasetsu,
-  pickPitDisruptDfsV1 as aiPickPitTestKyubi,
-  decidePlacementsFortuneV1 as aiDecidePlacementsKisin,
-  optimizeSowOrderFortuneV1 as aiOptimizeSowOrderKisin,
+  KyubiV2 as aiPickPitKyubi,
+  decidePlacementsFortuneV1 as aiDecidePlacements,
+  decidePlacementsFortuneKisinV1 as aiDecidePlacementsKisin,
+  decidePlacementsFortuneKyubiV1 as aiDecidePlacementsKyubi,
+  optimizeSowOrderFortuneV1 as aiOptimizeSowOrder,
+  optimizeSowOrderFortuneKisinV1 as aiOptimizeSowOrderKisin,
 } from "../logic/GameAI.js";
 import {
   DEFAULT_KISIN_PARAMS,
   DEFAULT_TEST_KYUBI_PARAMS,
+  DEFAULT_KYUBI_PARAMS,
 } from "../data/GameParams.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
@@ -2180,8 +2184,6 @@ export class GameScene extends Phaser.Scene {
    * 各ターン開始時に呼ばれる。
    */
   _aiUpdateMemo(state) {
-    // 鬼神は色読みなし（武力型）
-    if (this.aiDifficulty === "kisin") return;
     // opp(AI)が確認済みの中央石色 = self(プレイヤー)の個人占いではない
     const oppSeenCenter = (state.fortune?.center ?? [])
       .filter((fc) => fc.seenBy?.includes("opp"))
@@ -2407,14 +2409,14 @@ export class GameScene extends Phaser.Scene {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
     const fortune = this.gameState.fortune ?? null;
-    return aiPickPitTestKyubi(
+    return aiPickPitKyubi(
       validPits,
       state,
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      DEFAULT_TEST_KYUBI_PARAMS,
-      4,
+      DEFAULT_KYUBI_PARAMS,
+      "opp",
     );
   }
 
@@ -2428,14 +2430,14 @@ export class GameScene extends Phaser.Scene {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
     const fortune = this.gameState.fortune ?? null;
-    return aiPickPitTestKyubi(
+    return aiPickPitKyubi(
       validPits,
       state,
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      DEFAULT_TEST_KYUBI_PARAMS,
-      4,
+      DEFAULT_KYUBI_PARAMS,
+      "opp",
     );
   }
 
@@ -2477,21 +2479,19 @@ export class GameScene extends Phaser.Scene {
     if (["kooni", "yasha", "kugutsu"].includes(this.aiDifficulty))
       return stones;
 
-    // testKyubi も Kisin 撒き順最適化を使用
-    // （easy/normal/robo はスキップ済み）
-
-    // 羅刹・鬼神・九尾: 着地先対応石並び替えを使用
     const state = this.gameState.getState();
     const fortune = {
       center: state.fortune.center,
       opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
       self: { color: this.gameState.getFortuneColorForPlayer("self") },
     };
+
+    // 鬼神・羅刹・九尾・testKyubi: 汎用撒き順最適化（メモ推測あり）
     const memo = {
       inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
       playerAvoidedColor: this._aiMemo?.playerAvoidedColor,
     };
-    return aiOptimizeSowOrderKisin(stones, targets, state, fortune, memo, {
+    return aiOptimizeSowOrder(stones, targets, state, fortune, memo, {
       dynamicUnknownPenalty: true,
       unknownPenaltyScale: 30,
     });
@@ -2643,10 +2643,7 @@ export class GameScene extends Phaser.Scene {
             pitIndex = sortedByCount[0];
           }
         }
-      } else if (
-        ["kisin", "kyubi", "kugutsu", "rasetsu"].includes(this.aiDifficulty)
-      ) {
-        // 鬼神/九尾/傀儡/羅刹: 石の色選択も最適化
+      } else if (this.aiDifficulty === "kisin") {
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
         const fortune = {
@@ -2670,7 +2667,32 @@ export class GameScene extends Phaser.Scene {
         } else {
           pitIndex = oppLanes[0];
         }
-      } else if (this.aiDifficulty === "rasetsu") {
+      } else if (["kyubi"].includes(this.aiDifficulty)) {
+        // 九尾: pit10/pit9集中配置（ちらちら・ざくざく目標）
+        const st = this.gameState.getState();
+        const pendingNow = this.gameState.getPendingPlacement();
+        const fortune = {
+          center: st.fortune.center,
+          opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+          self: { color: this.gameState.getFortuneColorForPlayer("self") },
+        };
+        const memo = {
+          inferredPlayerColor: this._aiMemo?.inferredPlayerColor,
+          playerAvoidedColor: this._aiMemo?.playerAvoidedColor,
+        };
+        const placements = aiDecidePlacementsKyubi(
+          pendingNow,
+          st,
+          fortune,
+          memo,
+        );
+        if (placements.length > 0) {
+          pitIndex = placements[0].pitIndex;
+          stoneIndex = placements[0].stoneIndex;
+        } else {
+          pitIndex = oppLanes[0];
+        }
+      } else if (["kugutsu", "rasetsu"].includes(this.aiDifficulty)) {
         // 強い: ざくざくリスクを避けつつぐるぐるセットアップレーンを優先
         const st = this.gameState.getState();
         const guruSetup = oppLanes.filter((q) => {
@@ -2860,8 +2882,74 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(800, () => this._aiFinishTurn(false));
           return;
         }
-        // 鬼神/傀儡: こびふりの方が価値が高い場合はこびふりを優先する
-        if (this.aiDifficulty === "kisin" || this.aiDifficulty === "kugutsu") {
+        // 鬼神: ちらちらで情報収集（2回目以降も狙う）/ 全回終了後はぽいぽい優先
+        if (this.aiDifficulty === "kisin") {
+          const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
+          if (peeksDone >= 3) {
+            // ちらちら済み: 相手賽壇の標準優先順 → 自賽壇-4捨て → _aiPoipoiOwnStore
+            const ownFortune = this.gameState.getFortuneColorForPlayer("opp");
+            const inferred = this._aiMemo?.inferredPlayerColor;
+            const knownNegColor = this._aiKnownNegativeColor();
+            const knownPos = this._aiKnownPositiveColors();
+            const playerSeenPositive = state.fortune.center
+              .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
+              .map((fc) => fc.color);
+            // 相手賽壇の最良石を評価
+            let bestOppIdx = 0,
+              bestOppVal = -Infinity;
+            state.pits[5].stones.forEach((stone, index) => {
+              let val = 0;
+              if (ownFortune && stone.color === ownFortune) val = 50;
+              else if (inferred && stone.color === inferred) val = 30;
+              else if (knownPos.includes(stone.color)) val = 15;
+              else if (playerSeenPositive.includes(stone.color)) val = 10;
+              if (knownNegColor && stone.color === knownNegColor) val = -99;
+              if (val > bestOppVal) {
+                bestOppVal = val;
+                bestOppIdx = index;
+              }
+            });
+            // 自賽壇の-4確定石を評価
+            let bestOwnIdx = -1,
+              bestOwnVal = 0;
+            state.pits[11].stones.forEach((stone, idx) => {
+              const v = knownNegColor && stone.color === knownNegColor ? 45 : 0;
+              if (v > bestOwnVal) {
+                bestOwnVal = v;
+                bestOwnIdx = idx;
+              }
+            });
+            if (bestOwnIdx >= 0 && bestOwnVal > bestOppVal) {
+              this.gameState.removeStoneFromPit(11, bestOwnIdx);
+              this._announceTechnique(
+                "ぽいぽい！",
+                0xe87070,
+                "相手が自分の石を排除！",
+              );
+              this._renderStones();
+            } else if (bestOppVal >= 0 && state.pits[5].stones.length > 0) {
+              this.gameState.removeStoneFromPit(5, bestOppIdx);
+              this._announceTechnique(
+                "ぽいぽい！",
+                0xe87070,
+                "相手が石を一つ排除！",
+              );
+              this._renderStones();
+            } else {
+              this._aiPoipoiOwnStore(
+                state,
+                ownFortune,
+                knownNegColor,
+                knownPos,
+              );
+            }
+            this.time.delayedCall(800, () => this._aiFinishTurn(false));
+            return;
+          }
+          // peeksDone < 1: fall through → chirachira
+        }
+        // 傀儡: ぽいぽい価値比較
+        if (this.aiDifficulty === "kugutsu") {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           // 自陣(pit6-10)の石が少ない場合は強制解除（点数稼ぎを優先）
           const selfLaneStones = state.pits
@@ -2883,11 +2971,9 @@ export class GameScene extends Phaser.Scene {
                 : 0;
             const chirachiraRemaining =
               3 - (this.gameState.getState().centerPeekProgress?.opp ?? 0);
-            // 鬼: ぽいぽいの閾値を低め（より積極的にぽいぽい）
             const chirachiraValue = chirachiraRemaining >= 2 ? 25 : 6;
 
             if (poipoiValue > chirachiraValue) {
-              // プレイヤー賽壇が空ならぽいぽい不可能（自分の賽壇には手を出さない）
               if (state.pits[5].stones.length > 0) {
                 const targetStones = state.pits[5].stones;
                 let selectedIndex = 0;
@@ -2896,28 +2982,21 @@ export class GameScene extends Phaser.Scene {
                   this.gameState.getFortuneColorForPlayer("opp");
                 const knownNegColor = this._aiKnownNegativeColor();
                 const knownPos = this._aiKnownPositiveColors();
-                // 相手がちらちらで確認した+1色（相手が意図的に収集中）
                 const playerSeenPositive = state.fortune.center
                   .filter((fc) => fc.bonus > 0 && fc.seenBy.includes("self"))
                   .map((fc) => fc.color);
                 targetStones.forEach((stone, index) => {
-                  let val = 0; // デフォルト：情報なし → 取る価値なし
-                  // 優先1: AI占い色 → 相手にとって+5点の石（最も除去価値が高い）
+                  let val = 0;
                   if (ownFortune && stone.color === ownFortune) val = 50;
-                  // 優先2: 推測プレイヤー占い色 → +3点を奪う
                   else if (inferred && stone.color === inferred) val = 30;
-                  // 優先3: 自分が見た確認済み+1石（+1点を奪う）
                   else if (knownPos.includes(stone.color)) val = 15;
-                  // 優先4: 相手が見た確認済み+1石（相手が意図的に収集中）
                   else if (playerSeenPositive.includes(stone.color)) val = 10;
-                  // 絶対に取らない: ちらちら確認済み-4石（取ると相手のマイナスが消えて損）
                   if (knownNegColor && stone.color === knownNegColor) val = -99;
                   if (val > highestValue) {
                     highestValue = val;
                     selectedIndex = index;
                   }
                 });
-                // 自賽壇のknownNeg石の捨て価値を計算（-4確定石の排除は+5排除より低優先）
                 let ownDiscardVal = 0;
                 let ownDiscardIdx = -1;
                 state.pits[11].stones.forEach((stone, idx) => {
@@ -2929,7 +3008,6 @@ export class GameScene extends Phaser.Scene {
                   }
                 });
                 if (ownDiscardIdx >= 0 && ownDiscardVal > highestValue) {
-                  // 自分の-4確定石を捨てた方が得
                   this.gameState.removeStoneFromPit(11, ownDiscardIdx);
                   this._announceTechnique(
                     "ぽいぽい！",
@@ -2946,7 +3024,6 @@ export class GameScene extends Phaser.Scene {
                   );
                   this._renderStones();
                 } else {
-                  // pit5に取る価値がない → 自賽壇(pit11)のマイナス・不審な石を捨てる
                   this._aiPoipoiOwnStore(
                     state,
                     ownFortune,

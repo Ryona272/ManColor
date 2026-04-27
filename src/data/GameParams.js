@@ -5,25 +5,25 @@
 
 /**
  * 鬼神（kisin）用パラメータ
- * pickPitParamDfsV1 に渡す。
- * - ぐるぐる一押し（他の技は最後の手段）
- * - マイナス石ペナルティ無視（NegBonus=0）
+ * SimKisinV1 に渡す。
+ * - ぐるぐる連鎖一本槍・武闘派ごり押し
+ * - ぐるぐる >> ちらちら ≈ ざくざく
  * - くたくたボーナス 0（賽壇に石を貯めない）
  */
 export const DEFAULT_KISIN_PARAMS = {
-  kisinGuruguruScore: 50, // ぐるぐる最優先
-  kisinChirachiraScore: 3, // ちらちらは最後の手段
-  kisinChirachiraNegBonus: 0, // マイナス石を無視（武力型）
-  kisinChirachiraLimit: 2, // ちらちら上限 2回（循環目的）
-  kisinZakuzakuBase: 2, // ざくざくも最後の手段
+  kisinGuruguruScore: 50, // ぐるぐる最優先（他を圧倒）
+  kisinChirachiraScore: 20, // 1回目ちらちら（ぐるぐるより低い）
+  kisinChirachiraScore2: 10, // 2回目以降ちらちら（さらに低い）
+  kisinChirachiraLimit: 3, // ちらちら上限 3回まで
+  kisinZakuzakuBase: 12, // ざくざく（ぐるぐると組み合わせて使う）
   kisinKutakutaBonus: 0, // くたくたは使わない
   kisinTopN: 5, // 評価候補路数（5路）
-  kisinDepth: 3, // 3手先まで読む
+  kisinDepth: 5, // 5手先まで読む
 };
 
 /**
  * 九尾（kyubi）用パラメータ
- * pickPitDisruptDfsV1 に渡す。
+ * KyubiV1 に渡す。
  * - ちらちら全3回最優先
  * - ざくざく超高評価 / 相手ぐるぐる破壊ボーナス
  */
@@ -52,4 +52,22 @@ export const DEFAULT_TEST_KYUBI_PARAMS = {
   tkPoipoiInferred: 35, // 推測プレイヤー占い色の価値
   tkPoipoiKnownPos: 15, // 確認済み+1色の価値
   tkKutakutaBias: 1, // くたくた発動傾向
+};
+
+/**
+ * 九尾（kyubi）V2 用パラメータ（SimKyubiV1 / KyubiV2 向け）
+ * - ちらちら全3回優先 > ざくざく超優先 > ぐるぐる低評価
+ */
+export const DEFAULT_KYUBI_PARAMS = {
+  kyubiGuruguruScore: 3, // ぐるぐるは低評価
+  kyubiChirachiraScore: 25, // 1回目ちらちら
+  kyubiChirachiraScore2: 25, // 2・3回目ちらちら（3回全部積極的に狙う）
+  kyubiChirachiraLimit: 3, // ちらちら最大3回
+  kyubiZakuzakuBase: 15, // ざくざく基本スコア
+  kyubiKutakutaBonus: 0,
+  kyubiDepth: 5,
+  // ─── 妨害スコア（相手ターン想定値・高いほど相手技を潰しに行く） ───
+  kyubiOppChiraScore: 15, // 相手ちらちら脅威（kugutsu=9より高く）
+  kyubiOppZakuBase: 13, // 相手ざくざく脅威（kugutsu=7より高く）
+  kyubiZakuzakuSetupBonus: 0, // ざくざく仕掛け: 自路を空にして相手鏡路の石を狙いやすく
 };
