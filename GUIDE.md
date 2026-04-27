@@ -17,7 +17,7 @@
 
 # 1. AI能力一覧
 
-最終更新: 2026-04-27
+最終更新: 2026-04-28
 
 ---
 
@@ -26,15 +26,17 @@
 #### 路選択
 
 - `KugutsuV1` — 5手DFS・攻守バランス型 → **kugutsu（傀儡）**
-- `KisinV1` — パラメータ調整版 → **kisin（鬼神）**
+- `KisinV1` / `KisinV2` — ぐるぐる連鎖特化DFS → **kisin（鬼神）**（V2が現行ゲーム用）
 - `pickPitTechDfsV1` — 技特化3手DFS → **rasetsu（羅刹）**
-- `KyubiV1` — 妨害・防御特化DFS → **kyubi（九尾）**
+- `KyubiV1` — KugutsuV1 完コピ（ベースライン）
+- `KyubiV2` — 知力特化DFS（ちらちら・ざくざく・妨害）→ **kyubi（九尾）**（現行ゲーム用）
 
 #### ざくざく配置・撒き順
 
 - `decidePlacementsFortuneKisinV1` — 確定情報のみ・ぐるぐる/ちらちら圏最適配置 → **kisin専用**
 - `optimizeSowOrderFortuneKisinV1` — 確定情報のみ・撒き前石並び替え → **kisin専用**
-- `decidePlacementsFortuneV1` — 占い情報活用の最適配置 → **rasetsu・kyubi・kugutsu共通**
+- `decidePlacementsFortuneKyubiV1` — pit10/pit9 集中配置（ちらちら目標） → **kyubi専用（ラウンド開始時）**
+- `decidePlacementsFortuneV1` — 占い情報活用の最適配置 → **rasetsu・kugutsu共通**（kyubiのざくざく後も使用）
 - `optimizeSowOrderFortuneV1` — 撒き前の石並び替え → **rasetsu・kyubi・kugutsu共通**
 
 #### SimAI専用
@@ -57,8 +59,8 @@ flowchart TD
     D -->|rasetsu| C{ちらちら消費 < 3?}
     C -->|Yes| P5["pit5 着地を最優先"]
     C -->|No| T["pickPitTechDfsV1\n3手DFS・ぐるぐる連鎖最大化"]
-    D -->|kisin| K["KisinV1\nパラメータ調整DFS"]
-    D -->|kyubi| Q["KyubiV1\n妨害・防御特化DFS"]
+    D -->|kisin| K["KisinV2\nぐるぐる連鎖特化DFS"]
+    D -->|kyubi| Q["KyubiV2\n知力特化DFS（ちらちら・ざくざく）"]
     D -->|kugutsu| G["KugutsuV1\n5手DFS・攻守バランス評価"]
 ```
 
@@ -185,7 +187,9 @@ midUnknownPenalty（未確定石）
 Kisin専用        kisin    decidePlacementsFortuneKisinV1
               → 各路が[ちらちら圏-2, ちらちら圏]なら ちらちら数を目標
               → それ以外はぐるぐる数を目標 / 確定情報のみで色割り当て
-スコア最適（推測込み） kyubi / kugutsu  decidePlacementsFortuneV1
+Kyubi専用        kyubi    decidePlacementsFortuneKyubiV1（ラウンド開始時）
+              → pit10/pit9 集中・ちらちら回数目標
+スコア最適（推測込み） kyubi（ざくざく後）/ kugutsu  decidePlacementsFortuneV1
               → 知識色込みスコアで全路評価し最適配置
 ```
 
@@ -279,7 +283,7 @@ flowchart TD
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ 🟣 kisin（鬼神）                               ぐるぐる連鎖特化型 │
-│  路選択: KisinV1（5路5深DFS）                                 │
+│  路選択: KisinV2（5路5深DFS）                                 │
 │    ぐるぐる最優先 / ちらちら・ざくざくはぐるぐる連鎖後のみ    │
 │  撒き順: ○（Kisin専用・確定情報のみ）                         │
 │  配置: Kisin専用（ぐるぐる/ちらちら圏判定・確定情報のみ）      │
@@ -287,10 +291,10 @@ flowchart TD
 │  予測: 推測色   色読みなし（確定情報のみ・メモ推測なし）        │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
-│ 🟡 kyubi（九尾）                               妨害・ちらちら型│
-│  路選択: 妨害・防御特化DFS（KyubiV1）                         │
-│  ざくざく超高評価 / 相手ぐるぐる破壊ボーナス                  │
-│  撒き順: ○   配置: スコア最適   ちらちら: 全3回最優先         │
+│ 🟡 kyubi（九尾）                               知力・ちらちら特化型│
+│  路選択: KyubiV2（ちらちら×3・ざくざく超優先・妨害）          │
+│  配置: pit10/pit9集中（KyubiV1専用）→ ざくざく後はスコア最適  │
+│  撒き順: ○   ちらちら: 全3回最優先                            │
 │  くたくた: 標準   予測: 推測色                                │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
