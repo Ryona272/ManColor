@@ -25,10 +25,10 @@
 
 #### 路選択
 
-- `pickPitBalancedDfsV1` — 5手DFS・攻守バランス型 → **kugutsu（傀儡）**
-- `pickPitParamDfsV1` — パラメータ調整版 → **kisin（鬼神）**
+- `KugutsuV1` — 5手DFS・攻守バランス型 → **kugutsu（傀儡）**
+- `KisinV1` — パラメータ調整版 → **kisin（鬼神）**
 - `pickPitTechDfsV1` — 技特化3手DFS → **rasetsu（羅刹）**
-- `pickPitDisruptDfsV1` — 妨害・防御特化DFS → **kyubi（九尾）**
+- `KyubiV1` — 妨害・防御特化DFS → **kyubi（九尾）**
 
 #### ざくざく配置・撒き順
 
@@ -41,7 +41,7 @@
 - `decideSpecialActionV1` — ちらちら vs ぽいぽい → **kisin・kugutsu（SimAI）**
 - `createMemoV1` / `updateMemoV1` — 占い色推測メモ → **全難易度**
 
-> シミュレーション路選択: `pickPitParamDfsV1`（GameAI.js）+ `DEFAULT_KISIN_PARAMS`
+> シミュレーション路選択: `KisinV1`（GameAI.js）+ `DEFAULT_KISIN_PARAMS`
 
 ---
 
@@ -55,9 +55,9 @@ flowchart TD
     D -->|rasetsu| C{ちらちら消費 < 3?}
     C -->|Yes| P5["pit5 着地を最優先"]
     C -->|No| T["pickPitTechDfsV1\n3手DFS・ぐるぐる連鎖最大化"]
-    D -->|kisin| K["pickPitParamDfsV1\nパラメータ調整DFS"]
-    D -->|kyubi| Q["pickPitDisruptDfsV1\n妨害・防御特化DFS"]
-    D -->|kugutsu| G["pickPitBalancedDfsV1\n5手DFS・攻守バランス評価"]
+    D -->|kisin| K["KisinV1\nパラメータ調整DFS"]
+    D -->|kyubi| Q["KyubiV1\n妨害・防御特化DFS"]
+    D -->|kugutsu| G["KugutsuV1\n5手DFS・攻守バランス評価"]
 ```
 
 ---
@@ -252,21 +252,21 @@ flowchart TD
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ 🟣 kisin（鬼神）                               パラメータDFS型 │
-│  路選択: パラメータ調整DFS（pickPitParamDfsV1）                │
+│  路選択: パラメータ調整DFS（KisinV1）                          │
 │  撒き順: ○   配置: スコア最適   ちらちら: 価値比較            │
 │  くたくた: 条件付き（AI賽壇 ≥ 相手賽壇 × 2）   予測: 推測色  │
 │  色読みなし（武力型）/ 気分システム                            │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ 🟡 kyubi（九尾）                               妨害・ちらちら型│
-│  路選択: 妨害・防御特化DFS（pickPitDisruptDfsV1）             │
+│  路選択: 妨害・防御特化DFS（KyubiV1）                         │
 │  ざくざく超高評価 / 相手ぐるぐる破壊ボーナス                  │
 │  撒き順: ○   配置: スコア最適   ちらちら: 全3回最優先         │
 │  くたくた: 標準   予測: 推測色                                │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ ⚫ kugutsu（傀儡）                             攻守バランス型  │
-│  路選択: 5手DFS・攻守バランス（pickPitBalancedDfsV1）          │
+│  路選択: 5手DFS・攻守バランス（KugutsuV1）                     │
 │  kugutsu / kisin比: ぐるぐる ×1.7〜2.0 / 脅威ペナルティ ×2.5 │
 │  撒き順: ○   配置: スコア最適   ちらちら: 価値比較            │
 │  くたくた: 標準   予測: 推測色                                │
