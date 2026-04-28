@@ -246,12 +246,12 @@ export class GameScene extends Phaser.Scene {
         kugutsu: "傀儡",
       };
       const diffColors = {
-        kooni: 0x3a9e66,
-        yasha: 0x4a7bbf,
-        rasetsu: 0xbf4a55,
-        kisin: 0x9e1535,
-        kyubi: 0x7a3ab0,
-        kugutsu: 0x0d3a5e,
+        kooni: 0x44aa66,
+        yasha: 0x4499cc,
+        rasetsu: 0xcc3344,
+        kisin: 0x9933dd,
+        kyubi: 0xc49820,
+        kugutsu: 0xaa0000,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
       const color = diffColors[this.aiDifficulty] ?? 0x4a7bbf;
@@ -2408,7 +2408,11 @@ export class GameScene extends Phaser.Scene {
   _aiPickPitKyubiV1(validPits, state) {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
-    const fortune = this.gameState.fortune ?? null;
+    const fortune = {
+      center: this.gameState.getState().fortune.center,
+      opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+      self: { color: this.gameState.getFortuneColorForPlayer("self") },
+    };
     return aiPickPitKyubi(
       validPits,
       state,
@@ -2429,7 +2433,11 @@ export class GameScene extends Phaser.Scene {
   _aiPickPitTestKyubiV1(validPits, state) {
     const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
     const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
-    const fortune = this.gameState.fortune ?? null;
+    const fortune = {
+      center: this.gameState.getState().fortune.center,
+      opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+      self: { color: this.gameState.getFortuneColorForPlayer("self") },
+    };
     return aiPickPitKyubi(
       validPits,
       state,
@@ -2789,7 +2797,9 @@ export class GameScene extends Phaser.Scene {
           if (peeksDone < 3) {
             const revealInfo = this.gameState.revealNextCenterForPlayer("opp");
             const VIEW_FROM_ME = ["左", "真ん中", "右"];
-            const desc = revealInfo ? 相手がを確認 : "相手が占い石を確認！";
+            const desc = revealInfo
+              ? `相手が${VIEW_FROM_ME[revealInfo.index]}を確認`
+              : "相手が占い石を確認！";
             this._announceTechnique("ちらちら！", 0xe87070, desc);
             this._renderStones();
             this.time.delayedCall(800, () => this._aiFinishTurn(false));
@@ -3135,7 +3145,7 @@ export class GameScene extends Phaser.Scene {
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
       const shouldActivate =
         this.aiDifficulty === "kisin"
-          ? oppStoreCount >= selfStoreCount * 2
+          ? oppStoreCount >= selfStoreCount
           : oppStoreCount > selfStoreCount;
       if (shouldActivate) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");

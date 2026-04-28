@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GameAI.js
  * ゲーム AI ロジック（V1）
  * シミュレーション非依存の純粋関数 AI
@@ -791,6 +791,7 @@ export function KisinV2(
   const chiraLimit = params.kisinChirachiraLimit ?? 3;
   const zakuBase = params.kisinZakuzakuBase ?? 8;
   const kkBonus = params.kisinKutakutaBonus ?? 0;
+  const guruDepthDiscount = params.kisinGuruDepthDiscount ?? 0.75;
 
   const initCounts = state.pits.map((p) => p.stones.length);
 
@@ -814,7 +815,7 @@ export function KisinV2(
     return { counts: nc, lastPit: cur };
   }
 
-  function scoreSow(counts, pit, isAI, peeks) {
+  function scoreSow(counts, pit, isAI, peeks, depth = 0) {
     const laneMin = isAI ? aiLaneMin : plLaneMin;
     const laneMax = isAI ? aiLaneMax : plLaneMax;
     const storeIndex = isAI ? aiStore : playerStore;
@@ -825,7 +826,7 @@ export function KisinV2(
 
     // ぐるぐる: AI ターンは武闘派スコア、プレイヤーターンは kugutsu 基準(5)で推定
     if (lastPit === storeIndex) {
-      score += isAI ? guruScore : 5;
+      score += isAI ? guruScore * Math.pow(guruDepthDiscount, depth) : 5;
     }
 
     // ちらちら: AI ターンはパラメータ、プレイヤーターンは kugutsu 基準(9/8)
@@ -855,7 +856,7 @@ export function KisinV2(
     return { score, lastPit };
   }
 
-  function getTopMoves(counts, isAI, peeks, restrictTo) {
+  function getTopMoves(counts, isAI, peeks, restrictTo, depth = 0) {
     const laneMin = isAI ? aiLaneMin : plLaneMin;
     const laneMax = isAI ? aiLaneMax : plLaneMax;
     const pool =
@@ -864,7 +865,7 @@ export function KisinV2(
     const scored = [];
     for (const p of pool) {
       if (counts[p] === 0) continue;
-      const { score } = scoreSow(counts, p, isAI, peeks);
+      const { score } = scoreSow(counts, p, isAI, peeks, depth);
       scored.push({ pit: p, score });
     }
     return scored;
@@ -911,13 +912,13 @@ export function KisinV2(
     const peeks = isAITurn ? aiPeeks : playerPeeks;
 
     const topMoves = isFirstMove
-      ? getTopMoves(counts, true, aiPeeks, validPits)
-      : getTopMoves(counts, isAITurn, peeks, null);
+      ? getTopMoves(counts, true, aiPeeks, validPits, depth)
+      : getTopMoves(counts, isAITurn, peeks, null, depth);
 
     if (topMoves.length === 0) return;
 
     for (const { pit } of topMoves) {
-      const { score, lastPit } = scoreSow(counts, pit, isAITurn, peeks);
+      const { score, lastPit } = scoreSow(counts, pit, isAITurn, peeks, depth);
       const { counts: newCounts } = fastSow(counts, pit);
 
       let newAiPeeks = aiPeeks;

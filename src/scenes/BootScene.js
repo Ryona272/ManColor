@@ -18,9 +18,62 @@ export class BootScene extends Phaser.Scene {
   preload() {
     // 読み込み進捗バー
     const { width, height } = this.cameras.main;
-    this.cameras.main.setBackgroundColor("#0f1824");
 
     this.load.image("title-logo", "/img/logo.png");
+
+    // 背景アトモスフィア
+    const bgG = this.add.graphics();
+    bgG.fillGradientStyle(0x080d18, 0x0c1022, 0x160b1a, 0x10060f, 1);
+    bgG.fillRect(0, 0, width, height);
+    // 斜めテクスチャライン
+    bgG.lineStyle(1, 0xffffff, 0.022);
+    for (let i = -4; i < 16; i++) {
+      bgG.beginPath();
+      bgG.moveTo(i * 150, 0);
+      bgG.lineTo(i * 150 + height * 0.55, height);
+      bgG.strokePath();
+    }
+    // グロー球（ゴールド、右上）
+    bgG.fillStyle(0xf0d39a, 0.07);
+    bgG.fillCircle(width * 0.88, height * 0.1, 360);
+    bgG.fillStyle(0xf0d39a, 0.03);
+    bgG.fillCircle(width * 0.88, height * 0.1, 580);
+    // グロー球（ブルー、左下）
+    bgG.fillStyle(0x55aadd, 0.07);
+    bgG.fillCircle(width * 0.12, height * 0.9, 360);
+    bgG.fillStyle(0x55aadd, 0.03);
+    bgG.fillCircle(width * 0.12, height * 0.9, 560);
+    // グロー球（パープル、中央）
+    bgG.fillStyle(0x7733aa, 0.04);
+    bgG.fillCircle(width * 0.5, height * 0.5, 480);
+    // 外枠（二重）
+    bgG.lineStyle(1.5, 0xe5d5b1, 0.35);
+    bgG.strokeRoundedRect(30, 30, width - 60, height - 60, 28);
+    bgG.lineStyle(1, 0xe5d5b1, 0.1);
+    bgG.strokeRoundedRect(44, 44, width - 88, height - 88, 22);
+    // コーナーLブラケット
+    const cLen = 55;
+    bgG.lineStyle(2.5, 0xf0d39a, 0.45);
+    bgG.beginPath();
+    bgG.moveTo(30, 30 + cLen);
+    bgG.lineTo(30, 30);
+    bgG.lineTo(30 + cLen, 30);
+    bgG.strokePath();
+    bgG.beginPath();
+    bgG.moveTo(width - 30 - cLen, 30);
+    bgG.lineTo(width - 30, 30);
+    bgG.lineTo(width - 30, 30 + cLen);
+    bgG.strokePath();
+    bgG.beginPath();
+    bgG.moveTo(30, height - 30 - cLen);
+    bgG.lineTo(30, height - 30);
+    bgG.lineTo(30 + cLen, height - 30);
+    bgG.strokePath();
+    bgG.beginPath();
+    bgG.moveTo(width - 30 - cLen, height - 30);
+    bgG.lineTo(width - 30, height - 30);
+    bgG.lineTo(width - 30, height - 30 - cLen);
+    bgG.strokePath();
 
     const titleText = this.add
       .text(width / 2, height * 0.34, "ManColor", {
@@ -40,20 +93,67 @@ export class BootScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const barWidth = 420;
+    // サブタイトル装飾ライン
+    {
+      const dg = this.add.graphics();
+      const ly = height * 0.44 + 30;
+      dg.lineStyle(1.5, 0xf0d39a, 0.5);
+      dg.beginPath();
+      dg.moveTo(width / 2 - 180, ly);
+      dg.lineTo(width / 2 + 180, ly);
+      dg.strokePath();
+      dg.lineStyle(1, 0xf0d39a, 0.18);
+      dg.beginPath();
+      dg.moveTo(width / 2 - 320, ly);
+      dg.lineTo(width / 2 - 180, ly);
+      dg.strokePath();
+      dg.beginPath();
+      dg.moveTo(width / 2 + 180, ly);
+      dg.lineTo(width / 2 + 320, ly);
+      dg.strokePath();
+      dg.fillStyle(0xf0d39a, 0.7);
+      dg.fillCircle(width / 2 - 180, ly, 3.5);
+      dg.fillCircle(width / 2 + 180, ly, 3.5);
+      dg.fillStyle(0xf0d39a, 0.45);
+      dg.fillCircle(width / 2, ly, 4.5);
+      dg.fillCircle(width / 2 - 90, ly, 2.5);
+      dg.fillCircle(width / 2 + 90, ly, 2.5);
+    }
+
+    const barWidth = 500;
+    const barHeight = 16;
     const barLeftX = width / 2 - barWidth / 2;
     const barY = height * 0.55;
+
+    const bg = this.add
+      .rectangle(width / 2, barY, barWidth, barHeight, 0x1a2535)
+      .setOrigin(0.5, 0.5);
     const bar = this.add
-      .rectangle(barLeftX, barY, 0, 20, 0xe0c97f)
+      .rectangle(barLeftX, barY, 0, barHeight, 0xe0c97f)
       .setOrigin(0, 0.5);
-    const bg = this.add.rectangle(width / 2, barY, barWidth, 20, 0x2a344a);
-    bg.setDepth(0);
-    bar.setDepth(1);
+    // プログレスバーフレーム（バーの上に描画）
+    const barFrameG = this.add.graphics();
+    barFrameG.lineStyle(7, 0xe0c97f, 0.14);
+    barFrameG.strokeRoundedRect(
+      barLeftX - 7,
+      barY - barHeight / 2 - 7,
+      barWidth + 14,
+      barHeight + 14,
+      9,
+    );
+    barFrameG.lineStyle(1.5, 0xe5d5b1, 0.5);
+    barFrameG.strokeRoundedRect(
+      barLeftX - 3,
+      barY - barHeight / 2 - 3,
+      barWidth + 6,
+      barHeight + 6,
+      5,
+    );
 
     const loadingText = this.add
       .text(width / 2, height * 0.6, "Loading... 0%", {
-        fontSize: "24px",
-        color: "#9fb0ca",
+        fontSize: "28px",
+        color: "#d7c9aa",
         fontFamily: '"Yu Gothic UI", "Hiragino Sans", sans-serif',
       })
       .setOrigin(0.5);

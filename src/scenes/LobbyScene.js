@@ -262,10 +262,59 @@ export class LobbyScene extends Phaser.Scene {
     objs.push(overlay);
 
     const panelG = this.add.graphics();
-    panelG.fillStyle(0x1a2535, 0.97);
-    panelG.lineStyle(2, 0xe5d5b1, 0.55);
-    panelG.fillRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
-    panelG.strokeRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
+    const ppx = W / 2 - 360,
+      ppy = 330,
+      ppw = 720,
+      pph = 1260;
+    panelG.fillStyle(0x080d18, 1);
+    panelG.fillRoundedRect(ppx, ppy, ppw, pph, 30);
+    // 斜めテクスチャライン
+    panelG.lineStyle(1, 0xffffff, 0.02);
+    for (let i = -1; i < 9; i++) {
+      panelG.beginPath();
+      panelG.moveTo(ppx + i * 130, ppy);
+      panelG.lineTo(ppx + i * 130 + pph * 0.55, ppy + pph);
+      panelG.strokePath();
+    }
+    // グロー球
+    panelG.fillStyle(0xf0d39a, 0.06);
+    panelG.fillCircle(ppx + ppw * 0.82, ppy + pph * 0.1, 200);
+    panelG.fillStyle(0xf0d39a, 0.025);
+    panelG.fillCircle(ppx + ppw * 0.82, ppy + pph * 0.1, 330);
+    panelG.fillStyle(0x55aadd, 0.06);
+    panelG.fillCircle(ppx + ppw * 0.18, ppy + pph * 0.9, 200);
+    panelG.fillStyle(0x55aadd, 0.025);
+    panelG.fillCircle(ppx + ppw * 0.18, ppy + pph * 0.9, 330);
+    panelG.fillStyle(0x7733aa, 0.035);
+    panelG.fillCircle(ppx + ppw / 2, ppy + pph / 2, 300);
+    // 外枠（二重）
+    panelG.lineStyle(1.5, 0xe5d5b1, 0.38);
+    panelG.strokeRoundedRect(ppx, ppy, ppw, pph, 30);
+    panelG.lineStyle(1, 0xe5d5b1, 0.1);
+    panelG.strokeRoundedRect(ppx + 12, ppy + 12, ppw - 24, pph - 24, 22);
+    // コーナーLブラケット
+    const pcLen = 48;
+    panelG.lineStyle(2.5, 0xf0d39a, 0.5);
+    panelG.beginPath();
+    panelG.moveTo(ppx, ppy + pcLen);
+    panelG.lineTo(ppx, ppy);
+    panelG.lineTo(ppx + pcLen, ppy);
+    panelG.strokePath();
+    panelG.beginPath();
+    panelG.moveTo(ppx + ppw - pcLen, ppy);
+    panelG.lineTo(ppx + ppw, ppy);
+    panelG.lineTo(ppx + ppw, ppy + pcLen);
+    panelG.strokePath();
+    panelG.beginPath();
+    panelG.moveTo(ppx, ppy + pph - pcLen);
+    panelG.lineTo(ppx, ppy + pph);
+    panelG.lineTo(ppx + pcLen, ppy + pph);
+    panelG.strokePath();
+    panelG.beginPath();
+    panelG.moveTo(ppx + ppw - pcLen, ppy + pph);
+    panelG.lineTo(ppx + ppw, ppy + pph);
+    panelG.lineTo(ppx + ppw, ppy + pph - pcLen);
+    panelG.strokePath();
     objs.push(panelG);
 
     const titleT = this.add
@@ -281,6 +330,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 570,
         label: "小鬼",
+        ruby: "こおに",
         sub: "初戦にぴったりな相手",
         labelColor: "#c8ffe0",
         subColor: "#88ccaa",
@@ -289,6 +339,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 760,
         label: "夜叉",
+        ruby: "やしゃ",
         sub: "実力を見せつけよう",
         labelColor: "#c8e8ff",
         subColor: "#88aabb",
@@ -297,6 +348,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 950,
         label: "羅刹",
+        ruby: "らせつ",
         sub: "手加減無用！全力で！",
         labelColor: "#ffe0e0",
         labelStroke: "#3a0008",
@@ -306,6 +358,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 1140,
         label: "鬼神",
+        ruby: "きしん",
         sub: "武の権化… 倒せる？",
         labelColor: "#f0d8f8",
         labelStroke: "#1a0030",
@@ -317,6 +370,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 1140,
         label: "九尾",
+        ruby: "きゅうび",
         sub: "知の権化… 倒せる？",
         labelColor: "#3a1a00",
         labelStroke: "#ffe090",
@@ -328,6 +382,7 @@ export class LobbyScene extends Phaser.Scene {
       {
         y: 1330,
         label: "傀儡",
+        ruby: "くぐつ",
         sub: "成長する操り人形",
         labelColor: "#ffffff",
         labelStroke: "#cc0000",
@@ -544,63 +599,30 @@ export class LobbyScene extends Phaser.Scene {
         g.fillStyle(0x080808, 1);
         g.fillRoundedRect(rx, iy, bw, 165, 14);
 
-        // 辺上の点をピックする: edge 0=上 1=右 2=下 3=左
         // [x0%, y0%, x1%, y1%, col, alpha, width]
-        // 辺から辺を不規則に突き刺す（50本超）
         const lines = [
-          // 上→下（バラバラなX）
+          // 上→下
           [0.07, 0, 0.71, 1, 0xff2200, 0.55, 1],
-          [0.19, 0, 0.04, 1, 0xffffff, 0.22, 1],
           [0.33, 0, 0.88, 1, 0xff2200, 0.3, 1],
           [0.48, 0, 0.23, 1, 0xffffff, 0.4, 2],
-          [0.61, 0, 0.42, 1, 0xff2200, 0.2, 1],
-          [0.78, 0, 0.05, 1, 0xffffff, 0.16, 1],
           [0.91, 0, 0.57, 1, 0xff2200, 0.45, 1],
-          [0.14, 0, 0.96, 1, 0xffffff, 0.12, 1],
-          [0.55, 0, 0.31, 1, 0xff2200, 0.18, 1],
           [0.85, 0, 0.69, 1, 0xffffff, 0.28, 1],
-          // 左→右（バラバラなY）
+          // 左→右
           [0, 0.08, 1, 0.63, 0xff2200, 0.5, 1],
-          [0, 0.21, 1, 0.1, 0xffffff, 0.2, 1],
           [0, 0.37, 1, 0.82, 0xff2200, 0.35, 2],
           [0, 0.52, 1, 0.41, 0xffffff, 0.45, 1],
-          [0, 0.68, 1, 0.17, 0xff2200, 0.22, 1],
-          [0, 0.79, 1, 0.94, 0xffffff, 0.18, 1],
           [0, 0.91, 1, 0.55, 0xff2200, 0.28, 1],
-          [0, 0.14, 1, 0.73, 0xffffff, 0.13, 1],
-          [0, 0.46, 1, 0.03, 0xff2200, 0.17, 1],
-          // 上→右
+          // 斜め
           [0.22, 0, 1, 0.14, 0xffffff, 0.25, 1],
           [0.67, 0, 1, 0.49, 0xff2200, 0.38, 1],
-          [0.04, 0, 1, 0.77, 0xffffff, 0.15, 1],
-          [0.89, 0, 1, 0.33, 0xff2200, 0.22, 1],
-          [0.44, 0, 1, 0.91, 0xffffff, 0.1, 1],
-          // 上→左
           [0.31, 0, 0, 0.28, 0xff2200, 0.32, 1],
-          [0.73, 0, 0, 0.61, 0xffffff, 0.18, 1],
-          [0.57, 0, 0, 0.87, 0xff2200, 0.24, 1],
-          [0.16, 0, 0, 0.44, 0xffffff, 0.13, 1],
-          // 下→右
-          [0.11, 1, 1, 0.23, 0xff2200, 0.28, 1],
-          [0.39, 1, 1, 0.68, 0xffffff, 0.2, 1],
-          [0.64, 1, 1, 0.07, 0xff2200, 0.35, 1],
-          [0.83, 1, 1, 0.55, 0xffffff, 0.16, 1],
-          // 下→左
-          [0.27, 1, 0, 0.19, 0xffffff, 0.22, 1],
           [0.52, 1, 0, 0.73, 0xff2200, 0.4, 1],
-          [0.76, 1, 0, 0.38, 0xffffff, 0.14, 1],
-          [0.93, 1, 0, 0.58, 0xff2200, 0.18, 1],
-          // 右→左（急角度）
           [1, 0.06, 0, 0.88, 0xff2200, 0.3, 1],
           [1, 0.34, 0, 0.12, 0xffffff, 0.22, 1],
-          [1, 0.58, 0, 0.47, 0xff2200, 0.18, 1],
-          [1, 0.82, 0, 0.25, 0xffffff, 0.25, 1],
-          // 極端な斜め（鋭角）
+          // 鋭角
           [0.02, 0, 0.98, 0.08, 0xff2200, 0.6, 2],
           [0.02, 1, 0.98, 0.92, 0xff2200, 0.5, 1],
           [0, 0.02, 0.08, 0, 0xffffff, 0.35, 1],
-          [1, 0.02, 0.92, 0, 0xffffff, 0.35, 1],
-          [0, 0.98, 0.08, 1, 0xffffff, 0.35, 1],
           [1, 0.98, 0.92, 1, 0xffffff, 0.35, 1],
         ];
         lines.forEach(([x0, y0, x1, y1, col, a, w]) => {
@@ -671,15 +693,27 @@ export class LobbyScene extends Phaser.Scene {
         labelStyle.stroke = item.labelStroke;
         labelStyle.strokeThickness = 4;
       }
+      const labelY = item.locked ? item.y - 52 : item.y - 16;
       const t1 = this.add
-        .text(
-          cx,
-          item.locked ? item.y - 52 : item.y - 16,
-          item.label,
-          labelStyle,
-        )
+        .text(cx, labelY, item.label, labelStyle)
         .setOrigin(0.5);
       objs.push(t1);
+
+      if (item.ruby && !item.locked) {
+        const rubyColor = item.labelStroke
+          ? item.labelColor
+          : (item.labelColor ?? "#fff8e6");
+        const rubyT = this.add
+          .text(cx, iy + 18, item.ruby, {
+            fontSize: "22px",
+            color: rubyColor,
+            fontFamily: UI_FONT,
+            alpha: 0.78,
+            letterSpacing: 6,
+          })
+          .setOrigin(0.5);
+        objs.push(rubyT);
+      }
 
       if (!item.locked) {
         const t2 = this.add
@@ -727,10 +761,59 @@ export class LobbyScene extends Phaser.Scene {
         const subObjs = [];
 
         const subBg = this.add.graphics();
-        subBg.fillStyle(0x0d1825, 0.97);
-        subBg.lineStyle(2, 0xe5d5b1, 0.55);
-        subBg.fillRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
-        subBg.strokeRoundedRect(W / 2 - 360, 330, 720, 1260, 30);
+        const spx = W / 2 - 360,
+          spy = 330,
+          spw = 720,
+          sph = 1260;
+        subBg.fillStyle(0x070c16, 1);
+        subBg.fillRoundedRect(spx, spy, spw, sph, 30);
+        // 斜めテクスチャライン
+        subBg.lineStyle(1, 0xffffff, 0.02);
+        for (let si = -1; si < 9; si++) {
+          subBg.beginPath();
+          subBg.moveTo(spx + si * 130, spy);
+          subBg.lineTo(spx + si * 130 + sph * 0.55, spy + sph);
+          subBg.strokePath();
+        }
+        // グロー球
+        subBg.fillStyle(0xf0d39a, 0.06);
+        subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 200);
+        subBg.fillStyle(0xf0d39a, 0.025);
+        subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 330);
+        subBg.fillStyle(0x55aadd, 0.06);
+        subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 200);
+        subBg.fillStyle(0x55aadd, 0.025);
+        subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 330);
+        subBg.fillStyle(0x7733aa, 0.035);
+        subBg.fillCircle(spx + spw / 2, spy + sph / 2, 300);
+        // 外枠（二重）
+        subBg.lineStyle(1.5, 0xe5d5b1, 0.38);
+        subBg.strokeRoundedRect(spx, spy, spw, sph, 30);
+        subBg.lineStyle(1, 0xe5d5b1, 0.1);
+        subBg.strokeRoundedRect(spx + 12, spy + 12, spw - 24, sph - 24, 22);
+        // コーナーLブラケット
+        const scLen = 48;
+        subBg.lineStyle(2.5, 0xf0d39a, 0.5);
+        subBg.beginPath();
+        subBg.moveTo(spx, spy + scLen);
+        subBg.lineTo(spx, spy);
+        subBg.lineTo(spx + scLen, spy);
+        subBg.strokePath();
+        subBg.beginPath();
+        subBg.moveTo(spx + spw - scLen, spy);
+        subBg.lineTo(spx + spw, spy);
+        subBg.lineTo(spx + spw, spy + scLen);
+        subBg.strokePath();
+        subBg.beginPath();
+        subBg.moveTo(spx, spy + sph - scLen);
+        subBg.lineTo(spx, spy + sph);
+        subBg.lineTo(spx + scLen, spy + sph);
+        subBg.strokePath();
+        subBg.beginPath();
+        subBg.moveTo(spx + spw - scLen, spy + sph);
+        subBg.lineTo(spx + spw, spy + sph);
+        subBg.lineTo(spx + spw, spy + sph - scLen);
+        subBg.strokePath();
         subObjs.push(subBg);
 
         // クリックをメインパネルへ透過させないブロッカー
@@ -759,10 +842,40 @@ export class LobbyScene extends Phaser.Scene {
 
         // 先手ボタン
         const senteG = this.add.graphics();
-        senteG.fillStyle(0x1e4a7a, 0.9);
-        senteG.lineStyle(2, 0xf2dfbe, 0.65);
-        senteG.fillRoundedRect(W / 2 - 300, 650, 600, 170, 22);
-        senteG.strokeRoundedRect(W / 2 - 300, 650, 600, 170, 22);
+        const sfill = 0x2e4f7a;
+        const srx = W / 2 - 300,
+          sry = 650,
+          sbw = 600,
+          sbh = 170,
+          sbrr = 18;
+        senteG.fillStyle(0x07080f, 1);
+        senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
+        senteG.fillStyle(sfill, 0.3);
+        senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
+        senteG.fillStyle(0xffffff, 0.055);
+        senteG.fillRoundedRect(srx + 4, sry + 4, sbw - 8, 70, 13);
+        senteG.fillStyle(sfill, 1);
+        senteG.fillRoundedRect(srx, sry, 12, sbh, {
+          tl: sbrr,
+          tr: 0,
+          bl: sbrr,
+          br: 0,
+        });
+        senteG.fillStyle(sfill, 0.3);
+        senteG.fillTriangle(
+          srx + sbw,
+          sry + sbh - 44,
+          srx + sbw,
+          sry + sbh,
+          srx + sbw - 44,
+          sry + sbh,
+        );
+        senteG.lineStyle(8, sfill, 0.16);
+        senteG.strokeRoundedRect(srx - 4, sry - 4, sbw + 8, sbh + 8, sbrr + 3);
+        senteG.lineStyle(1.5, 0xe5d5b1, 0.45);
+        senteG.strokeRoundedRect(srx, sry, sbw, sbh, sbrr);
+        senteG.lineStyle(1, sfill, 0.28);
+        senteG.strokeRoundedRect(srx + 5, sry + 5, sbw - 10, sbh - 10, 13);
         subObjs.push(senteG);
 
         const senteT1 = this.add
@@ -785,10 +898,40 @@ export class LobbyScene extends Phaser.Scene {
 
         // 後手ボタン
         const goteG = this.add.graphics();
-        goteG.fillStyle(0x4a1e1e, 0.9);
-        goteG.lineStyle(2, 0xf2dfbe, 0.65);
-        goteG.fillRoundedRect(W / 2 - 300, 880, 600, 170, 22);
-        goteG.strokeRoundedRect(W / 2 - 300, 880, 600, 170, 22);
+        const gfill = 0x7a3f45;
+        const grx = W / 2 - 300,
+          gry = 880,
+          gbw = 600,
+          gbh = 170,
+          gbrr = 18;
+        goteG.fillStyle(0x07080f, 1);
+        goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
+        goteG.fillStyle(gfill, 0.3);
+        goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
+        goteG.fillStyle(0xffffff, 0.055);
+        goteG.fillRoundedRect(grx + 4, gry + 4, gbw - 8, 70, 13);
+        goteG.fillStyle(gfill, 1);
+        goteG.fillRoundedRect(grx, gry, 12, gbh, {
+          tl: gbrr,
+          tr: 0,
+          bl: gbrr,
+          br: 0,
+        });
+        goteG.fillStyle(gfill, 0.3);
+        goteG.fillTriangle(
+          grx + gbw,
+          gry + gbh - 44,
+          grx + gbw,
+          gry + gbh,
+          grx + gbw - 44,
+          gry + gbh,
+        );
+        goteG.lineStyle(8, gfill, 0.16);
+        goteG.strokeRoundedRect(grx - 4, gry - 4, gbw + 8, gbh + 8, gbrr + 3);
+        goteG.lineStyle(1.5, 0xe5d5b1, 0.45);
+        goteG.strokeRoundedRect(grx, gry, gbw, gbh, gbrr);
+        goteG.lineStyle(1, gfill, 0.28);
+        goteG.strokeRoundedRect(grx + 5, gry + 5, gbw - 10, gbh - 10, 13);
         subObjs.push(goteG);
 
         const goteT1 = this.add

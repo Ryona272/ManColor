@@ -19,6 +19,7 @@ export const DEFAULT_KISIN_PARAMS = {
   kisinKutakutaBonus: 0, // くたくたは使わない
   kisinTopN: 5, // 評価候補路数（5路）
   kisinDepth: 5, // 5手先まで読む
+  kisinGuruDepthDiscount: 0.75, // 深さごとのぐるぐる評価割引率
 };
 
 /**

@@ -14,6 +14,7 @@ import { GameState } from "./src/logic/GameState.js";
 import { shuffle } from "./src/data/constants.js";
 import {
   KisinV1,
+  KisinV2,
   SimKisinV1,
   KugutsuV1,
   KyubiV1,
@@ -54,6 +55,11 @@ if (args.length < 2) {
 const ai1Name = args[0].toLowerCase();
 const ai2Name = args[1].toLowerCase();
 const N = parseInt(args[2] ?? "200", 10);
+const kkSweep = args.includes("--kk-sweep");
+const kkThresholdArg = args.find((a) => a.startsWith("--kk-threshold="));
+const kkThreshold = kkThresholdArg
+  ? parseFloat(kkThresholdArg.split("=")[1])
+  : Infinity; // デフォルト: くたくたしない
 
 if (!AI_LIST.includes(ai1Name) || !AI_LIST.includes(ai2Name)) {
   console.error("不明な AI: " + AI_LIST.join(", ") + " から選んでください");
@@ -125,7 +131,7 @@ function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
     return pickPitTechDfsV1(validPits, state, peeksAI);
   }
   if (aiName === "kisin") {
-    return SimKisinV1(
+    return KisinV2(
       validPits,
       state,
       peeksAI,
@@ -435,7 +441,7 @@ function finalPoipoi(gs, role, times, oppFortuneColor) {
 // ─────────────────────────────────────────────────────────────
 // 1試合のシミュレーション
 // ─────────────────────────────────────────────────────────────
-function runOneGame(ai1, ai2, ai1Role, stats) {
+function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ai1Role: 'opp'=pit6-10, 'self'=pit0-4
   const ai2Role = ai1Role === "opp" ? "self" : "opp";
   const gs = new GameState();
@@ -453,10 +459,25 @@ function runOneGame(ai1, ai2, ai1Role, stats) {
   const MAX_TURNS = 300; // 無限ループ防止
   let turns = 0;
   let sennitte = false;
+  let isExtraTurn = false;
+  let kutakutaRole = null;
 
   while (turns < MAX_TURNS) {
     turns++;
     const state = gs.getState();
+
+    // ─── くたくたチェック（ぐるぐる継続ターンはスキップ）─────────
+    if (!isExtraTurn && kkThresh !== Infinity) {
+      const ownStoreIdx = currentRole === "opp" ? 11 : 5;
+      const oppStoreIdx = currentRole === "opp" ? 5 : 11;
+      const own = state.pits[ownStoreIdx].stones.length;
+      const opp = state.pits[oppStoreIdx].stones.length;
+      if (gs.canActivateKutakuta(currentRole) && own >= opp * kkThresh) {
+        kutakutaRole = currentRole;
+        break;
+      }
+    }
+    isExtraTurn = false;
 
     // 千日手チェック
     const sennitteLevel = gs.checkSennitte();
@@ -528,6 +549,7 @@ function runOneGame(ai1, ai2, ai1Role, stats) {
     if (lastPit === ownStore) {
       techCounts[currentRole].guru++;
       // extra turn: currentRole はそのまま
+      isExtraTurn = true;
       continue;
     }
 
@@ -590,6 +612,37 @@ function runOneGame(ai1, ai2, ai1Role, stats) {
   // ─────────────────────────────────────────────────────────────
   // 最終フェーズ: 占い予測
   // ─────────────────────────────────────────────────────────────
+  // くたくた終了: 最終フェーズをスキップして即時勝利判定
+  if (kutakutaRole !== null) {
+    const kkWinRole = kutakutaRole;
+    const kkLoseRole = kkWinRole === "opp" ? "self" : "opp";
+    const ai1Win = ai1Role === kkWinRole ? 1 : 0;
+    const ai2Win = ai1Role === kkLoseRole ? 1 : 0;
+    const ai1GoesFirst = ai1Role === "opp";
+    const ai1Tech = ai1Role === "opp" ? techCounts.opp : techCounts.self;
+    const ai2Tech = ai1Role === "opp" ? techCounts.self : techCounts.opp;
+    const empty = { own3: 0, opp5: 0, pos1: 0, neg2: 0, neu0: 0 };
+    return {
+      ai1Score: ai1Win ? 1 : 0,
+      ai2Score: ai2Win ? 1 : 0,
+      ai1Win,
+      ai2Win,
+      draw: 0,
+      ai1First: ai1GoesFirst,
+      ai1PredHit: false,
+      ai2PredHit: false,
+      ai1Guru: ai1Tech.guru,
+      ai1Zaku: ai1Tech.zaku,
+      ai1Chira: ai1Tech.chira,
+      ai2Guru: ai2Tech.guru,
+      ai2Zaku: ai2Tech.zaku,
+      ai2Chira: ai2Tech.chira,
+      sennitte: 0,
+      ai1Break: empty,
+      ai2Break: empty,
+    };
+  }
+
   // 個人占い石を公開
   gs.revealPersonalFortunes();
 
@@ -695,8 +748,47 @@ function runOneGame(ai1, ai2, ai1Role, stats) {
 const label1 = `${AI_LABELS[ai1Name]}(${ai1Name})`;
 const label2 = `${AI_LABELS[ai2Name]}(${ai2Name})`;
 console.log(`\n${"═".repeat(60)}`);
-console.log(` ${label1} vs ${label2}  —  ${N} 試合`);
+console.log(
+  ` ${label1} vs ${label2}  —  ${N} 試合${kkSweep ? "  [くたくた閾値sweep]" : kkThreshold === Infinity ? "" : `  [くたくた≥${kkThreshold}倍]`}`,
+);
 console.log(`${"═".repeat(60)}\n`);
+
+// ─────────────────────────────────────────────────────────────
+// sweep モード: 複数閾値で比較
+// ─────────────────────────────────────────────────────────────
+if (kkSweep) {
+  const sweepThresholds = [Infinity, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0];
+  const sweepResults = [];
+  for (const thr of sweepThresholds) {
+    const label = thr === Infinity ? "  なし(∞)" : `≥${thr.toFixed(2)}倍`;
+    process.stdout.write(`  閾値 ${label.padEnd(10)} 計算中...`);
+    let wins = 0,
+      losses = 0,
+      draws = 0;
+    for (let i = 0; i < N; i++) {
+      const r = runOneGame(ai1Name, ai2Name, i % 2 === 0 ? "opp" : "self", thr);
+      wins += r.ai1Win;
+      losses += r.ai2Win;
+      draws += r.draw;
+    }
+    const pct = ((wins / N) * 100).toFixed(1);
+    sweepResults.push({ thr, wins, losses, draws, pct });
+    process.stdout.write(
+      `\r  閾値 ${label.padEnd(10)}: ${wins}勝 ${losses}負 ${draws}分 (${pct}%)\n`,
+    );
+  }
+  console.log(`\n${"─".repeat(60)}`);
+  const best = sweepResults.reduce((a, b) => (a.wins > b.wins ? a : b));
+  const bestLabel =
+    best.thr === Infinity ? "なし(∞)" : `≥${best.thr.toFixed(2)}倍`;
+  console.log(` ★ 最適閾値: ${bestLabel}  →  ${best.wins}勝 (${best.pct}%)`);
+  console.log(`${"═".repeat(60)}\n`);
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 通常モード
+// ─────────────────────────────────────────────────────────────
 console.log("シミュレーション中...");
 
 const totals = {
@@ -738,7 +830,7 @@ const totals = {
 for (let i = 0; i < N; i++) {
   // 半数ずつ先手後手を交代
   const ai1Role = i % 2 === 0 ? "opp" : "self";
-  const result = runOneGame(ai1Name, ai2Name, ai1Role, totals);
+  const result = runOneGame(ai1Name, ai2Name, ai1Role, kkThreshold);
 
   totals.ai1Wins += result.ai1Win;
   totals.ai2Wins += result.ai2Win;
