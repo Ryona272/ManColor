@@ -111,7 +111,14 @@ function flipState(state) {
 // ─────────────────────────────────────────────────────────────
 // AI: ピット選択 (常に opp=pit6-10 視点で動作)
 // ─────────────────────────────────────────────────────────────
-function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
+function pickPitOppView(
+  aiName,
+  validPits,
+  state,
+  peeksAI,
+  peeksPlayer,
+  params,
+) {
   const fortune = {
     center: state.fortune.center,
     opp: { color: state.fortune.opp.color },
@@ -176,7 +183,7 @@ function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
       peeksAI,
       peeksPlayer,
       fortune,
-      null,
+      params ?? null,
       "opp",
     );
   }
@@ -186,9 +193,24 @@ function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
 /**
  * 指定 role (opp/self) のために適切な視点でピット選択し、実際の pit index を返す。
  */
-function pickPitForRole(aiName, validPits, state, peeksAI, peeksPlayer, role) {
+function pickPitForRole(
+  aiName,
+  validPits,
+  state,
+  peeksAI,
+  peeksPlayer,
+  role,
+  params,
+) {
   if (role === "opp") {
-    return pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer);
+    return pickPitOppView(
+      aiName,
+      validPits,
+      state,
+      peeksAI,
+      peeksPlayer,
+      params,
+    );
   }
   // self 側 (pit0-4): state を反転して opp として扱い、結果を flip して戻す
   const flipped = flipState(state);
@@ -199,6 +221,7 @@ function pickPitForRole(aiName, validPits, state, peeksAI, peeksPlayer, role) {
     flipped,
     peeksAI,
     peeksPlayer,
+    params,
   );
   return flipPit(result);
 }
@@ -490,6 +513,11 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     opp: { guru: 0, zaku: 0, chira: 0 },
     self: { guru: 0, zaku: 0, chira: 0 },
   };
+  // ashura 用: 相手手番で pit11 に着地した石の色履歴
+  // ai1Role==='opp' なら ashura は opp → 相手は self → oppStore は pit11 for self
+  // ai1Role==='self' なら ashura は self → 相手は opp  → oppStore は pit5  for opp (pit11 を追跡不要)
+  const ashuraIsOpp = ai1Role === "opp";
+  const ashuraParams = { opponentSentColors: [] };
   const MAX_TURNS = 300; // 無限ループ防止
   let turns = 0;
   let sennitte = false;
@@ -542,6 +570,8 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       gs.centerPeekProgress[currentRole === "opp" ? "self" : "opp"] ?? 0;
 
     // ピット選択
+    const pickParams =
+      aiName === (ashuraIsOpp ? ai1 : ai2) ? ashuraParams : null;
     const chosenPit = pickPitForRole(
       aiName,
       validPits,
@@ -549,6 +579,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       peeksThisSide,
       peeksOtherSide,
       currentRole,
+      pickParams,
     );
 
     // 撒き
@@ -578,6 +609,15 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
 
     const ownStore = currentRole === "opp" ? 11 : 5;
     const oppStore = currentRole === "opp" ? 5 : 11;
+
+    // ─── ashura 向け: 相手(self)の撒きで pit11 に入った石の色を記録 ────
+    if (ashuraIsOpp && currentRole === "self") {
+      for (let i = 0; i < targets.length; i++) {
+        if (targets[i] === 11) {
+          ashuraParams.opponentSentColors.push(orderedStones[i].color);
+        }
+      }
+    }
 
     // ─── ぐるぐる判定 ───────────────────────────────────────────
     if (lastPit === ownStore) {

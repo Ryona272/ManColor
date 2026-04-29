@@ -3411,12 +3411,54 @@ export function AshuraV1(
   const ownFortuneA = fortune?.opp?.color ?? null;
   let knownNegA = null;
   const knownPosA = [];
+  // seenBy フィルタを遵守: ちらちらで確認済みの色のみ把握
   for (const fc of fortune?.center ?? []) {
     if (fc.seenBy?.includes("opp")) {
       if (fc.bonus < 0) knownNegA = fc.color;
       else if (fc.bonus > 0) knownPosA.push(fc.color);
     }
   }
+
+  // ─── 相手手番でpit11に着地した石の色履歴から逆推定 ───
+  // params.opponentSentColors: 相手が実際に pit11 に送った石の色配列
+  // (AI自身のぐるぐるで入った石は含まれない)
+  if (!knownNegA) {
+    const sentColors = params?.opponentSentColors ?? [];
+    if (sentColors.length > 0) {
+      const oppSeenColors = new Set(
+        (fortune?.center ?? [])
+          .filter((fc) => fc.seenBy?.includes("self"))
+          .map((fc) => fc.color),
+      );
+      const colorCount = {};
+      for (const c of sentColors) {
+        if (c === ownFortuneA) continue;
+        if (knownPosA.includes(c)) continue;
+        colorCount[c] = (colorCount[c] ?? 0) + 1;
+      }
+      let inferredNeg = null;
+      let bestScore = -1;
+      for (const [color, cnt] of Object.entries(colorCount)) {
+        const isSeen = oppSeenColors.has(color);
+        let score = 0;
+        if (cnt >= 3) score = 100;
+        else if (cnt >= 2 && isSeen) score = 90;
+        else if (cnt >= 2) score = 80;
+        if (score > bestScore) {
+          bestScore = score;
+          inferredNeg = color;
+        }
+      }
+      if (inferredNeg && bestScore >= 80) knownNegA = inferredNeg;
+    }
+  }
+
+  // DFS通じてマイナス石の期待数を追跡（knownNegA確定後に初期化）
+  const initNegCounts = initCounts.map((cnt, pit) => {
+    if (!knownNegA || cnt === 0) return 0;
+    const stones = state.pits[pit]?.stones ?? [];
+    return stones.filter((s) => s.color === knownNegA).length;
+  });
   function stoneClassA(stone) {
     const c = stone.color;
     if (knownNegA && c === knownNegA) return "neg";
@@ -3430,7 +3472,7 @@ export function AshuraV1(
     for (const s of stones) {
       const cls = stoneClassA(s);
       if (cls === "own" || cls === "pos") bonus += 1;
-      else if (cls === "neg") bonus -= 2;
+      else if (cls === "neg") bonus -= 4; // 強化: -2 → -4
     }
     return bonus;
   }
@@ -3447,6 +3489,23 @@ export function AshuraV1(
       nc[cur]++;
     }
     return { counts: nc, lastPit: cur };
+  }
+  // マイナス石の期待値を追跡するsow（DFS用）
+  function fastSowWithNeg(counts, negCounts, pitIndex) {
+    const nc = counts.slice();
+    const ng = negCounts.slice();
+    const n = nc[pitIndex];
+    if (n === 0) return { counts: nc, negCounts: ng, lastPit: -1 };
+    const negFrac = n > 0 ? ng[pitIndex] / n : 0; // このpitのマイナス石割合
+    nc[pitIndex] = 0;
+    ng[pitIndex] = 0;
+    let cur = pitIndex;
+    for (let i = 0; i < n; i++) {
+      cur = (cur + 1) % 12;
+      nc[cur]++;
+      ng[cur] += negFrac; // 各着地pitにマイナス石を按分
+    }
+    return { counts: nc, negCounts: ng, lastPit: cur };
   }
 
   // ─── ちらちら安全チェック（上限3回） ───
@@ -3475,16 +3534,44 @@ export function AshuraV1(
       });
       if (blockAndChira !== undefined) return blockAndChira;
 
-      // ② guru脅威がない時は安全なchiraを実行
+      // ② 初回peek（peeksDoneAI===0）は情報収集を最優先 → 脅威があっても実行
+      if (peeksDoneAI === 0) return candidates[0];
+
+      // ③ guru脅威がない時は安全なchiraを実行
       if (!oppHasGuruNow) {
-        const safePit = candidates[0]; // candidates全員安全（脅威なし）
+        const safePit = candidates[0];
         if (safePit !== undefined) return safePit;
       }
     }
   }
 
+  // ─── マイナス石ダンプ: ちらちらでマイナス石を相手賽壇に送る（peeks完了後も実行） ───
+  if (knownNegA) {
+    const minusDumpCandidates = validPits.filter((p) => {
+      const n = initCounts[p];
+      if (n === 0) return false;
+      if ((p + n) % 12 !== playerStore) return false; // ちらちら確認
+      const stones = state.pits[p]?.stones ?? [];
+      return stones.some((s) => s.color === knownNegA);
+    });
+    if (minusDumpCandidates.length > 0) {
+      // マイナス石が最も多いpitを選ぶ
+      minusDumpCandidates.sort((a, b) => {
+        const aN =
+          state.pits[a]?.stones.filter((s) => s.color === knownNegA).length ??
+          0;
+        const bN =
+          state.pits[b]?.stones.filter((s) => s.color === knownNegA).length ??
+          0;
+        return bN - aN;
+      });
+      return minusDumpCandidates[0];
+    }
+  }
+
   // ─── スコア評価: バランス型強化（自ぐるぐる連鎖 + 相手妨害 + guru阻止） ───
-  function scoreSow(counts, pit, isAI) {
+  // negCounts: DFS追跡中の各pitのマイナス石期待値
+  function scoreSow(counts, negCounts, pit, isAI) {
     const laneMin = isAI ? aiLaneMin : plLaneMin;
     const laneMax = isAI ? aiLaneMax : plLaneMax;
     const storeIndex = isAI ? aiStore : playerStore;
@@ -3496,18 +3583,29 @@ export function AshuraV1(
     // ぐるぐる: AI積極(+14) / 相手はペナルティ(+16)
     if (lastPit === storeIndex) {
       score += isAI ? 14 : 16;
-      // マイナス石が賽壇に入るペナルティ（自AI限定）
-      if (isAI && knownNegA) {
-        const stones = state.pits[pit]?.stones ?? [];
-        const negCount = stones.filter((s) => s.color === knownNegA).length;
-        if (negCount > 0) score -= negCount * 12;
+      // マイナス石が賽壇に入るペナルティ: negCountsで追跡した期待値を使う
+      // knownNegA確認済みor確率的推定両方で機能
+      if (isAI) {
+        const expectedNeg = negCounts[pit] ?? 0;
+        if (expectedNeg > 0) score -= expectedNeg * 28;
       }
     }
 
-    // ちらちら（相手賽壇着地）: 相手誘導
-    if (lastPit === oppStoreIndex && !isAI) score -= 6;
+    // ちらちら（相手賽壇着地）: AIがちらちらでマイナス石を相手賽壇に送る大ボーナス
+    if (lastPit === oppStoreIndex) {
+      if (!isAI) score -= 6; // 相手がちらちらしてくるのはペナルティ
+      if (isAI) {
+        // peeks未完了時: ちらちらで情報収集ボーナス（DFSが自然に選ぶよう誘導）
+        if (peeksDoneAI < 3) {
+          score += knownNegA ? 8 : 22; // neg未判明時は高ボーナス（情報収集優先）
+        }
+        // マイナス石を相手賽壇に送るボーナス（確率的推定含む）
+        const expectedNeg = negCounts[pit] ?? 0;
+        if (expectedNeg > 0) score += expectedNeg * 35;
+      }
+    }
 
-    // ざくざく: AI通常 / 相手はペナルティ
+    // ざくざく: negCountsで追跡したマイナス石期待値を使う
     if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
       const mirror = isAI
         ? isOppRole
@@ -3517,14 +3615,30 @@ export function AshuraV1(
           ? lastPit + 6
           : lastPit - 6;
       if (counts[mirror] > 0) {
-        score += isAI ? 7 + counts[mirror] : 10 + Math.min(counts[mirror], 4);
+        const expectedNegMirror = negCounts[mirror] ?? 0;
+        if (isAI) {
+          // AI がざくざく: 相手pitのマイナス石を拾うと損
+          score += 7 + counts[mirror] - expectedNegMirror * 20;
+        } else {
+          // 相手がざくざく: AIのマイナス石pitを奪ってくれるなら減点を緩和
+          score += 10 + Math.min(counts[mirror], 4) - expectedNegMirror * 14;
+        }
       }
     }
+
+    // 相手pitに石を届かせてちらちら機会を作るボーナスは削除（ぐるぐる評価を歪めるため）
 
     return { score, lastPit };
   }
 
-  function getTopMovesA(counts, isAI, n, restrictTo, useColorBonus = false) {
+  function getTopMovesA(
+    counts,
+    negCounts,
+    isAI,
+    n,
+    restrictTo,
+    useColorBonus = false,
+  ) {
     const laneMin = isAI ? aiLaneMin : plLaneMin;
     const laneMax = isAI ? aiLaneMax : plLaneMax;
     const pool =
@@ -3533,7 +3647,7 @@ export function AshuraV1(
     const scored = [];
     for (const p of pool) {
       if (counts[p] === 0) continue;
-      let { score } = scoreSow(counts, p, isAI);
+      let { score } = scoreSow(counts, negCounts, p, isAI);
       // depth=0 guru阻止ボーナス（相手のguru脅威を消せるpitを優遇）
       if (useColorBonus && isAI) {
         const { counts: nc } = fastSow(counts, p);
@@ -3547,6 +3661,20 @@ export function AshuraV1(
         ).some((pp) => counts[pp] > 0 && (pp + counts[pp]) % 12 === aiStore);
         if (hadGuru && !stillHasGuru) score += 20; // guru脅威を消した
         score += pitStoneColorScoreA(p);
+        // マイナス石を相手側に送る戦略ボーナス（negCountsで追跡した期待値を使用）
+        if (knownNegA) {
+          const negInPit = negCounts[p] ?? 0;
+          if (negInPit > 0) {
+            const sowN = counts[p];
+            let oppLandCount = 0;
+            for (let i = 1; i <= sowN; i++) {
+              const landPit = (p + i) % 12;
+              if (landPit >= plLaneMin && landPit <= plLaneMax) oppLandCount++;
+            }
+            // 相手側に着地する石が多いほどボーナス（マイナス石を相手に送る）
+            if (oppLandCount > 0) score += negInPit * oppLandCount * 4;
+          }
+        }
       }
       scored.push({ pit: p, score });
     }
@@ -3554,7 +3682,7 @@ export function AshuraV1(
     return scored.slice(0, n);
   }
 
-  // ─── DFS（深さ4: AI→P→AI→P、ぐるぐる連鎖追跡） ───
+  // ─── DFS（深さ4: AI→P→AI→P、ぐるぐる連鎖追跡 + マイナス石期待値追跡） ───
   let bestFirstPit = validPits[0];
   let bestNet = -Infinity;
   const guruChainBonus = 14; // 鬼神(15)に近い強さ
@@ -3565,13 +3693,20 @@ export function AshuraV1(
     isFirstMove,
     chainDepth,
     counts,
+    negCounts,
     aiScore,
     playerScore,
     firstPit,
     guruChainCount,
   ) {
     if (depth === 4) {
-      const net = aiScore - playerScore + guruChainCount * guruChainBonus;
+      // マイナス石期待値: AI賽壇に溜まっているマイナス石ペナルティ
+      const expectedMinusInStore = negCounts[aiStore] ?? 0;
+      const net =
+        aiScore -
+        playerScore +
+        guruChainCount * guruChainBonus -
+        expectedMinusInStore * 35;
       if (net > bestNet) {
         bestNet = net;
         bestFirstPit = firstPit;
@@ -3582,8 +3717,8 @@ export function AshuraV1(
     const isAI = isAITurn;
     const storeIdx = isAI ? aiStore : playerStore;
     const topMoves = isFirstMove
-      ? getTopMovesA(counts, true, 6, validPits, true)
-      : getTopMovesA(counts, isAI, 3, null, false);
+      ? getTopMovesA(counts, negCounts, true, 6, validPits, true)
+      : getTopMovesA(counts, negCounts, isAI, 3, null, false);
 
     if (topMoves.length === 0) {
       dfs(
@@ -3592,6 +3727,7 @@ export function AshuraV1(
         false,
         0,
         counts,
+        negCounts,
         aiScore,
         playerScore,
         firstPit,
@@ -3601,8 +3737,12 @@ export function AshuraV1(
     }
 
     for (const { pit, score: moveScore } of topMoves) {
-      const { lastPit } = scoreSow(counts, pit, isAI);
-      const { counts: newCounts } = fastSow(counts, pit);
+      const { lastPit } = scoreSow(counts, negCounts, pit, isAI);
+      const { counts: newCounts, negCounts: newNegCounts } = fastSowWithNeg(
+        counts,
+        negCounts,
+        pit,
+      );
       const newAiScore = isAI ? aiScore + moveScore : aiScore;
       const newPlayerScore = !isAI ? playerScore + moveScore : playerScore;
       const fp = isFirstMove ? pit : firstPit;
@@ -3615,6 +3755,7 @@ export function AshuraV1(
           false,
           chainDepth + 1,
           newCounts,
+          newNegCounts,
           newAiScore,
           newPlayerScore,
           fp,
@@ -3627,6 +3768,7 @@ export function AshuraV1(
           false,
           0,
           newCounts,
+          newNegCounts,
           newAiScore,
           newPlayerScore,
           fp,
@@ -3636,7 +3778,7 @@ export function AshuraV1(
     }
   }
 
-  dfs(0, true, true, 0, initCounts, 0, 0, validPits[0], 0);
+  dfs(0, true, true, 0, initCounts, initNegCounts, 0, 0, validPits[0], 0);
 
   return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
 }

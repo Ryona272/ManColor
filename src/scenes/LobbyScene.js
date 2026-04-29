@@ -1698,11 +1698,7 @@ export class LobbyScene extends Phaser.Scene {
       .setInteractive();
     resetT.on("pointerdown", () => {
       try {
-        // テスト用: 鬼神の先手のみ未クリア（進行途中状態）で阿修羅解放演出を確認
-        const testData = {
-          kisin: { first: true, second: true },
-          kyubi: { first: true, second: true },
-        };
+        const testData = {};
         localStorage.setItem("soloBeaten", JSON.stringify(testData));
         localStorage.removeItem("ashuraShown");
       } catch (_e) {}

@@ -88,6 +88,7 @@ export class GameScene extends Phaser.Scene {
     this.lastOnlineActionId = 0;
     this.pendingOnlineUndoRequest = null;
     this.turnGuideSprites = [];
+    this._ashuraReceivedColors = []; // 相手手番で pit11 に入った石の色履歴
     this.turnGuideTweens = [];
     this.turnStartSweepSprites = [];
     this.turnStartSweepTweens = [];
@@ -232,6 +233,7 @@ export class GameScene extends Phaser.Scene {
     this.poipoiStoreIndex = null;
     this.autoSowingInProgress = false;
     this.pendingExtraTurnAfterChoice = null;
+    this._ashuraReceivedColors = []; // 相手手番で pit11 に入った石の色履歴
     this._drawBoard();
     this._renderStones();
     this._setupInput();
@@ -1634,6 +1636,11 @@ export class GameScene extends Phaser.Scene {
     this.gameState.getState().pits[targetPit].stones.push(stone);
     this.sowHistory.push({ targetPit, stone, pendingIndex });
 
+    // AI向け: プレイヤー(self)の撒きで pit11 に入った石を記録（neg色推定用）
+    if (targetPit === 11) {
+      this._ashuraReceivedColors.push(stone.color);
+    }
+
     if (this.sowPending.length === 0) {
       this._completeSowingTurn(targetPit);
       return;
@@ -2482,7 +2489,7 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      null,
+      { opponentSentColors: [...this._ashuraReceivedColors] },
       "opp",
     );
   }
