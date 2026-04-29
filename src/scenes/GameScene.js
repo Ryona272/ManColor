@@ -2610,6 +2610,15 @@ export class GameScene extends Phaser.Scene {
           ? `相手が「${PIT_NAMES[captureTarget]}」の石を横取り！`
           : "相手が石を横取り！";
       this._announceTechnique("ざくざく！", 0xe87070, zakuzakuDesc);
+
+      // ネガティブイベントログ: AI ざくざく
+      logSoloAction("ai_zakuzaku", {
+        fromPit: captureTarget,
+        stonesStolen: captured.length,
+        turn: this.gameState.getState().turn,
+        difficulty: this.aiDifficulty,
+      });
+
       // ざくざくで奪った石をAIが自分の路に配置する
       this._aiStartPlacing(captured);
       return;
@@ -2840,6 +2849,11 @@ export class GameScene extends Phaser.Scene {
               ? `相手が${VIEW_FROM_ME[revealInfo.index]}を確認`
               : "相手が占い石を確認！";
             this._announceTechnique("ちらちら！", 0xe87070, desc);
+            logSoloAction("ai_chirachira", {
+              peeksDone: peeksDone + 1,
+              turn: this.gameState.getState().turn,
+              difficulty: this.aiDifficulty,
+            });
             this._renderStones();
             this.time.delayedCall(800, () => this._aiFinishTurn(false));
             return;
@@ -2868,7 +2882,13 @@ export class GameScene extends Phaser.Scene {
               }
             });
             if (highestValue >= 0) {
+              const _removedColor1 = state.pits[5].stones[selectedIndex]?.color;
               this.gameState.removeStoneFromPit(5, selectedIndex);
+              logSoloAction("ai_poipoi", {
+                stoneColor: _removedColor1,
+                turn: this.gameState.getState().turn,
+                difficulty: this.aiDifficulty,
+              });
               this._announceTechnique(
                 "こびふり！",
                 0xe87070,
@@ -2895,6 +2915,10 @@ export class GameScene extends Phaser.Scene {
             const VIEW_FROM_ME = ["左", "真ん中", "右"];
             const desc = `相手が${VIEW_FROM_ME[revealInfo.index]}を確認`;
             this._announceTechnique("ちらちら！", 0xe87070, desc);
+            logSoloAction("ai_chirachira", {
+              turn: this.gameState.getState().turn,
+              difficulty: this.aiDifficulty,
+            });
             this._renderStones();
             this.time.delayedCall(800, () => this._aiFinishTurn(false));
             return;
@@ -2919,7 +2943,13 @@ export class GameScene extends Phaser.Scene {
               }
             });
             if (highestValue > 0) {
+              const _removedColor2 = state.pits[5].stones[selectedIndex]?.color;
               this.gameState.removeStoneFromPit(5, selectedIndex);
+              logSoloAction("ai_poipoi", {
+                stoneColor: _removedColor2,
+                turn: this.gameState.getState().turn,
+                difficulty: this.aiDifficulty,
+              });
               this._announceTechnique(
                 "こびふり！",
                 0xe87070,
@@ -2977,7 +3007,9 @@ export class GameScene extends Phaser.Scene {
               );
               this._renderStones();
             } else if (bestOppVal >= 0 && state.pits[5].stones.length > 0) {
+              const _removedColor3 = state.pits[5].stones[bestOppIdx]?.color;
               this.gameState.removeStoneFromPit(5, bestOppIdx);
+              logSoloAction("ai_poipoi", { stoneColor: _removedColor3, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
               this._announceTechnique(
                 "ぽいぽい！",
                 0xe87070,
@@ -3065,7 +3097,9 @@ export class GameScene extends Phaser.Scene {
                   );
                   this._renderStones();
                 } else if (highestValue >= 0) {
+                  const _removedColor4 = state.pits[5].stones[selectedIndex]?.color;
                   this.gameState.removeStoneFromPit(5, selectedIndex);
+                  logSoloAction("ai_poipoi", { stoneColor: _removedColor4, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
                   this._announceTechnique(
                     "ぽいぽい！",
                     0xe87070,
@@ -3092,6 +3126,10 @@ export class GameScene extends Phaser.Scene {
           ? `相手が${VIEW_FROM_ME[revealInfo.index]}を確認`
           : "相手が占い石を確認！";
         this._announceTechnique("ちらちら！", 0xe87070, chirachiraDesc);
+        logSoloAction("ai_chirachira", {
+          turn: this.gameState.getState().turn,
+          difficulty: this.aiDifficulty,
+        });
         this._renderStones();
         this.time.delayedCall(800, () => this._aiFinishTurn(false));
       } else {
@@ -3148,7 +3186,9 @@ export class GameScene extends Phaser.Scene {
             );
             this._renderStones();
           } else if (highestValue >= 0) {
+            const _removedColor5 = state.pits[5].stones[selectedIndex]?.color;
             this.gameState.removeStoneFromPit(5, selectedIndex);
+            logSoloAction("ai_poipoi", { stoneColor: _removedColor5, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
             this._announceTechnique(
               "ぽいぽい！",
               0xe87070,
@@ -3188,6 +3228,16 @@ export class GameScene extends Phaser.Scene {
           : oppStoreCount > selfStoreCount;
       if (shouldActivate) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
+
+        // ネガティブイベントログ: AI くたくた
+        const _kkState = this.gameState.getState();
+        logSoloAction("ai_kutakuta", {
+          selfStoreCount: _kkState.pits[5].stones.length,
+          oppStoreCount: _kkState.pits[11].stones.length,
+          turn: _kkState.turn,
+          difficulty: this.aiDifficulty,
+        });
+
         this.time.delayedCall(450, () =>
           this.scene.get("UIScene").showResult(),
         );

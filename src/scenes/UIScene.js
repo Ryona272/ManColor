@@ -2206,6 +2206,29 @@ export class UIScene extends Phaser.Scene {
   _showFinalScoreResult(selfScore, oppScore) {
     this._cachedSelfScore = selfScore;
     this._cachedOppScore = oppScore;
+
+    // ソロモード: ゲーム結果ログ
+    if (!this.gameScene._isOnlineRoomMode?.()) {
+      const gs = this.gameScene;
+      const selfActualColor = gs.gameState.getFortuneColorForPlayer("self");
+      const oppActualColor = gs.gameState.getFortuneColorForPlayer("opp");
+      const selfPred = this.finalPhaseState?.selfPrediction ?? null;
+      const oppPred = this.finalPhaseState?.oppPrediction ?? null;
+      logSoloAction("game_result", {
+        result:
+          selfScore > oppScore ? "win" : selfScore < oppScore ? "loss" : "draw",
+        selfScore,
+        oppScore,
+        selfPrediction: selfPred,
+        oppPrediction: oppPred,
+        selfActualColor,
+        oppActualColor,
+        selfPredictionCorrect: selfPred === oppActualColor,
+        oppPredictionCorrect: oppPred === selfActualColor,
+        difficulty: gs.aiDifficulty,
+      });
+    }
+
     this._showStaticFinalResult(selfScore, oppScore);
   }
 
