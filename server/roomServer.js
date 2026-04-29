@@ -1,8 +1,34 @@
 const http = require("http");
+const fs = require("fs");
 const { WebSocketServer } = require("ws");
 
 const PORT = Number(process.env.PORT || process.env.ROOM_SERVER_PORT || 8787);
 const DISCONNECT_GRACE_MS = 120000;
+const ACTION_LOG_FILE = (process.env.ACTION_LOG_FILE || "").trim();
+const MAX_LOG_ENTRIES = 50000;
+
+const actionLog = [];
+
+function logAction(room, role, type, detail = {}) {
+  const state = room?.match?.state;
+  const entry = {
+    ts: Date.now(),
+    room: room?.code ?? null,
+    role,
+    type,
+    turn: state?.turn ?? null,
+    ...detail,
+  };
+  actionLog.push(entry);
+  if (actionLog.length > MAX_LOG_ENTRIES) actionLog.shift();
+  if (ACTION_LOG_FILE) {
+    try {
+      fs.appendFileSync(ACTION_LOG_FILE, JSON.stringify(entry) + "\n");
+    } catch (_e) {
+      // ファイル書き込み失敗は無視
+    }
+  }
+}
 const DEBUG_NEAR_KUTAKUTA = process.env.DEBUG_NEAR_KUTAKUTA === "1";
 
 const rooms = new Map();
@@ -11,6 +37,20 @@ const keyToClientId = new Map();
 const matchmakingQueue = new Set();
 
 const httpServer = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://localhost`);
+  if (url.pathname === "/logs" && req.method === "GET") {
+    const limit = Math.min(
+      Number(url.searchParams.get("limit") || 1000),
+      MAX_LOG_ENTRIES,
+    );
+    const data = actionLog.slice(-limit);
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify(data));
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
   res.end("ok");
 });
@@ -707,6 +747,7 @@ function requestSpecialChoice(clientId, choiceAction) {
       safeSend(client.ws, { type: "error", message: "ちらちらは使い切りです" });
       return;
     }
+    logAction(room, role, "special_choice", { action: "chirachira" });
     const revealInfo = revealNextCenter(room, role);
     finishMove(room, role, false, {
       ...pendingAction,
@@ -718,6 +759,7 @@ function requestSpecialChoice(clientId, choiceAction) {
   }
 
   if (choiceAction === "poipoi") {
+    logAction(room, role, "special_choice", { action: "poipoi" });
     const preferredStore = getPreferredPoipoiStore(room.match.state, role);
     if (preferredStore == null) {
       finishMove(room, role, false, pendingAction);
@@ -822,12 +864,14 @@ function requestKutakutaChoice(clientId, choiceAction) {
   room.match.pendingExtraTurn = false;
 
   if (choiceAction === "kutakuta") {
+    logAction(room, role, "kutakuta_choice", { action: "kutakuta" });
     const action = { ...pendingAction, technique: "kutakuta" };
     startFinalPhase(room, action);
     broadcastMatchState(room.code);
     return;
   }
 
+  logAction(room, role, "kutakuta_choice", { action: "madamada" });
   // "madamada" — くたくたをスキップ
   if (!extraTurn) {
     room.match.currentTurn = role === "self" ? "opp" : "self";
@@ -919,6 +963,7 @@ function requestFinalPrediction(clientId, color) {
   }
 
   fp.predictions[role] = color;
+  logAction(room, role, "final_prediction", { color });
 
   if (fp.stage === "predict-self") {
     fp.stage = "predict-opp";
@@ -1346,6 +1391,7 @@ function requestMove(clientId, pitIndex) {
     return;
   }
 
+  logAction(room, role, "move", { pit: Number(pitIndex) });
   broadcastMatchState(room.code);
 }
 

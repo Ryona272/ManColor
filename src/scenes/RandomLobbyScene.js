@@ -193,6 +193,7 @@ export class RandomLobbyScene extends Phaser.Scene {
       }
     } else {
       this.statusText.setText(`対戦相手をさがしています${dots}`);
+      this.statusText.setColor("#b07fff");
     }
   }
 
