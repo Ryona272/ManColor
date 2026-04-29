@@ -2227,6 +2227,24 @@ export class UIScene extends Phaser.Scene {
         oppPredictionCorrect: oppPred === selfActualColor,
         difficulty: gs.aiDifficulty,
       });
+
+      // ソロ進行: 勝利した難易度・先後手を記録
+      if (
+        selfScore > oppScore &&
+        gs.aiDifficulty &&
+        gs.aiDifficulty !== "testKyubi"
+      ) {
+        try {
+          const beatenData = JSON.parse(
+            localStorage.getItem("soloBeaten") ?? "{}",
+          );
+          const diff = gs.aiDifficulty;
+          const side = gs.playerFirst ? "first" : "second";
+          if (!beatenData[diff]) beatenData[diff] = {};
+          beatenData[diff][side] = true;
+          localStorage.setItem("soloBeaten", JSON.stringify(beatenData));
+        } catch (_e) {}
+      }
     }
 
     this._showStaticFinalResult(selfScore, oppScore);

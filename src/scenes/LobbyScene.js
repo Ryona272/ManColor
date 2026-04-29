@@ -326,6 +326,48 @@ export class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
     objs.push(titleT);
 
+    // ─── 進行管理 ───────────────────────────────────────────
+    // soloProgressMode: "progression" | "free"  (初期値: "progression")
+    // soloUnlocked: 倒した難易度の配列
+    const PROGRESSION_REQS = {
+      kooni: [],
+      yasha: ["kooni"],
+      rasetsu: ["yasha"],
+      kisin: ["rasetsu"],
+      kyubi: ["rasetsu"],
+      kugutsu: ["kisin", "kyubi"],
+    };
+    const DIFF_LABEL_MAP = {
+      kooni: "小鬼",
+      yasha: "夜叉",
+      rasetsu: "羅刹",
+      kisin: "鬼神",
+      kyubi: "九尾",
+      kugutsu: "傀儡",
+    };
+    let progressMode;
+    let beatenData;
+    try {
+      progressMode = localStorage.getItem("soloProgressMode") ?? "progression";
+      beatenData = JSON.parse(localStorage.getItem("soloBeaten") ?? "{}");
+    } catch (_e) {
+      progressMode = "progression";
+      beatenData = {};
+    }
+    const isProgressionMode = progressMode === "progression";
+
+    // diff を「完全クリア済み（先手・後手両方）」かどうか判定
+    function isFullyBeaten(diff) {
+      return !!(beatenData[diff]?.first && beatenData[diff]?.second);
+    }
+
+    function isUnlocked(diff) {
+      if (!isProgressionMode) return true;
+      const reqs = PROGRESSION_REQS[diff] ?? [];
+      return reqs.every((r) => isFullyBeaten(r));
+    }
+    // ─────────────────────────────────────────────────────────
+
     const items = [
       {
         y: 570,
@@ -671,6 +713,15 @@ export class LobbyScene extends Phaser.Scene {
       }
       objs.push(g);
 
+      // 進行ロック: 暗いオーバーレイのみ（テキスト類は後で前面に描画）
+      const progressLocked = !isUnlocked(item.diff);
+      if (progressLocked) {
+        const lockG = this.add.graphics();
+        lockG.fillStyle(0x000000, 0.68);
+        lockG.fillRoundedRect(rx, iy, bw, 165, 22);
+        objs.push(lockG);
+      }
+
       // 調整中バッジ
       if (item.locked) {
         const badge = this.add
@@ -684,22 +735,23 @@ export class LobbyScene extends Phaser.Scene {
       }
 
       const labelFontSize = bw < 400 ? "52px" : "60px";
+      const displayLabel = progressLocked ? "？？？" : item.label;
       const labelStyle = {
         fontSize: labelFontSize,
-        color: item.labelColor ?? "#fff8e6",
+        color: progressLocked ? "#556677" : (item.labelColor ?? "#fff8e6"),
         fontFamily: DISPLAY_FONT,
       };
-      if (item.labelStroke) {
+      if (!progressLocked && item.labelStroke) {
         labelStyle.stroke = item.labelStroke;
         labelStyle.strokeThickness = 4;
       }
       const labelY = item.locked ? item.y - 52 : item.y - 16;
       const t1 = this.add
-        .text(cx, labelY, item.label, labelStyle)
+        .text(cx, labelY, displayLabel, labelStyle)
         .setOrigin(0.5);
       objs.push(t1);
 
-      if (item.ruby && !item.locked) {
+      if (item.ruby && !item.locked && !progressLocked) {
         const rubyColor = item.labelStroke
           ? item.labelColor
           : (item.labelColor ?? "#fff8e6");
@@ -716,45 +768,119 @@ export class LobbyScene extends Phaser.Scene {
       }
 
       if (!item.locked) {
+        const reqs = PROGRESSION_REQS[item.diff] ?? [];
+        const lockedSubText =
+          reqs.length === 0
+            ? "まだ姿を現していない…"
+            : reqs
+                .map((r) => (isUnlocked(r) ? DIFF_LABEL_MAP[r] : "？？？"))
+                .join("と") + "を倒すと解放";
         const t2 = this.add
-          .text(cx, item.y + 44, item.sub, {
+          .text(cx, item.y + 44, progressLocked ? lockedSubText : item.sub, {
             fontSize: "28px",
-            color: item.subColor ?? "#d7e2f1",
+            color: progressLocked ? "#556677" : (item.subColor ?? "#d7e2f1"),
             fontFamily: UI_FONT,
           })
           .setOrigin(0.5);
         objs.push(t2);
       }
 
+      // 🔒アイコン: 最前面に描画（ラベルの上に重ねる）
+      if (progressLocked) {
+        const lockIcon = this.add
+          .text(cx, item.y - 16, "🔒", { fontSize: "52px" })
+          .setOrigin(0.5);
+        objs.push(lockIcon);
+      }
+
+      // 撃破バッジ (右上: 先手・後手それぞれの勝利状況)
+      {
+        const mrkFirst = !!beatenData[item.diff]?.first;
+        const mrkSecond = !!beatenData[item.diff]?.second;
+        // 2つのピル型インジケーター
+        const pillW = 52,
+          pillH = 28,
+          pillR = 14;
+        const pillY = iy + 22;
+        const pill2X = rx + bw - 10 - pillW / 2;
+        const pill1X = pill2X - pillW - 6;
+        for (const [px, beaten, label] of [
+          [pill1X, mrkFirst, "先"],
+          [pill2X, mrkSecond, "後"],
+        ]) {
+          const pg = this.add.graphics();
+          if (beaten) {
+            pg.fillStyle(0x120d00, 1);
+            pg.fillRoundedRect(
+              px - pillW / 2 - 1,
+              pillY - pillH / 2 - 1,
+              pillW + 2,
+              pillH + 2,
+              pillR + 1,
+            );
+            pg.fillStyle(0xb07d08, 1);
+            pg.fillRoundedRect(
+              px - pillW / 2,
+              pillY - pillH / 2,
+              pillW,
+              pillH,
+              pillR,
+            );
+            pg.fillStyle(0xf5c518, 1);
+            pg.fillRoundedRect(
+              px - pillW / 2 + 2,
+              pillY - pillH / 2 + 2,
+              pillW - 4,
+              pillH - 4,
+              pillR - 1,
+            );
+            pg.fillStyle(0xfff0a0, 0.35);
+            pg.fillRoundedRect(
+              px - pillW / 2 + 3,
+              pillY - pillH / 2 + 3,
+              pillW - 6,
+              (pillH - 6) * 0.5,
+              pillR - 2,
+            );
+          } else {
+            pg.fillStyle(0x0a0e16, 0.85);
+            pg.fillRoundedRect(
+              px - pillW / 2,
+              pillY - pillH / 2,
+              pillW,
+              pillH,
+              pillR,
+            );
+            pg.lineStyle(1, 0x334455, 0.9);
+            pg.strokeRoundedRect(
+              px - pillW / 2,
+              pillY - pillH / 2,
+              pillW,
+              pillH,
+              pillR,
+            );
+          }
+          objs.push(pg);
+          const pt = this.add
+            .text(px, pillY, beaten ? `${label}✓` : label, {
+              fontSize: "20px",
+              color: beaten ? "#3a2800" : "#334455",
+              fontFamily: UI_FONT,
+              fontStyle: beaten ? "bold" : "normal",
+            })
+            .setOrigin(0.5);
+          objs.push(pt);
+        }
+      }
+
       const zone = this.add.zone(cx, item.y + 2, bw, 165).setInteractive();
       zone.on("pointerdown", () => {
+        // 進行ロック中は選択不可
+        if (progressLocked) {
+          return;
+        }
         // 調整中は選択不可
         if (item.locked) {
-          const msg = this.add
-            .text(
-              W / 2,
-              960,
-              `🔧 ${item.label}は調整中です\nしばらくお待ちください`,
-              {
-                fontSize: "42px",
-                color: "#ffcc44",
-                fontFamily: DISPLAY_FONT,
-                align: "center",
-                stroke: "#000000",
-                strokeThickness: 6,
-              },
-            )
-            .setOrigin(0.5)
-            .setAlpha(0);
-          this.tweens.add({ targets: msg, alpha: 1, duration: 300 });
-          this.time.delayedCall(2200, () => {
-            this.tweens.add({
-              targets: msg,
-              alpha: 0,
-              duration: 300,
-              onComplete: () => msg.destroy(),
-            });
-          });
           return;
         }
         // 先後手選択サブパネルを表示
@@ -896,6 +1022,34 @@ export class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
         subObjs.push(senteT2);
 
+        // 先手クリアバッジ
+        if (beatenData[item.diff]?.first) {
+          const bx = srx + sbw - 30,
+            by = sry + 30,
+            br = 28;
+          const sbdg = this.add.graphics();
+          sbdg.fillStyle(0xf0d060, 0.22);
+          sbdg.fillCircle(bx, by, br + 8);
+          sbdg.fillStyle(0x120d00, 1);
+          sbdg.fillCircle(bx, by, br + 3);
+          sbdg.fillStyle(0xb07d08, 1);
+          sbdg.fillCircle(bx, by, br);
+          sbdg.fillStyle(0xf5c518, 1);
+          sbdg.fillCircle(bx, by, br - 3);
+          sbdg.fillStyle(0xfff0a0, 0.45);
+          sbdg.fillCircle(bx - 7, by - 7, br * 0.45);
+          subObjs.push(sbdg);
+          const senteClear = this.add
+            .text(bx, by + 1, "✓", {
+              fontSize: "30px",
+              color: "#3a2800",
+              fontFamily: UI_FONT,
+              fontStyle: "bold",
+            })
+            .setOrigin(0.5);
+          subObjs.push(senteClear);
+        }
+
         // 後手ボタン
         const goteG = this.add.graphics();
         const gfill = 0x7a3f45;
@@ -952,6 +1106,34 @@ export class LobbyScene extends Phaser.Scene {
           .setOrigin(0.5);
         subObjs.push(goteT2);
 
+        // 後手クリアバッジ
+        if (beatenData[item.diff]?.second) {
+          const bx = grx + gbw - 30,
+            by = gry + 30,
+            br = 28;
+          const gbdg = this.add.graphics();
+          gbdg.fillStyle(0xf0d060, 0.22);
+          gbdg.fillCircle(bx, by, br + 8);
+          gbdg.fillStyle(0x120d00, 1);
+          gbdg.fillCircle(bx, by, br + 3);
+          gbdg.fillStyle(0xb07d08, 1);
+          gbdg.fillCircle(bx, by, br);
+          gbdg.fillStyle(0xf5c518, 1);
+          gbdg.fillCircle(bx, by, br - 3);
+          gbdg.fillStyle(0xfff0a0, 0.45);
+          gbdg.fillCircle(bx - 7, by - 7, br * 0.45);
+          subObjs.push(gbdg);
+          const goteClear = this.add
+            .text(bx, by + 1, "✓", {
+              fontSize: "30px",
+              color: "#3a2800",
+              fontFamily: UI_FONT,
+              fontStyle: "bold",
+            })
+            .setOrigin(0.5);
+          subObjs.push(goteClear);
+        }
+
         const subCleanup = () => subObjs.forEach((o) => o.destroy());
 
         const senteZone = this.add.zone(W / 2, 735, 600, 170).setInteractive();
@@ -992,6 +1174,23 @@ export class LobbyScene extends Phaser.Scene {
       objs.push(zone);
     }
 
+    const resetT = this.add
+      .text(W / 2 - 200, 1510, "リセット", {
+        fontSize: "30px",
+        color: "#cc7744",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    resetT.on("pointerdown", () => {
+      try {
+        localStorage.setItem("soloBeaten", "{}");
+      } catch (_e) {}
+      cleanup();
+      this._showDifficultyPanel();
+    });
+    objs.push(resetT);
+
     const cancelT = this.add
       .text(W / 2, 1510, "キャンセル", {
         fontSize: "30px",
@@ -1002,6 +1201,27 @@ export class LobbyScene extends Phaser.Scene {
       .setInteractive();
     cancelT.on("pointerdown", cleanup);
     objs.push(cancelT);
+
+    // 切替ボタン
+    const toggleLabel = isProgressionMode ? "自由モード切替" : "段位モード切替";
+    const toggleColor = isProgressionMode ? "#44bb88" : "#aa88cc";
+    const toggleT = this.add
+      .text(W / 2 + 200, 1510, toggleLabel, {
+        fontSize: "30px",
+        color: toggleColor,
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    toggleT.on("pointerdown", () => {
+      try {
+        const next = isProgressionMode ? "free" : "progression";
+        localStorage.setItem("soloProgressMode", next);
+      } catch (_e) {}
+      cleanup();
+      this._showDifficultyPanel();
+    });
+    objs.push(toggleT);
   }
 
   _showNotice(message) {
