@@ -1025,8 +1025,52 @@ export function KisinV3(
 
   const guruScore = params?.kisinV3GuruguruScore ?? 20;
   const zakuBase = params?.kisinV3ZakuzakuBase ?? 7;
+  const negPenaltyScale = params?.kisinV3NegPenaltyScale ?? 1.0;
+  // 相手がネガ色を知っている場合のざくざく囮ペナルティスケール
+  const zakuDecoyScale = params?.kisinV3ZakuDecoyScale ?? 2.0;
+  // AI側がネガ色未確認・相手が確認済みの場合のちらちらボーナス
+  const chiraInfoBonus = params?.kisinV3ChiraInfoBonus ?? 8;
+
+  const aiSideKey = isOppRole ? "opp" : "self";
+  const plSideKey = isOppRole ? "self" : "opp";
+
+  // ちらちらで確認済みのネガ色（AI視点）
+  let knownNeg = null;
+  for (const fc of fortune?.center ?? []) {
+    if (fc.bonus < 0 && fc.seenBy?.includes(aiSideKey)) {
+      knownNeg = fc.color;
+      break;
+    }
+  }
+
+  // 相手がちらちらで確認済みのネガ色（相手視点）
+  // → 相手がネガ石の色を知っていれば、自陣に囮として配置してくる可能性がある
+  let playerNegColor = null;
+  for (const fc of fortune?.center ?? []) {
+    if (fc.bonus < 0 && fc.seenBy?.includes(plSideKey)) {
+      playerNegColor = fc.color;
+      break;
+    }
+  }
+
+  // pit内のネガ石比率（AI把握色ベース、0.0〜1.0）
+  function negRatioOf(pit, negColor) {
+    if (!negColor) return 0;
+    const stones = state.pits[pit].stones;
+    if (stones.length === 0) return 0;
+    return stones.filter((s) => s.color === negColor).length / stones.length;
+  }
 
   const initCounts = state.pits.map((p) => p.stones.length);
+  // DFS内では石の移動を色レベルで追跡しないため、
+  // 初期状態のnegRatioをpitごとにキャッシュして近似する
+  const initNegRatio = Array.from({ length: 12 }, (_, i) =>
+    negRatioOf(i, knownNeg),
+  );
+  // 相手視点のネガ比率（囮検出用）
+  const initPlayerNegRatio = Array.from({ length: 12 }, (_, i) =>
+    negRatioOf(i, playerNegColor),
+  );
 
   function fastSow(counts, pitIndex) {
     const nc = counts.slice();
@@ -1049,10 +1093,25 @@ export function KisinV3(
     const lastPit = (pit + n) % 12;
     let score = 0;
 
-    // ぐるぐる: AIは特化スコア、相手は標準(+5)
-    if (lastPit === storeIndex) score += isAI ? guruScore : 5;
+    // ぐるぐる: AIは特化スコア（ネガ石比率でペナルティ）、相手は標準(+5)
+    if (lastPit === storeIndex) {
+      if (isAI) {
+        const negRatio = initNegRatio[pit];
+        score += guruScore * (1 - negRatio * negPenaltyScale);
+      } else {
+        score += 5;
+      }
+    }
+
+    // ちらちら情報ボーナス: AIがネガ未確認 かつ ちらちら残あり → pit着地でちらちら発動を狙う
+    // 相手がネガ知っている場合はより積極的に情報収集すべき
+    if (isAI && lastPit === playerStore && !knownNeg && peeksDoneAI < 3) {
+      score += playerNegColor ? chiraInfoBonus * 1.5 : chiraInfoBonus;
+    }
 
     // ざくざく: +zakuBase + 取れた石数
+    // 囮ペナルティ: 相手がネガ色を知っている場合、相手は自陣にネガ石を置く囮戦略を使う可能性
+    // → 取得対象pit(mirror)のネガ石比率でスコアを割り引く
     if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
       const mirror = isAI
         ? isOppRole
@@ -1061,7 +1120,16 @@ export function KisinV3(
         : isOppRole
           ? lastPit + 6
           : lastPit - 6;
-      if (counts[mirror] > 0) score += zakuBase + counts[mirror];
+      if (counts[mirror] > 0) {
+        const baseZaku = zakuBase + counts[mirror];
+        if (isAI && playerNegColor) {
+          // 相手がネガ色を知っている → 囮リスクを考慮してスコアを割り引く
+          const decoyRisk = initPlayerNegRatio[mirror];
+          score += baseZaku * Math.max(0, 1 - decoyRisk * zakuDecoyScale);
+        } else {
+          score += baseZaku;
+        }
+      }
     }
 
     return { score, lastPit };
@@ -1726,6 +1794,151 @@ export function decidePlacementsFortuneKisinV1(
   memo = {},
 ) {
   return decidePlacementsFortuneV1(stones, state, fortune, memo);
+}
+
+/**
+ * decidePlacementsFortuneKisinV3
+ * KisinV3専用配置: ネガ石をざくざく囮として配置
+ * - ネガ石: 単独で対面に相手石がある路 → ざくざく誘導（相手賽壇に流させる）
+ *   取られなければぐるぐるで回収される（ぐるぐる特化の割り切り）
+ * - ポジ/自占い/inferred: pit11寄り（通常通り）
+ * Phase1配置数の決定はdecidePlacementsFortuneV1と同一。
+ */
+export function decidePlacementsFortuneKisinV3(
+  stones,
+  state,
+  fortune,
+  memo = {},
+) {
+  if (stones.length === 0) return [];
+
+  const aiLanes = [10, 9, 8, 7, 6];
+
+  const ownFortune = fortune?.opp?.color ?? null;
+  const inferredPlayer = memo?.inferredPlayerColor ?? null;
+  const avoidedPlayer = memo?.playerAvoidedColor ?? null;
+  let knownNeg = null;
+  const knownPos = [];
+  for (const fc of fortune?.center ?? []) {
+    if (fc.seenBy?.includes("opp")) {
+      if (fc.bonus < 0) knownNeg = fc.color;
+      else if (fc.bonus > 0) knownPos.push(fc.color);
+    }
+  }
+
+  function stoneClass(stone) {
+    const c = stone.color;
+    if (knownNeg && c === knownNeg) return "neg";
+    if (inferredPlayer && c === inferredPlayer) return "inferred";
+    if (ownFortune && c === ownFortune) return "own";
+    if (knownPos.includes(c)) return "pos";
+    if (avoidedPlayer && c === avoidedPlayer) return "avoided";
+    return "unknown";
+  }
+
+  function scoreForLane(stone, pit, currentCount) {
+    const stepsToStore = 11 - pit; // pit10=1 … pit6=5
+    const cls = stoneClass(stone);
+    if (cls === "neg") {
+      // ざくざく囮: 単独配置で対面(pit-6)に相手石があれば高スコア
+      const mirrorPit = pit - 6; // pit6→0, pit10→4
+      const mirrorCount = counts[mirrorPit];
+      if (currentCount === 0 && mirrorCount > 0) {
+        return 20 + mirrorCount * 3; // 対面が多いほどざくざく誘導しやすい
+      }
+      // 囮できない場合は遠い路へ（pit10単独は近すぎてぐるぐる即回収なので避ける）
+      if (pit === 10 && currentCount === 0) return -200;
+      return stepsToStore * 8 + (currentCount > 0 ? 15 : -20);
+    }
+    if (cls === "avoided") {
+      return stepsToStore * 3;
+    }
+    if (cls === "inferred" || cls === "own" || cls === "pos") {
+      return (6 - stepsToStore) * 8; // pit10→40, pit6→8
+    }
+    return Math.random() * 0.1;
+  }
+
+  function guruCount(pit) {
+    return (11 - pit + 12) % 12;
+  }
+  function chirachiraCount(pit) {
+    return (5 - pit + 12) % 12;
+  }
+
+  function playerCanReach(counts, targetPit) {
+    for (let p = 0; p <= 4; p++) {
+      const c = counts[p];
+      if (c === 0) continue;
+      for (let i = 1; i <= c; i++) {
+        if ((p + i) % 12 === targetPit) return true;
+      }
+      if ((p + c) % 12 === 5) {
+        for (let p2 = 0; p2 <= 4; p2++) {
+          const c2 = counts[p2];
+          if (c2 === 0) continue;
+          for (let i = 1; i <= c2; i++) {
+            if ((p2 + i) % 12 === targetPit) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  const counts = state.pits.map((p) => p.stones.length);
+
+  // Phase 1: pit割り当て数の決定（decidePlacementsFortuneV1と同一）
+  const pitAllocs = [];
+  let toDistribute = stones.length;
+  for (const pit of aiLanes) {
+    if (toDistribute === 0) break;
+    const cur = counts[pit];
+    const gNeeded = guruCount(pit);
+    const cNeeded = chirachiraCount(pit);
+    const canReach = playerCanReach(counts, pit);
+    let target;
+    if (cur > gNeeded) {
+      target = canReach ? cNeeded - 1 : cNeeded;
+    } else {
+      target = canReach ? gNeeded - 1 : gNeeded;
+    }
+    const toPlace = Math.min(Math.max(0, target - cur), toDistribute);
+    if (toPlace > 0) {
+      pitAllocs.push({ pit, count: toPlace });
+      toDistribute -= toPlace;
+    }
+  }
+  while (toDistribute > 0) {
+    const fallbackPit = aiLanes.find((p) => counts[p] > 0) ?? aiLanes[0];
+    const existing = pitAllocs.find((a) => a.pit === fallbackPit);
+    if (existing) existing.count++;
+    else pitAllocs.push({ pit: fallbackPit, count: 1 });
+    toDistribute--;
+  }
+
+  // Phase 2: 各スロットに最適な色の石を割り当て
+  const available = stones.map((_, i) => i);
+  const result = [];
+  for (const { pit, count } of pitAllocs) {
+    for (let slot = 0; slot < count; slot++) {
+      if (available.length === 0) break;
+      const currentCount = counts[pit];
+      let bestAvailIdx = 0;
+      let bestScore = -Infinity;
+      for (let ai = 0; ai < available.length; ai++) {
+        const sc = scoreForLane(stones[available[ai]], pit, currentCount);
+        if (sc > bestScore) {
+          bestScore = sc;
+          bestAvailIdx = ai;
+        }
+      }
+      result.push({ pitIndex: pit, stoneIndex: available[bestAvailIdx] });
+      available.splice(bestAvailIdx, 1);
+      counts[pit]++;
+    }
+  }
+  return result;
 }
 
 // ── 旧実装（参考用・未使用） ─────────────────────────────────────────────────

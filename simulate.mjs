@@ -15,6 +15,7 @@ import { shuffle } from "./src/data/constants.js";
 import {
   KisinV1,
   KisinV2,
+  KisinV3,
   SimKisinV1,
   KugutsuV1,
   KyubiV1,
@@ -22,6 +23,7 @@ import {
   pickPitTechDfsV1,
   decidePlacementsFortuneV1,
   decidePlacementsFortuneKisinV1,
+  decidePlacementsFortuneKisinV3,
   decidePlacementsFortuneKyubiV1,
   optimizeSowOrderFortuneV1,
   optimizeSowOrderFortuneKisinV1,
@@ -131,7 +133,7 @@ function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
     return pickPitTechDfsV1(validPits, state, peeksAI);
   }
   if (aiName === "kisin") {
-    return KisinV2(
+    return KisinV3(
       validPits,
       state,
       peeksAI,
@@ -231,7 +233,7 @@ function getPlacementForRole(aiName, pending, state, role) {
 
   let placements;
   if (aiName === "kisin") {
-    placements = decidePlacementsFortuneKisinV1(
+    placements = decidePlacementsFortuneKisinV3(
       pending,
       workState,
       fortune,

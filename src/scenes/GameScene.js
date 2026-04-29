@@ -10,7 +10,7 @@ import {
   pickPitTechDfsV1 as aiPickPitRasetsu,
   KyubiV2 as aiPickPitKyubi,
   decidePlacementsFortuneV1 as aiDecidePlacements,
-  decidePlacementsFortuneKisinV1 as aiDecidePlacementsKisin,
+  decidePlacementsFortuneKisinV3 as aiDecidePlacementsKisin,
   decidePlacementsFortuneKyubiV1 as aiDecidePlacementsKyubi,
   optimizeSowOrderFortuneV1 as aiOptimizeSowOrder,
   optimizeSowOrderFortuneKisinV1 as aiOptimizeSowOrderKisin,
