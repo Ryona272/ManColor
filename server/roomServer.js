@@ -38,6 +38,18 @@ const matchmakingQueue = new Set();
 
 const httpServer = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost`);
+
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    res.end();
+    return;
+  }
+
   if (url.pathname === "/logs" && req.method === "GET") {
     const limit = Math.min(
       Number(url.searchParams.get("limit") || 1000),
@@ -51,6 +63,57 @@ const httpServer = http.createServer((req, res) => {
     res.end(JSON.stringify(data));
     return;
   }
+
+  if (url.pathname === "/logs" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 65536) req.destroy(); // 64KB上限
+    });
+    req.on("end", () => {
+      try {
+        const entries = JSON.parse(body);
+        const list = Array.isArray(entries) ? entries : [entries];
+        for (const entry of list) {
+          if (!entry || typeof entry.type !== "string") continue;
+          const safe = {
+            ts: typeof entry.ts === "number" ? entry.ts : Date.now(),
+            room: null,
+            role: typeof entry.role === "string" ? entry.role : "self",
+            type: entry.type,
+            turn: typeof entry.turn === "number" ? entry.turn : null,
+            mode: typeof entry.mode === "string" ? entry.mode : "solo",
+            ...Object.fromEntries(
+              Object.entries(entry).filter(([k]) =>
+                [
+                  "pit",
+                  "action",
+                  "color",
+                  "difficulty",
+                  "storeIndex",
+                  "stoneIndex",
+                ].includes(k),
+              ),
+            ),
+          };
+          actionLog.push(safe);
+          if (actionLog.length > MAX_LOG_ENTRIES) actionLog.shift();
+          if (ACTION_LOG_FILE) {
+            try {
+              fs.appendFileSync(ACTION_LOG_FILE, JSON.stringify(safe) + "\n");
+            } catch (_e) {}
+          }
+        }
+        res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
+        res.end();
+      } catch (_e) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad Request");
+      }
+    });
+    return;
+  }
+
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
   res.end("ok");
 });

@@ -1,5 +1,6 @@
 import { STONE_COLORS } from "../data/constants.js";
 import { getPlayerName } from "../net/firebaseAuth.js";
+import { logSoloAction } from "../net/actionLogger.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -1881,6 +1882,14 @@ export class UIScene extends Phaser.Scene {
     const localRole = this.gameScene._isOnlineRoomMode?.()
       ? this.gameScene.onlineSide
       : "self";
+
+    // ソロモード操作ログ（プレイヤーが予測した色を記録）
+    if (!this.gameScene._isOnlineRoomMode?.()) {
+      logSoloAction("final_prediction", {
+        color: localPrediction,
+        difficulty: this.gameScene.aiDifficulty,
+      });
+    }
 
     let selfPrediction = this.predictionPreset?.selfPrediction ?? null;
     let oppPrediction = this.predictionPreset?.oppPrediction ?? null;

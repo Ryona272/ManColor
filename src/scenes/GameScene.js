@@ -1,6 +1,7 @@
 ﻿import Phaser from "phaser";
 import { GameState } from "../logic/GameState.js";
 import { roomClient } from "../net/roomClient.js";
+import { logSoloAction } from "../net/actionLogger.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
   updateMemoV1 as aiUpdateMemo,
@@ -1486,6 +1487,15 @@ export class GameScene extends Phaser.Scene {
     const stones = [...state.pits[pitIndex].stones];
     if (stones.length === 0) return;
 
+    // ソロモードのみ操作ログを送信
+    if (!this._isOnlineRoomMode()) {
+      logSoloAction("move", {
+        pit: pitIndex,
+        turn: state.turn,
+        difficulty: this.aiDifficulty,
+      });
+    }
+
     // 千日手チェック（プレイヤーが撒く直前）
     if (this._checkSennitteAndHandle()) return;
 
@@ -1812,6 +1822,13 @@ export class GameScene extends Phaser.Scene {
     this.scene.get("UIScene").hideKutakutaChoice();
     this.scene.get("UIScene").clearCenterBanner();
 
+    // ソロモード操作ログ
+    logSoloAction("kutakuta_choice", {
+      action,
+      turn: this.gameState.getState().turn,
+      difficulty: this.aiDifficulty,
+    });
+
     if (action === "kutakuta") {
       this._announceTechnique("くたくた！", 0x6ab4e8, "ゲーム終了！");
       this.time.delayedCall(450, () => this.scene.get("UIScene").showResult());
@@ -1853,6 +1870,13 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      // ソロモード操作ログ
+      logSoloAction("special_choice", {
+        action: "chirachira",
+        turn: this.gameState.getState().turn,
+        difficulty: this.aiDifficulty,
+      });
+
       const revealInfo = this.gameState.revealNextCenterForPlayer("self");
       this.scene.get("UIScene").hideSpecialChoice();
       const chirachiraDesc = revealInfo
@@ -1870,6 +1894,13 @@ export class GameScene extends Phaser.Scene {
     if (action === "poipoi") {
       this.scene.get("UIScene").hideSpecialChoice();
       this._announceTechnique("ぽいぽい！", 0x6ab4e8, "石を一つ排除！");
+
+      // ソロモード操作ログ
+      logSoloAction("special_choice", {
+        action: "poipoi",
+        turn: this.gameState.getState().turn,
+        difficulty: this.aiDifficulty,
+      });
 
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
@@ -1968,6 +1999,14 @@ export class GameScene extends Phaser.Scene {
 
     const removed = this.gameState.removeStoneFromPit(pitIndex, stoneIndex);
     if (!removed) return;
+
+    // ソロモード操作ログ
+    logSoloAction("poipoi_stone", {
+      storeIndex: pitIndex,
+      stoneIndex,
+      turn: this.gameState.getState().turn,
+      difficulty: this.aiDifficulty,
+    });
 
     this.mode = "turn";
     this.poipoiStoreIndex = null;
