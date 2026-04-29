@@ -994,6 +994,134 @@ export function KisinV2(
   return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
 }
 
+// ─── KisinV3: ぐるぐる特化・羅刹ベース ─────────────────────────────────────────
+
+/**
+ * KisinV3 ピット選択 - 羅刹構造ベースのぐるぐる特化AI
+ *
+ * 羅刹 (pickPitTechDfsV1) を複製し、ぐるぐるを最高優先に特化。
+ * - ぐるぐる: +20 (羅刹の4倍)
+ * - ざくざく: +7 + 取れた石数 (羅刹と同等)
+ * - ちらちら強制なし（ぐるぐる一本槍）
+ * - 3手先 AI→Player→AI の DFS (上位3手を探索)
+ * - role対応（"opp"=後手 pit6-10/pit11, "self"=先手 pit0-4/pit5）
+ */
+export function KisinV3(
+  validPits,
+  state,
+  peeksDoneAI,
+  peeksDonePlayer,
+  fortune,
+  params,
+  role = "opp",
+) {
+  const isOppRole = role === "opp";
+  const aiLaneMin = isOppRole ? 6 : 0;
+  const aiLaneMax = isOppRole ? 10 : 4;
+  const aiStore = isOppRole ? 11 : 5;
+  const playerStore = isOppRole ? 5 : 11;
+  const plLaneMin = isOppRole ? 0 : 6;
+  const plLaneMax = isOppRole ? 4 : 10;
+
+  const guruScore = params?.kisinV3GuruguruScore ?? 20;
+  const zakuBase = params?.kisinV3ZakuzakuBase ?? 7;
+
+  const initCounts = state.pits.map((p) => p.stones.length);
+
+  function fastSow(counts, pitIndex) {
+    const nc = counts.slice();
+    const n = nc[pitIndex];
+    if (n === 0) return { counts: nc, lastPit: -1 };
+    nc[pitIndex] = 0;
+    let cur = pitIndex;
+    for (let i = 0; i < n; i++) {
+      cur = (cur + 1) % 12;
+      nc[cur]++;
+    }
+    return { counts: nc, lastPit: cur };
+  }
+
+  function scoreSow(counts, pit, isAI) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const storeIndex = isAI ? aiStore : playerStore;
+    const n = counts[pit];
+    const lastPit = (pit + n) % 12;
+    let score = 0;
+
+    // ぐるぐる: AIは特化スコア、相手は標準(+5)
+    if (lastPit === storeIndex) score += isAI ? guruScore : 5;
+
+    // ざくざく: +zakuBase + 取れた石数
+    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
+      const mirror = isAI
+        ? isOppRole
+          ? lastPit - 6
+          : lastPit + 6
+        : isOppRole
+          ? lastPit + 6
+          : lastPit - 6;
+      if (counts[mirror] > 0) score += zakuBase + counts[mirror];
+    }
+
+    return { score, lastPit };
+  }
+
+  function getTopMovesV3(counts, isAI, n, restrictTo) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const pool =
+      restrictTo ??
+      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
+    const scored = [];
+    for (const p of pool) {
+      if (counts[p] === 0) continue;
+      const { score } = scoreSow(counts, p, isAI);
+      scored.push({ pit: p, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, n);
+  }
+
+  let bestFirstPit = validPits[0];
+  let bestNet = -Infinity;
+
+  function dfs(depth, counts, aiScore, playerScore, firstPit) {
+    if (depth === 3) {
+      const net = aiScore - playerScore;
+      if (net > bestNet) {
+        bestNet = net;
+        bestFirstPit = firstPit;
+      }
+      return;
+    }
+
+    const isAI = depth % 2 === 0; // depth 0,2 = AI; 1 = Player
+    const topMoves =
+      depth === 0
+        ? getTopMovesV3(counts, true, 3, validPits)
+        : getTopMovesV3(counts, isAI, 3, null);
+
+    if (topMoves.length === 0) {
+      dfs(depth + 1, counts, aiScore, playerScore, firstPit);
+      return;
+    }
+
+    for (const { pit } of topMoves) {
+      const { score } = scoreSow(counts, pit, isAI);
+      const { counts: newCounts } = fastSow(counts, pit);
+      const newAiScore = isAI ? aiScore + score : aiScore;
+      const newPlayerScore = !isAI ? playerScore + score : playerScore;
+      const fp = depth === 0 ? pit : firstPit;
+      dfs(depth + 1, newCounts, newAiScore, newPlayerScore, fp);
+    }
+  }
+
+  dfs(0, initCounts, 0, 0, validPits[0]);
+
+  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
+}
+
 // 笏笏笏 HardV1: 3謇狗分蜈郁ｪｭ縺ｿ・医＄繧九＄繧九・縺悶￥縺悶￥迚ｹ蛹厄ｼ・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 /**
@@ -1333,8 +1461,12 @@ export function decidePlacementsFortuneKyubiV1(stones, state, fortune, memo) {
     return Math.random() * 0.1;
   }
 
-  function guruCount(pit) { return (11 - pit + 12) % 12; }
-  function chirachiraCount(pit) { return (5 - pit + 12) % 12; }
+  function guruCount(pit) {
+    return (11 - pit + 12) % 12;
+  }
+  function chirachiraCount(pit) {
+    return (5 - pit + 12) % 12;
+  }
 
   const counts = state.pits.map((p) => p.stones.length);
 

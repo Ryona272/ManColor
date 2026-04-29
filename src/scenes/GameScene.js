@@ -5,7 +5,7 @@ import { logSoloAction } from "../net/actionLogger.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
   updateMemoV1 as aiUpdateMemo,
-  KisinV2 as aiPickPitKisin,
+  KisinV3 as aiPickPitKisin,
   KugutsuV1 as aiPickPitKugutsu,
   pickPitTechDfsV1 as aiPickPitRasetsu,
   KyubiV2 as aiPickPitKyubi,
@@ -3009,7 +3009,11 @@ export class GameScene extends Phaser.Scene {
             } else if (bestOppVal >= 0 && state.pits[5].stones.length > 0) {
               const _removedColor3 = state.pits[5].stones[bestOppIdx]?.color;
               this.gameState.removeStoneFromPit(5, bestOppIdx);
-              logSoloAction("ai_poipoi", { stoneColor: _removedColor3, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
+              logSoloAction("ai_poipoi", {
+                stoneColor: _removedColor3,
+                turn: this.gameState.getState().turn,
+                difficulty: this.aiDifficulty,
+              });
               this._announceTechnique(
                 "ぽいぽい！",
                 0xe87070,
@@ -3097,9 +3101,14 @@ export class GameScene extends Phaser.Scene {
                   );
                   this._renderStones();
                 } else if (highestValue >= 0) {
-                  const _removedColor4 = state.pits[5].stones[selectedIndex]?.color;
+                  const _removedColor4 =
+                    state.pits[5].stones[selectedIndex]?.color;
                   this.gameState.removeStoneFromPit(5, selectedIndex);
-                  logSoloAction("ai_poipoi", { stoneColor: _removedColor4, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
+                  logSoloAction("ai_poipoi", {
+                    stoneColor: _removedColor4,
+                    turn: this.gameState.getState().turn,
+                    difficulty: this.aiDifficulty,
+                  });
                   this._announceTechnique(
                     "ぽいぽい！",
                     0xe87070,
@@ -3188,7 +3197,11 @@ export class GameScene extends Phaser.Scene {
           } else if (highestValue >= 0) {
             const _removedColor5 = state.pits[5].stones[selectedIndex]?.color;
             this.gameState.removeStoneFromPit(5, selectedIndex);
-            logSoloAction("ai_poipoi", { stoneColor: _removedColor5, turn: this.gameState.getState().turn, difficulty: this.aiDifficulty });
+            logSoloAction("ai_poipoi", {
+              stoneColor: _removedColor5,
+              turn: this.gameState.getState().turn,
+              difficulty: this.aiDifficulty,
+            });
             this._announceTechnique(
               "ぽいぽい！",
               0xe87070,
