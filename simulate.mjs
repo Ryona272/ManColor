@@ -19,12 +19,15 @@ import {
   SimKisinV1,
   KugutsuV1,
   KyubiV1,
+  KyubiV3,
   SimKyubiV1,
+  AshuraV1,
   pickPitTechDfsV1,
   decidePlacementsFortuneV1,
   decidePlacementsFortuneKisinV1,
   decidePlacementsFortuneKisinV3,
   decidePlacementsFortuneKyubiV1,
+  decidePlacementsFortuneKyubiV3,
   optimizeSowOrderFortuneV1,
   optimizeSowOrderFortuneKisinV1,
 } from "./src/logic/GameAI.js";
@@ -37,14 +40,23 @@ import {
 // ─────────────────────────────────────────────────────────────
 // CLI
 // ─────────────────────────────────────────────────────────────
-const AI_LIST = ["kooni", "yasha", "rasetsu", "kisin", "kyubi", "kugutsu"];
+const AI_LIST = [
+  "kooni",
+  "yasha",
+  "rasetsu",
+  "kisin",
+  "kyubi",
+  "kugutsu",
+  "ashura",
+];
 const AI_LABELS = {
   kooni: "小鬼",
   yasha: "夜叉",
-  rasetsu: "羅刹",
+  rasetsu: "羅刺",
   kisin: "鬼神",
   kyubi: "九尾",
-  kugutsu: "傀儡",
+  kugutsu: "傀倶",
+  ashura: "阿修羅",
 };
 
 const args = process.argv.slice(2);
@@ -157,6 +169,17 @@ function pickPitOppView(aiName, validPits, state, peeksAI, peeksPlayer) {
   if (aiName === "kugutsu") {
     return KugutsuV1(validPits, state, peeksAI, peeksPlayer, fortune, 3);
   }
+  if (aiName === "ashura") {
+    return AshuraV1(
+      validPits,
+      state,
+      peeksAI,
+      peeksPlayer,
+      fortune,
+      null,
+      "opp",
+    );
+  }
   return validPits[Math.floor(Math.random() * validPits.length)];
 }
 
@@ -239,7 +262,14 @@ function getPlacementForRole(aiName, pending, state, role) {
       fortune,
       {},
     );
-  } else if (["kyubi", "kugutsu", "rasetsu"].includes(aiName)) {
+  } else if (aiName === "kyubi" || aiName === "ashura") {
+    placements = decidePlacementsFortuneKyubiV3(
+      pending,
+      workState,
+      fortune,
+      {},
+    );
+  } else if (["kugutsu", "rasetsu"].includes(aiName)) {
     placements = decidePlacementsFortuneV1(pending, workState, fortune, {});
   } else {
     // kooni / yasha: 石数が多い路から順に配置
@@ -263,8 +293,8 @@ function chooseSpecialAction(aiName, gs, role) {
   const state = gs.getState();
   const peeks = gs.centerPeekProgress[role] ?? 0;
 
-  // kyubi は peeks < 3 なら常にちらちら
-  if (aiName === "kyubi") {
+  // ashura/kyubi は peeks < 3 なら常にちらちら
+  if (aiName === "ashura" || aiName === "kyubi") {
     if (peeks < 3) return "chirachira";
     // ちらちら使い切り → ぽいぽい（相手賽壇に石があれば）
     const oppStoreIdx = role === "opp" ? 5 : 11;
@@ -373,7 +403,9 @@ function predictOpponentColor(aiName, gs, role) {
   const COLORS = ["red", "blue", "green", "yellow", "purple"];
 
   // スマートAI: 相手賽壇の石の色頻度で推測
-  if (["rasetsu", "kisin", "yasha", "kugutsu", "kyubi"].includes(aiName)) {
+  if (
+    ["rasetsu", "kisin", "yasha", "kugutsu", "kyubi", "ashura"].includes(aiName)
+  ) {
     const oppStore = role === "opp" ? 5 : 11;
     const freq = {};
     for (const s of state.pits[oppStore].stones) {

@@ -106,6 +106,21 @@ export class LobbyScene extends Phaser.Scene {
       .setAlpha(0.95);
 
     this._createPlayerPanel(W, H);
+
+    // 阿修羅解放チェック: 条件が揃っていてまだ演出未表示なら自動でパネルを開く
+    this.time.delayedCall(300, () => {
+      try {
+        const ashuraShownNow = localStorage.getItem("ashuraShown") === "1";
+        if (!ashuraShownNow) {
+          const bd = JSON.parse(localStorage.getItem("soloBeaten") ?? "{}");
+          const kisinDone = !!(bd["kisin"]?.first && bd["kisin"]?.second);
+          const kyubiDone = !!(bd["kyubi"]?.first && bd["kyubi"]?.second);
+          if (kisinDone && kyubiDone) {
+            this._showDifficultyPanel();
+          }
+        }
+      } catch (_) {}
+    });
   }
 
   _drawBackground(W, H) {
@@ -335,7 +350,8 @@ export class LobbyScene extends Phaser.Scene {
       rasetsu: ["yasha"],
       kisin: ["rasetsu"],
       kyubi: ["rasetsu"],
-      kugutsu: ["kisin", "kyubi"],
+      ashura: ["kisin", "kyubi"],
+      kugutsu: ["ashura"],
     };
     const DIFF_LABEL_MAP = {
       kooni: "小鬼",
@@ -343,6 +359,7 @@ export class LobbyScene extends Phaser.Scene {
       rasetsu: "羅刹",
       kisin: "鬼神",
       kyubi: "九尾",
+      ashura: "阿修羅",
       kugutsu: "傀儡",
     };
     let progressMode;
@@ -366,6 +383,14 @@ export class LobbyScene extends Phaser.Scene {
       const reqs = PROGRESSION_REQS[diff] ?? [];
       return reqs.every((r) => isFullyBeaten(r));
     }
+    // 阿修羅解放判定: モードに関わらず鬼神+九尾の先後手全クリアで解放
+    const ashuraUnlocked = PROGRESSION_REQS.ashura.every((r) =>
+      isFullyBeaten(r),
+    );
+    let ashuraShown = true;
+    try {
+      ashuraShown = localStorage.getItem("ashuraShown") === "1";
+    } catch (_e) {}
     // ─────────────────────────────────────────────────────────
 
     const items = [
@@ -421,21 +446,40 @@ export class LobbyScene extends Phaser.Scene {
         cx: W / 2 + 157,
         bw: 305,
       },
+      ...(ashuraUnlocked
+        ? [
+            {
+              y: 1140,
+              label: "阿修羅",
+              ruby: "あしゅら",
+              sub: "鬼神と九尾が融合した圧倒的な存在",
+              labelColor: "#fff0ee",
+              labelStroke: "#550000",
+              subColor: "#ffaa88",
+              diff: "ashura",
+            },
+          ]
+        : []),
       {
         y: 1330,
         label: "傀儡",
         ruby: "くぐつ",
         sub: "成長する操り人形",
-        labelColor: "#ffffff",
-        labelStroke: "#cc0000",
-        subColor: "#ff6666",
+        labelColor: "#c8e8ff",
+        labelStroke: "#003366",
+        subColor: "#6699cc",
         diff: "kugutsu",
       },
     ];
 
     const cleanup = () => objs.forEach((o) => o.destroy());
+    this._diffPanelCleanup = cleanup;
+
+    // アニメーション用: アイテムごとのobjs範囲追跡
+    const itemObjRanges = {};
 
     for (const item of items) {
+      const objStartIdx = objs.length;
       const cx = item.cx ?? W / 2;
       const bw = item.bw ?? 620;
       const rx = cx - bw / 2;
@@ -637,33 +681,33 @@ export class LobbyScene extends Phaser.Scene {
         g.lineStyle(1, 0xd4a800, 0.25);
         g.strokeRoundedRect(rx + 4, iy + 4, bw - 8, 157, 5);
       } else if (item.diff === "kugutsu") {
-        // 傀儡: 黒基調 乱雑な突き抜けライン
-        g.fillStyle(0x080808, 1);
+        // 傀儡: 紺基調 糸の突き抜けライン（青白）
+        g.fillStyle(0x061228, 1);
         g.fillRoundedRect(rx, iy, bw, 165, 14);
 
         // [x0%, y0%, x1%, y1%, col, alpha, width]
         const lines = [
           // 上→下
-          [0.07, 0, 0.71, 1, 0xff2200, 0.55, 1],
-          [0.33, 0, 0.88, 1, 0xff2200, 0.3, 1],
+          [0.07, 0, 0.71, 1, 0x2266ff, 0.55, 1],
+          [0.33, 0, 0.88, 1, 0x2266ff, 0.3, 1],
           [0.48, 0, 0.23, 1, 0xffffff, 0.4, 2],
-          [0.91, 0, 0.57, 1, 0xff2200, 0.45, 1],
+          [0.91, 0, 0.57, 1, 0x2266ff, 0.45, 1],
           [0.85, 0, 0.69, 1, 0xffffff, 0.28, 1],
           // 左→右
-          [0, 0.08, 1, 0.63, 0xff2200, 0.5, 1],
-          [0, 0.37, 1, 0.82, 0xff2200, 0.35, 2],
+          [0, 0.08, 1, 0.63, 0x2266ff, 0.5, 1],
+          [0, 0.37, 1, 0.82, 0x2266ff, 0.35, 2],
           [0, 0.52, 1, 0.41, 0xffffff, 0.45, 1],
-          [0, 0.91, 1, 0.55, 0xff2200, 0.28, 1],
+          [0, 0.91, 1, 0.55, 0x2266ff, 0.28, 1],
           // 斜め
           [0.22, 0, 1, 0.14, 0xffffff, 0.25, 1],
-          [0.67, 0, 1, 0.49, 0xff2200, 0.38, 1],
-          [0.31, 0, 0, 0.28, 0xff2200, 0.32, 1],
-          [0.52, 1, 0, 0.73, 0xff2200, 0.4, 1],
-          [1, 0.06, 0, 0.88, 0xff2200, 0.3, 1],
+          [0.67, 0, 1, 0.49, 0x2266ff, 0.38, 1],
+          [0.31, 0, 0, 0.28, 0x2266ff, 0.32, 1],
+          [0.52, 1, 0, 0.73, 0x2266ff, 0.4, 1],
+          [1, 0.06, 0, 0.88, 0x2266ff, 0.3, 1],
           [1, 0.34, 0, 0.12, 0xffffff, 0.22, 1],
           // 鋭角
-          [0.02, 0, 0.98, 0.08, 0xff2200, 0.6, 2],
-          [0.02, 1, 0.98, 0.92, 0xff2200, 0.5, 1],
+          [0.02, 0, 0.98, 0.08, 0x2266ff, 0.6, 2],
+          [0.02, 1, 0.98, 0.92, 0x2266ff, 0.5, 1],
           [0, 0.02, 0.08, 0, 0xffffff, 0.35, 1],
           [1, 0.98, 0.92, 1, 0xffffff, 0.35, 1],
         ];
@@ -675,35 +719,115 @@ export class LobbyScene extends Phaser.Scene {
           g.strokePath();
         });
 
-        // 結び目ドット（ランダム散布）
+        // 結び目ドット（青白散布）
         const knots = [
-          [0.07, 0.38, 0xff2200, 0.7, 2.5],
+          [0.07, 0.38, 0x2266ff, 0.7, 2.5],
           [0.19, 0.74, 0xffffff, 0.5, 2],
-          [0.33, 0.17, 0xff2200, 0.6, 2],
+          [0.33, 0.17, 0x2266ff, 0.6, 2],
           [0.48, 0.52, 0xffffff, 0.7, 3],
-          [0.61, 0.88, 0xff2200, 0.5, 2],
+          [0.61, 0.88, 0x2266ff, 0.5, 2],
           [0.78, 0.31, 0xffffff, 0.4, 2],
-          [0.91, 0.62, 0xff2200, 0.6, 2.5],
+          [0.91, 0.62, 0x2266ff, 0.6, 2.5],
           [0.25, 0.45, 0xffffff, 0.5, 2],
-          [0.55, 0.21, 0xff2200, 0.7, 2],
+          [0.55, 0.21, 0x2266ff, 0.7, 2],
           [0.82, 0.79, 0xffffff, 0.4, 2],
-          [0.13, 0.91, 0xff2200, 0.5, 2.5],
+          [0.13, 0.91, 0x2266ff, 0.5, 2.5],
           [0.69, 0.06, 0xffffff, 0.6, 2],
-          [0.4, 0.67, 0xff2200, 0.4, 2],
+          [0.4, 0.67, 0x2266ff, 0.4, 2],
         ];
         knots.forEach(([kx, ky, col, a, r]) => {
           g.fillStyle(col, a);
           g.fillCircle(rx + kx * bw, iy + ky * 165, r);
         });
 
-        // アウターグロー（赤）
-        g.lineStyle(7, 0xcc0000, 0.22);
+        // アウターグロー（青）
+        g.lineStyle(7, 0x1144cc, 0.22);
         g.strokeRoundedRect(rx - 4, iy - 4, bw + 8, 173, 16);
-        // メイン枠（深赤）
-        g.lineStyle(2, 0xaa0000, 0.95);
+        // メイン枠（深青）
+        g.lineStyle(2, 0x2255bb, 0.95);
         g.strokeRoundedRect(rx, iy, bw, 165, 14);
         // 内側白細枠
         g.lineStyle(1, 0xffffff, 0.13);
+        g.strokeRoundedRect(rx + 4, iy + 4, bw - 8, 157, 11);
+      } else if (item.diff === "ashura") {
+        // 阿修羅: 暗紅黒基調 + 曼荼羅放射 + 三面六臂（明王スタイル）
+        const acx = rx + bw / 2,
+          acy = iy + 82;
+        // ベース
+        g.fillStyle(0x0e0205, 1);
+        g.fillRoundedRect(rx, iy, bw, 165, 14);
+        // 紫グロー（左右のコーナー）
+        g.fillStyle(0x5500aa, 0.18);
+        g.fillEllipse(rx + bw * 0.18, acy, 180, 120);
+        g.fillStyle(0x7700cc, 0.12);
+        g.fillEllipse(rx + bw * 0.82, acy, 180, 120);
+        // 中央グロー楕円（深紅）— 抑えめに
+        g.fillStyle(0x7a0010, 0.22);
+        g.fillEllipse(acx, acy, bw * 0.72, 110);
+        g.fillStyle(0xaa0018, 0.1);
+        g.fillEllipse(acx, acy, bw, 165);
+        // 六臂: 中央から6本の光芒（太+細の2本重ね）— 抑えめに
+        for (let ai = 0; ai < 6; ai++) {
+          const ang = (ai / 6) * Math.PI * 2 - Math.PI / 2;
+          const ex = acx + Math.cos(ang) * (bw * 0.52);
+          const ey = acy + Math.sin(ang) * 80;
+          g.lineStyle(6, 0xff2200, 0.1);
+          g.beginPath();
+          g.moveTo(acx, acy);
+          g.lineTo(ex, ey);
+          g.strokePath();
+          g.lineStyle(2, 0xff6633, 0.38);
+          g.beginPath();
+          g.moveTo(acx, acy);
+          g.lineTo(ex, ey);
+          g.strokePath();
+        }
+        // 曼荼羅同心円— 抑えめに
+        [28, 46, 66, 90].forEach((r, i) => {
+          g.lineStyle(1, 0xff2200, [0.35, 0.22, 0.13, 0.07][i]);
+          g.strokeCircle(acx, acy, r);
+        });
+        // 鱗紋: 上下に弧ライン
+        for (let qi = 0; qi < 7; qi++) {
+          const qx = rx + 30 + (qi / 6) * (bw - 60);
+          g.lineStyle(1, 0xcc1100, 0.13);
+          g.beginPath();
+          g.arc(qx, iy + 165, 55, -Math.PI * 0.45, -Math.PI * 0.05);
+          g.strokePath();
+          g.beginPath();
+          g.arc(qx, iy, 55, Math.PI * 0.05, Math.PI * 0.45);
+          g.strokePath();
+        }
+        // 九面: 9つの顔円を環状に配置（重ならない半径80）— 抑えめに
+        const faceRingR = 80;
+        for (let fi = 0; fi < 9; fi++) {
+          const fang = (fi / 9) * Math.PI * 2 - Math.PI / 2;
+          const fx = acx + Math.cos(fang) * faceRingR;
+          const fy = acy + Math.sin(fang) * faceRingR * 0.72;
+          g.fillStyle(0x990015, 0.25);
+          g.fillCircle(fx, fy, 18);
+          g.fillStyle(0xff3300, 0.14);
+          g.fillCircle(fx, fy, 10);
+          g.lineStyle(1.5, 0xff7755, 0.55);
+          g.strokeCircle(fx, fy, 18);
+          g.lineStyle(1, 0xffccaa, 0.22);
+          g.strokeCircle(fx, fy, 10);
+        }
+        // 中心核（炎の核）
+        g.fillStyle(0xff6600, 0.6);
+        g.fillCircle(acx, acy, 7);
+        g.fillStyle(0xffffff, 0.7);
+        g.fillCircle(acx, acy, 3);
+        // アウターグロー（赤、強め）
+        g.lineStyle(12, 0xaa0000, 0.22);
+        g.strokeRoundedRect(rx - 5, iy - 5, bw + 10, 175, 17);
+        g.lineStyle(3, 0xff3300, 0.55);
+        g.strokeRoundedRect(rx - 1, iy - 1, bw + 2, 167, 15);
+        // メイン枠（白っぽく）
+        g.lineStyle(2, 0xffe8e0, 0.92);
+        g.strokeRoundedRect(rx, iy, bw, 165, 14);
+        // 内側細枠
+        g.lineStyle(1, 0xffffff, 0.18);
         g.strokeRoundedRect(rx + 4, iy + 4, bw - 8, 157, 11);
       } else {
         g.fillStyle(item.fill ?? 0x1a1a2e, 0.9);
@@ -873,306 +997,696 @@ export class LobbyScene extends Phaser.Scene {
         }
       }
 
+      // アニメーション用 objsRange記録
+      itemObjRanges[item.diff] = [objStartIdx, objs.length];
+
+      // アニメーション中（ashura初回解放時）はkirsん/kyubi/ashuraをzoneなし
+      const isAnimPhase = ashuraUnlocked && !ashuraShown;
+      const skipZone =
+        isAnimPhase &&
+        (item.diff === "kisin" ||
+          item.diff === "kyubi" ||
+          item.diff === "ashura");
+
       const zone = this.add.zone(cx, item.y + 2, bw, 165).setInteractive();
-      zone.on("pointerdown", () => {
-        // 進行ロック中は選択不可
-        if (progressLocked) {
-          return;
-        }
-        // 調整中は選択不可
-        if (item.locked) {
-          return;
-        }
-        // 先後手選択サブパネルを表示
-        const subObjs = [];
+      if (!skipZone)
+        zone.on("pointerdown", () => {
+          // 進行ロック中は選択不可
+          if (progressLocked) {
+            return;
+          }
+          // 調整中は選択不可
+          if (item.locked) {
+            return;
+          }
+          // 先後手選択サブパネルを表示
+          const subObjs = [];
 
-        const subBg = this.add.graphics();
-        const spx = W / 2 - 360,
-          spy = 330,
-          spw = 720,
-          sph = 1260;
-        subBg.fillStyle(0x070c16, 1);
-        subBg.fillRoundedRect(spx, spy, spw, sph, 30);
-        // 斜めテクスチャライン
-        subBg.lineStyle(1, 0xffffff, 0.02);
-        for (let si = -1; si < 9; si++) {
+          const subBg = this.add.graphics();
+          const spx = W / 2 - 360,
+            spy = 330,
+            spw = 720,
+            sph = 1260;
+          subBg.fillStyle(0x070c16, 1);
+          subBg.fillRoundedRect(spx, spy, spw, sph, 30);
+          // 斜めテクスチャライン
+          subBg.lineStyle(1, 0xffffff, 0.02);
+          for (let si = -1; si < 9; si++) {
+            subBg.beginPath();
+            subBg.moveTo(spx + si * 130, spy);
+            subBg.lineTo(spx + si * 130 + sph * 0.55, spy + sph);
+            subBg.strokePath();
+          }
+          // グロー球
+          subBg.fillStyle(0xf0d39a, 0.06);
+          subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 200);
+          subBg.fillStyle(0xf0d39a, 0.025);
+          subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 330);
+          subBg.fillStyle(0x55aadd, 0.06);
+          subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 200);
+          subBg.fillStyle(0x55aadd, 0.025);
+          subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 330);
+          subBg.fillStyle(0x7733aa, 0.035);
+          subBg.fillCircle(spx + spw / 2, spy + sph / 2, 300);
+          // 外枠（二重）
+          subBg.lineStyle(1.5, 0xe5d5b1, 0.38);
+          subBg.strokeRoundedRect(spx, spy, spw, sph, 30);
+          subBg.lineStyle(1, 0xe5d5b1, 0.1);
+          subBg.strokeRoundedRect(spx + 12, spy + 12, spw - 24, sph - 24, 22);
+          // コーナーLブラケット
+          const scLen = 48;
+          subBg.lineStyle(2.5, 0xf0d39a, 0.5);
           subBg.beginPath();
-          subBg.moveTo(spx + si * 130, spy);
-          subBg.lineTo(spx + si * 130 + sph * 0.55, spy + sph);
+          subBg.moveTo(spx, spy + scLen);
+          subBg.lineTo(spx, spy);
+          subBg.lineTo(spx + scLen, spy);
           subBg.strokePath();
-        }
-        // グロー球
-        subBg.fillStyle(0xf0d39a, 0.06);
-        subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 200);
-        subBg.fillStyle(0xf0d39a, 0.025);
-        subBg.fillCircle(spx + spw * 0.82, spy + sph * 0.1, 330);
-        subBg.fillStyle(0x55aadd, 0.06);
-        subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 200);
-        subBg.fillStyle(0x55aadd, 0.025);
-        subBg.fillCircle(spx + spw * 0.18, spy + sph * 0.9, 330);
-        subBg.fillStyle(0x7733aa, 0.035);
-        subBg.fillCircle(spx + spw / 2, spy + sph / 2, 300);
-        // 外枠（二重）
-        subBg.lineStyle(1.5, 0xe5d5b1, 0.38);
-        subBg.strokeRoundedRect(spx, spy, spw, sph, 30);
-        subBg.lineStyle(1, 0xe5d5b1, 0.1);
-        subBg.strokeRoundedRect(spx + 12, spy + 12, spw - 24, sph - 24, 22);
-        // コーナーLブラケット
-        const scLen = 48;
-        subBg.lineStyle(2.5, 0xf0d39a, 0.5);
-        subBg.beginPath();
-        subBg.moveTo(spx, spy + scLen);
-        subBg.lineTo(spx, spy);
-        subBg.lineTo(spx + scLen, spy);
-        subBg.strokePath();
-        subBg.beginPath();
-        subBg.moveTo(spx + spw - scLen, spy);
-        subBg.lineTo(spx + spw, spy);
-        subBg.lineTo(spx + spw, spy + scLen);
-        subBg.strokePath();
-        subBg.beginPath();
-        subBg.moveTo(spx, spy + sph - scLen);
-        subBg.lineTo(spx, spy + sph);
-        subBg.lineTo(spx + scLen, spy + sph);
-        subBg.strokePath();
-        subBg.beginPath();
-        subBg.moveTo(spx + spw - scLen, spy + sph);
-        subBg.lineTo(spx + spw, spy + sph);
-        subBg.lineTo(spx + spw, spy + sph - scLen);
-        subBg.strokePath();
-        subObjs.push(subBg);
+          subBg.beginPath();
+          subBg.moveTo(spx + spw - scLen, spy);
+          subBg.lineTo(spx + spw, spy);
+          subBg.lineTo(spx + spw, spy + scLen);
+          subBg.strokePath();
+          subBg.beginPath();
+          subBg.moveTo(spx, spy + sph - scLen);
+          subBg.lineTo(spx, spy + sph);
+          subBg.lineTo(spx + scLen, spy + sph);
+          subBg.strokePath();
+          subBg.beginPath();
+          subBg.moveTo(spx + spw - scLen, spy + sph);
+          subBg.lineTo(spx + spw, spy + sph);
+          subBg.lineTo(spx + spw, spy + sph - scLen);
+          subBg.strokePath();
+          subObjs.push(subBg);
 
-        // クリックをメインパネルへ透過させないブロッカー
-        const subBlocker = this.add
-          .rectangle(W / 2, 960, 720, 1260, 0x000000, 0)
-          .setInteractive();
-        subObjs.push(subBlocker);
+          // クリックをメインパネルへ透過させないブロッカー
+          const subBlocker = this.add
+            .rectangle(W / 2, 960, 720, 1260, 0x000000, 0)
+            .setInteractive();
+          subObjs.push(subBlocker);
 
-        const subTitle = this.add
-          .text(W / 2, 480, `「${item.label}」で対戦`, {
-            fontSize: "48px",
-            color: "#fff8e6",
-            fontFamily: DISPLAY_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(subTitle);
-
-        const subGuide = this.add
-          .text(W / 2, 560, "先手・後手を選んでください", {
-            fontSize: "30px",
-            color: "#d7e2f1",
-            fontFamily: UI_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(subGuide);
-
-        // 先手ボタン
-        const senteG = this.add.graphics();
-        const sfill = 0x2e4f7a;
-        const srx = W / 2 - 300,
-          sry = 650,
-          sbw = 600,
-          sbh = 170,
-          sbrr = 18;
-        senteG.fillStyle(0x07080f, 1);
-        senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
-        senteG.fillStyle(sfill, 0.3);
-        senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
-        senteG.fillStyle(0xffffff, 0.055);
-        senteG.fillRoundedRect(srx + 4, sry + 4, sbw - 8, 70, 13);
-        senteG.fillStyle(sfill, 1);
-        senteG.fillRoundedRect(srx, sry, 12, sbh, {
-          tl: sbrr,
-          tr: 0,
-          bl: sbrr,
-          br: 0,
-        });
-        senteG.fillStyle(sfill, 0.3);
-        senteG.fillTriangle(
-          srx + sbw,
-          sry + sbh - 44,
-          srx + sbw,
-          sry + sbh,
-          srx + sbw - 44,
-          sry + sbh,
-        );
-        senteG.lineStyle(8, sfill, 0.16);
-        senteG.strokeRoundedRect(srx - 4, sry - 4, sbw + 8, sbh + 8, sbrr + 3);
-        senteG.lineStyle(1.5, 0xe5d5b1, 0.45);
-        senteG.strokeRoundedRect(srx, sry, sbw, sbh, sbrr);
-        senteG.lineStyle(1, sfill, 0.28);
-        senteG.strokeRoundedRect(srx + 5, sry + 5, sbw - 10, sbh - 10, 13);
-        subObjs.push(senteG);
-
-        const senteT1 = this.add
-          .text(W / 2, 720, "先手で戦う", {
-            fontSize: "52px",
-            color: "#fff8e6",
-            fontFamily: DISPLAY_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(senteT1);
-
-        const senteT2 = this.add
-          .text(W / 2, 783, "あなたが先に撒きます", {
-            fontSize: "26px",
-            color: "#d7e2f1",
-            fontFamily: UI_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(senteT2);
-
-        // 先手クリアバッジ
-        if (beatenData[item.diff]?.first) {
-          const bx = srx + sbw - 30,
-            by = sry + 30,
-            br = 28;
-          const sbdg = this.add.graphics();
-          sbdg.fillStyle(0xf0d060, 0.22);
-          sbdg.fillCircle(bx, by, br + 8);
-          sbdg.fillStyle(0x120d00, 1);
-          sbdg.fillCircle(bx, by, br + 3);
-          sbdg.fillStyle(0xb07d08, 1);
-          sbdg.fillCircle(bx, by, br);
-          sbdg.fillStyle(0xf5c518, 1);
-          sbdg.fillCircle(bx, by, br - 3);
-          sbdg.fillStyle(0xfff0a0, 0.45);
-          sbdg.fillCircle(bx - 7, by - 7, br * 0.45);
-          subObjs.push(sbdg);
-          const senteClear = this.add
-            .text(bx, by + 1, "✓", {
-              fontSize: "30px",
-              color: "#3a2800",
-              fontFamily: UI_FONT,
-              fontStyle: "bold",
+          const subTitle = this.add
+            .text(W / 2, 480, `「${item.label}」で対戦`, {
+              fontSize: "48px",
+              color: "#fff8e6",
+              fontFamily: DISPLAY_FONT,
             })
             .setOrigin(0.5);
-          subObjs.push(senteClear);
-        }
+          subObjs.push(subTitle);
 
-        // 後手ボタン
-        const goteG = this.add.graphics();
-        const gfill = 0x7a3f45;
-        const grx = W / 2 - 300,
-          gry = 880,
-          gbw = 600,
-          gbh = 170,
-          gbrr = 18;
-        goteG.fillStyle(0x07080f, 1);
-        goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
-        goteG.fillStyle(gfill, 0.3);
-        goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
-        goteG.fillStyle(0xffffff, 0.055);
-        goteG.fillRoundedRect(grx + 4, gry + 4, gbw - 8, 70, 13);
-        goteG.fillStyle(gfill, 1);
-        goteG.fillRoundedRect(grx, gry, 12, gbh, {
-          tl: gbrr,
-          tr: 0,
-          bl: gbrr,
-          br: 0,
-        });
-        goteG.fillStyle(gfill, 0.3);
-        goteG.fillTriangle(
-          grx + gbw,
-          gry + gbh - 44,
-          grx + gbw,
-          gry + gbh,
-          grx + gbw - 44,
-          gry + gbh,
-        );
-        goteG.lineStyle(8, gfill, 0.16);
-        goteG.strokeRoundedRect(grx - 4, gry - 4, gbw + 8, gbh + 8, gbrr + 3);
-        goteG.lineStyle(1.5, 0xe5d5b1, 0.45);
-        goteG.strokeRoundedRect(grx, gry, gbw, gbh, gbrr);
-        goteG.lineStyle(1, gfill, 0.28);
-        goteG.strokeRoundedRect(grx + 5, gry + 5, gbw - 10, gbh - 10, 13);
-        subObjs.push(goteG);
-
-        const goteT1 = this.add
-          .text(W / 2, 950, "後手で戦う", {
-            fontSize: "52px",
-            color: "#fff8e6",
-            fontFamily: DISPLAY_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(goteT1);
-
-        const goteT2 = this.add
-          .text(W / 2, 1013, "AIが先に撒きます", {
-            fontSize: "26px",
-            color: "#d7e2f1",
-            fontFamily: UI_FONT,
-          })
-          .setOrigin(0.5);
-        subObjs.push(goteT2);
-
-        // 後手クリアバッジ
-        if (beatenData[item.diff]?.second) {
-          const bx = grx + gbw - 30,
-            by = gry + 30,
-            br = 28;
-          const gbdg = this.add.graphics();
-          gbdg.fillStyle(0xf0d060, 0.22);
-          gbdg.fillCircle(bx, by, br + 8);
-          gbdg.fillStyle(0x120d00, 1);
-          gbdg.fillCircle(bx, by, br + 3);
-          gbdg.fillStyle(0xb07d08, 1);
-          gbdg.fillCircle(bx, by, br);
-          gbdg.fillStyle(0xf5c518, 1);
-          gbdg.fillCircle(bx, by, br - 3);
-          gbdg.fillStyle(0xfff0a0, 0.45);
-          gbdg.fillCircle(bx - 7, by - 7, br * 0.45);
-          subObjs.push(gbdg);
-          const goteClear = this.add
-            .text(bx, by + 1, "✓", {
+          const subGuide = this.add
+            .text(W / 2, 560, "先手・後手を選んでください", {
               fontSize: "30px",
-              color: "#3a2800",
+              color: "#d7e2f1",
               fontFamily: UI_FONT,
-              fontStyle: "bold",
             })
             .setOrigin(0.5);
-          subObjs.push(goteClear);
-        }
+          subObjs.push(subGuide);
 
-        const subCleanup = () => subObjs.forEach((o) => o.destroy());
-
-        const senteZone = this.add.zone(W / 2, 735, 600, 170).setInteractive();
-        senteZone.on("pointerdown", () => {
-          subCleanup();
-          cleanup();
-          this.scene.start("GameScene", {
-            mode: "solo",
-            aiDifficulty: item.diff,
-            playerFirst: true,
+          // 先手ボタン
+          const senteG = this.add.graphics();
+          const sfill = 0x2e4f7a;
+          const srx = W / 2 - 300,
+            sry = 650,
+            sbw = 600,
+            sbh = 170,
+            sbrr = 18;
+          senteG.fillStyle(0x07080f, 1);
+          senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
+          senteG.fillStyle(sfill, 0.3);
+          senteG.fillRoundedRect(srx, sry, sbw, sbh, sbrr);
+          senteG.fillStyle(0xffffff, 0.055);
+          senteG.fillRoundedRect(srx + 4, sry + 4, sbw - 8, 70, 13);
+          senteG.fillStyle(sfill, 1);
+          senteG.fillRoundedRect(srx, sry, 12, sbh, {
+            tl: sbrr,
+            tr: 0,
+            bl: sbrr,
+            br: 0,
           });
-        });
-        subObjs.push(senteZone);
+          senteG.fillStyle(sfill, 0.3);
+          senteG.fillTriangle(
+            srx + sbw,
+            sry + sbh - 44,
+            srx + sbw,
+            sry + sbh,
+            srx + sbw - 44,
+            sry + sbh,
+          );
+          senteG.lineStyle(8, sfill, 0.16);
+          senteG.strokeRoundedRect(
+            srx - 4,
+            sry - 4,
+            sbw + 8,
+            sbh + 8,
+            sbrr + 3,
+          );
+          senteG.lineStyle(1.5, 0xe5d5b1, 0.45);
+          senteG.strokeRoundedRect(srx, sry, sbw, sbh, sbrr);
+          senteG.lineStyle(1, sfill, 0.28);
+          senteG.strokeRoundedRect(srx + 5, sry + 5, sbw - 10, sbh - 10, 13);
+          subObjs.push(senteG);
 
-        const goteZone = this.add.zone(W / 2, 965, 600, 170).setInteractive();
-        goteZone.on("pointerdown", () => {
-          subCleanup();
-          cleanup();
-          this.scene.start("GameScene", {
-            mode: "solo",
-            aiDifficulty: item.diff,
-            playerFirst: false,
+          const senteT1 = this.add
+            .text(W / 2, 720, "先手で戦う", {
+              fontSize: "52px",
+              color: "#fff8e6",
+              fontFamily: DISPLAY_FONT,
+            })
+            .setOrigin(0.5);
+          subObjs.push(senteT1);
+
+          const senteT2 = this.add
+            .text(W / 2, 783, "あなたが先に撒きます", {
+              fontSize: "26px",
+              color: "#d7e2f1",
+              fontFamily: UI_FONT,
+            })
+            .setOrigin(0.5);
+          subObjs.push(senteT2);
+
+          // 先手クリアバッジ
+          if (beatenData[item.diff]?.first) {
+            const bx = srx + sbw - 30,
+              by = sry + 30,
+              br = 28;
+            const sbdg = this.add.graphics();
+            sbdg.fillStyle(0xf0d060, 0.22);
+            sbdg.fillCircle(bx, by, br + 8);
+            sbdg.fillStyle(0x120d00, 1);
+            sbdg.fillCircle(bx, by, br + 3);
+            sbdg.fillStyle(0xb07d08, 1);
+            sbdg.fillCircle(bx, by, br);
+            sbdg.fillStyle(0xf5c518, 1);
+            sbdg.fillCircle(bx, by, br - 3);
+            sbdg.fillStyle(0xfff0a0, 0.45);
+            sbdg.fillCircle(bx - 7, by - 7, br * 0.45);
+            subObjs.push(sbdg);
+            const senteClear = this.add
+              .text(bx, by + 1, "✓", {
+                fontSize: "30px",
+                color: "#3a2800",
+                fontFamily: UI_FONT,
+                fontStyle: "bold",
+              })
+              .setOrigin(0.5);
+            subObjs.push(senteClear);
+          }
+
+          // 後手ボタン
+          const goteG = this.add.graphics();
+          const gfill = 0x7a3f45;
+          const grx = W / 2 - 300,
+            gry = 880,
+            gbw = 600,
+            gbh = 170,
+            gbrr = 18;
+          goteG.fillStyle(0x07080f, 1);
+          goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
+          goteG.fillStyle(gfill, 0.3);
+          goteG.fillRoundedRect(grx, gry, gbw, gbh, gbrr);
+          goteG.fillStyle(0xffffff, 0.055);
+          goteG.fillRoundedRect(grx + 4, gry + 4, gbw - 8, 70, 13);
+          goteG.fillStyle(gfill, 1);
+          goteG.fillRoundedRect(grx, gry, 12, gbh, {
+            tl: gbrr,
+            tr: 0,
+            bl: gbrr,
+            br: 0,
           });
-        });
-        subObjs.push(goteZone);
+          goteG.fillStyle(gfill, 0.3);
+          goteG.fillTriangle(
+            grx + gbw,
+            gry + gbh - 44,
+            grx + gbw,
+            gry + gbh,
+            grx + gbw - 44,
+            gry + gbh,
+          );
+          goteG.lineStyle(8, gfill, 0.16);
+          goteG.strokeRoundedRect(grx - 4, gry - 4, gbw + 8, gbh + 8, gbrr + 3);
+          goteG.lineStyle(1.5, 0xe5d5b1, 0.45);
+          goteG.strokeRoundedRect(grx, gry, gbw, gbh, gbrr);
+          goteG.lineStyle(1, gfill, 0.28);
+          goteG.strokeRoundedRect(grx + 5, gry + 5, gbw - 10, gbh - 10, 13);
+          subObjs.push(goteG);
 
-        const backT = this.add
-          .text(W / 2, 1160, "← 戻る", {
-            fontSize: "30px",
-            color: "#8899bb",
-            fontFamily: UI_FONT,
-          })
-          .setOrigin(0.5)
-          .setInteractive();
-        backT.on("pointerdown", subCleanup);
-        subObjs.push(backT);
-      });
-      objs.push(zone);
+          const goteT1 = this.add
+            .text(W / 2, 950, "後手で戦う", {
+              fontSize: "52px",
+              color: "#fff8e6",
+              fontFamily: DISPLAY_FONT,
+            })
+            .setOrigin(0.5);
+          subObjs.push(goteT1);
+
+          const goteT2 = this.add
+            .text(W / 2, 1013, "AIが先に撒きます", {
+              fontSize: "26px",
+              color: "#d7e2f1",
+              fontFamily: UI_FONT,
+            })
+            .setOrigin(0.5);
+          subObjs.push(goteT2);
+
+          // 後手クリアバッジ
+          if (beatenData[item.diff]?.second) {
+            const bx = grx + gbw - 30,
+              by = gry + 30,
+              br = 28;
+            const gbdg = this.add.graphics();
+            gbdg.fillStyle(0xf0d060, 0.22);
+            gbdg.fillCircle(bx, by, br + 8);
+            gbdg.fillStyle(0x120d00, 1);
+            gbdg.fillCircle(bx, by, br + 3);
+            gbdg.fillStyle(0xb07d08, 1);
+            gbdg.fillCircle(bx, by, br);
+            gbdg.fillStyle(0xf5c518, 1);
+            gbdg.fillCircle(bx, by, br - 3);
+            gbdg.fillStyle(0xfff0a0, 0.45);
+            gbdg.fillCircle(bx - 7, by - 7, br * 0.45);
+            subObjs.push(gbdg);
+            const goteClear = this.add
+              .text(bx, by + 1, "✓", {
+                fontSize: "30px",
+                color: "#3a2800",
+                fontFamily: UI_FONT,
+                fontStyle: "bold",
+              })
+              .setOrigin(0.5);
+            subObjs.push(goteClear);
+          }
+
+          const subCleanup = () => subObjs.forEach((o) => o.destroy());
+
+          const senteZone = this.add
+            .zone(W / 2, 735, 600, 170)
+            .setInteractive();
+          senteZone.on("pointerdown", () => {
+            subCleanup();
+            cleanup();
+            this.scene.start("GameScene", {
+              mode: "solo",
+              aiDifficulty: item.diff,
+              playerFirst: true,
+            });
+          });
+          subObjs.push(senteZone);
+
+          const goteZone = this.add.zone(W / 2, 965, 600, 170).setInteractive();
+          goteZone.on("pointerdown", () => {
+            subCleanup();
+            cleanup();
+            this.scene.start("GameScene", {
+              mode: "solo",
+              aiDifficulty: item.diff,
+              playerFirst: false,
+            });
+          });
+          subObjs.push(goteZone);
+
+          const backT = this.add
+            .text(W / 2, 1160, "← 戻る", {
+              fontSize: "30px",
+              color: "#8899bb",
+              fontFamily: UI_FONT,
+            })
+            .setOrigin(0.5)
+            .setInteractive();
+          backT.on("pointerdown", subCleanup);
+          subObjs.push(backT);
+        });
+      if (!skipZone) objs.push(zone);
     }
+
+    // ─── 阿修羅解放アニメーション（初回のみ） ─────────────────────────────────────
+    if (ashuraUnlocked && !ashuraShown) {
+      const kisinRange = itemObjRanges["kisin"];
+      const kyubiRange = itemObjRanges["kyubi"];
+      const ashuraRange = itemObjRanges["ashura"];
+      const kisinList = kisinRange ? objs.slice(...kisinRange) : [];
+      const kyubiList = kyubiRange ? objs.slice(...kyubiRange) : [];
+      const ashuraList = ashuraRange ? objs.slice(...ashuraRange) : [];
+
+      // 阿修羅は最初不可視
+      ashuraList.forEach((o) => {
+        try {
+          o.setAlpha(0);
+        } catch (_) {}
+      });
+
+      const burstCx = W / 2;
+      const burstCy = 1140 - 80 + 82; // 阿修羅カード中央Y
+
+      // ── カードトレースヘルパー ──────────────────────────────────────────
+      const drawTrace = (gfx, rx, iy, bw, bh, len, color, lw, la) => {
+        gfx.clear();
+        gfx.lineStyle(lw, color, la);
+        const perim = 2 * (bw + bh);
+        let rem = Math.min(len, perim);
+        gfx.beginPath();
+        gfx.moveTo(rx, iy);
+        const top = Math.min(rem, bw);
+        gfx.lineTo(rx + top, iy);
+        rem -= top;
+        if (rem <= 0) {
+          gfx.strokePath();
+          return;
+        }
+        const right = Math.min(rem, bh);
+        gfx.lineTo(rx + bw, iy + right);
+        rem -= right;
+        if (rem <= 0) {
+          gfx.strokePath();
+          return;
+        }
+        const bottom = Math.min(rem, bw);
+        gfx.lineTo(rx + bw - bottom, iy + bh);
+        rem -= bottom;
+        if (rem <= 0) {
+          gfx.strokePath();
+          return;
+        }
+        const left = Math.min(rem, bh);
+        gfx.lineTo(rx, iy + bh - left);
+        gfx.strokePath();
+      };
+
+      // カードの座標（共通）
+      const _cardBh = 165;
+      const _cardRad = 14;
+      const _kisinBw = 305;
+      const _kisinRx = W / 2 - 157 - _kisinBw / 2;
+      const _kyubiBw = 305;
+      const _kyubiRx = W / 2 + 157 - _kyubiBw / 2;
+      const _cardIy = 1140 - 80; // 両カード共通y
+      const _perim = 2 * (305 + _cardBh);
+
+      // ── Phase A → B → C 連鎖 ────────────────────────────────────────────
+      const startPhaseC = (overlays) => {
+        // Step1: 鬼神(左)→中央へ、九尾(右)→中央へ スライドしながらフェードアウト
+        let mergeCount = 0;
+        const onMergeDone = () => {
+          if (++mergeCount < 2) return;
+
+          // Step2: 赤フラッシュ × 2
+          const rflash = this.add.rectangle(
+            W / 2,
+            burstCy,
+            W,
+            260,
+            0xcc0000,
+            0,
+          );
+          objs.push(rflash);
+          this.tweens.add({
+            targets: rflash,
+            alpha: { from: 0, to: 0.45 },
+            duration: 110,
+            yoyo: true,
+            repeat: 1,
+            onComplete: () => {
+              // Step4: 爆発リング × 3（赤橙、横長楕円）
+              for (let ri = 0; ri < 3; ri++) {
+                this.time.delayedCall(ri * 90, () => {
+                  const rg = this.add.graphics();
+                  rg.setPosition(burstCx, burstCy);
+                  rg.lineStyle(
+                    3 - ri * 0.5,
+                    ri === 0 ? 0xff8800 : 0xff2200,
+                    0.85 - ri * 0.15,
+                  );
+                  rg.strokeCircle(0, 0, 28);
+                  objs.push(rg);
+                  this.tweens.add({
+                    targets: rg,
+                    scaleX: 14,
+                    scaleY: 4.5,
+                    alpha: 0,
+                    duration: 650,
+                    ease: "Power2",
+                  });
+                });
+              }
+
+              // Step5: スパーク放射（炎色と赤）
+              for (let si = 0; si < 12; si++) {
+                const sAngle = (si / 12) * Math.PI * 2;
+                const sg = this.add.graphics();
+                sg.setPosition(burstCx, burstCy);
+                sg.fillStyle(
+                  si % 3 === 0 ? 0xff9900 : si % 3 === 1 ? 0xff4400 : 0xff2200,
+                  1,
+                );
+                sg.fillCircle(0, 0, 4 + (si % 3));
+                objs.push(sg);
+                this.tweens.add({
+                  targets: sg,
+                  x: burstCx + Math.cos(sAngle) * 200,
+                  y: burstCy + Math.sin(sAngle) * 100,
+                  alpha: 0,
+                  duration: 550,
+                  ease: "Power2",
+                });
+              }
+
+              // Step6: 白フラッシュ（強、阿修羅降臨の瞬間）
+              this.time.delayedCall(180, () => {
+                const wflash = this.add.rectangle(
+                  W / 2,
+                  burstCy,
+                  W,
+                  400,
+                  0xffffff,
+                  0,
+                );
+                objs.push(wflash);
+                this.tweens.add({
+                  targets: wflash,
+                  alpha: { from: 0, to: 0.88 },
+                  duration: 140,
+                  yoyo: true,
+                  onComplete: () => {
+                    // Step7: 阿修羅フェードイン
+                    this.tweens.add({
+                      targets: ashuraList,
+                      alpha: 1,
+                      duration: 350,
+                      ease: "Power2",
+                      onComplete: () => {
+                        // Step8: 衝撃波リング（横長、フェードアウト）
+                        const shock = this.add.graphics();
+                        shock.setPosition(burstCx, burstCy);
+                        shock.lineStyle(2.5, 0xff4400, 0.75);
+                        shock.strokeCircle(0, 0, 40);
+                        objs.push(shock);
+                        this.tweens.add({
+                          targets: shock,
+                          scaleX: 30,
+                          scaleY: 32,
+                          alpha: 0,
+                          duration: 1500,
+                          ease: "Power2",
+                        });
+                        // 記録＆リフレッシュ
+                        this.time.delayedCall(550, () => {
+                          try {
+                            localStorage.setItem("ashuraShown", "1");
+                          } catch (_) {}
+                          this._diffPanelCleanup?.();
+                          this._diffPanelCleanup = null;
+                          this._showDifficultyPanel();
+                        });
+                      },
+                    });
+                  },
+                });
+              });
+            },
+          });
+        };
+
+        // 鬼神: 左から中央へ (+157px) しながらフェード
+        this.tweens.add({
+          targets: kisinList,
+          x: "+=157",
+          alpha: 0,
+          duration: 700,
+          ease: "Power2",
+          onComplete: onMergeDone,
+        });
+        // 九尾: 右から中央へ (-157px) しながらフェード
+        this.tweens.add({
+          targets: kyubiList,
+          x: "-=157",
+          alpha: 0,
+          duration: 700,
+          ease: "Power2",
+          onComplete: onMergeDone,
+        });
+        // オーバーレイ（鬼神・九尾背景）もスライドと同時にフェードアウト
+        if (overlays) {
+          overlays.forEach((ov) => {
+            const ovp = { a: ov.alpha ?? 0.8 };
+            this.tweens.add({
+              targets: ovp,
+              a: 0,
+              duration: 700,
+              ease: "Power2",
+              onUpdate: () => {
+                try {
+                  ov.setAlpha(ovp.a);
+                } catch (_) {}
+              },
+              onComplete: () => {
+                try {
+                  ov.clear();
+                } catch (_) {}
+              },
+            });
+          });
+        }
+      }; // startPhaseC end
+
+      const startPhaseB = (kisinOverlayRef) => {
+        // ── Phase B: 九尾カード ─ 背景を阿修羅色に + 黒枠トレース ──
+        const kyubiOverlay = this.add.graphics();
+        objs.push(kyubiOverlay);
+        const kyoa = { a: 0 };
+        this.tweens.add({
+          targets: kyoa,
+          a: 0.8,
+          duration: 650,
+          ease: "Power1",
+          onUpdate: () => {
+            kyubiOverlay.clear();
+            kyubiOverlay.fillStyle(0x0e0205, kyoa.a);
+            kyubiOverlay.fillRoundedRect(
+              _kyubiRx,
+              _cardIy,
+              _kyubiBw,
+              _cardBh,
+              _cardRad,
+            );
+          },
+        });
+        const kyubiBorderG = this.add.graphics();
+        objs.push(kyubiBorderG);
+        const kybp = { t: 0 };
+        this.tweens.add({
+          targets: kybp,
+          t: 1,
+          duration: 800,
+          ease: "Linear",
+          onUpdate: () =>
+            drawTrace(
+              kyubiBorderG,
+              _kyubiRx,
+              _cardIy,
+              _kyubiBw,
+              _cardBh,
+              kybp.t * _perim,
+              0x444444,
+              3,
+              0.95,
+            ),
+          onComplete: () => {
+            const kybg = { t: 0 };
+            this.tweens.add({
+              targets: kybg,
+              t: 1,
+              duration: 380,
+              yoyo: true,
+              onUpdate: () =>
+                drawTrace(
+                  kyubiBorderG,
+                  _kyubiRx,
+                  _cardIy,
+                  _kyubiBw,
+                  _cardBh,
+                  _perim,
+                  0x888888,
+                  3 + kybg.t * 5,
+                  0.65 + kybg.t * 0.3,
+                ),
+              onComplete: () => {
+                kyubiBorderG.clear();
+                startPhaseC([kisinOverlayRef, kyubiOverlay]);
+              },
+            });
+          },
+        });
+      };
+
+      // ── Phase A: 鬼神カード (T+400ms) ─ 背景を阿修羅色に + 赤枠トレース ──
+      this.time.delayedCall(400, () => {
+        const kisinOverlay = this.add.graphics();
+        objs.push(kisinOverlay);
+        const koa = { a: 0 };
+        this.tweens.add({
+          targets: koa,
+          a: 0.8,
+          duration: 650,
+          ease: "Power1",
+          onUpdate: () => {
+            kisinOverlay.clear();
+            kisinOverlay.fillStyle(0x0e0205, koa.a);
+            kisinOverlay.fillRoundedRect(
+              _kisinRx,
+              _cardIy,
+              _kisinBw,
+              _cardBh,
+              _cardRad,
+            );
+          },
+        });
+        const kisinBorderG = this.add.graphics();
+        objs.push(kisinBorderG);
+        const kbp = { t: 0 };
+        this.tweens.add({
+          targets: kbp,
+          t: 1,
+          duration: 800,
+          ease: "Linear",
+          onUpdate: () =>
+            drawTrace(
+              kisinBorderG,
+              _kisinRx,
+              _cardIy,
+              _kisinBw,
+              _cardBh,
+              kbp.t * _perim,
+              0xff2200,
+              3,
+              0.95,
+            ),
+          onComplete: () => {
+            const kbg = { t: 0 };
+            this.tweens.add({
+              targets: kbg,
+              t: 1,
+              duration: 380,
+              yoyo: true,
+              onUpdate: () =>
+                drawTrace(
+                  kisinBorderG,
+                  _kisinRx,
+                  _cardIy,
+                  _kisinBw,
+                  _cardBh,
+                  _perim,
+                  0xff4400,
+                  3 + kbg.t * 5,
+                  0.72 + kbg.t * 0.22,
+                ),
+              onComplete: () => {
+                kisinBorderG.clear();
+                startPhaseB(kisinOverlay);
+              },
+            });
+          },
+        });
+      });
+    } // if (ashuraUnlocked && !ashuraShown) end
 
     const resetT = this.add
       .text(W / 2 - 200, 1510, "リセット", {
@@ -1184,7 +1698,13 @@ export class LobbyScene extends Phaser.Scene {
       .setInteractive();
     resetT.on("pointerdown", () => {
       try {
-        localStorage.setItem("soloBeaten", "{}");
+        // テスト用: 鬼神の先手のみ未クリア（進行途中状態）で阿修羅解放演出を確認
+        const testData = {
+          kisin: { first: true, second: true },
+          kyubi: { first: true, second: true },
+        };
+        localStorage.setItem("soloBeaten", JSON.stringify(testData));
+        localStorage.removeItem("ashuraShown");
       } catch (_e) {}
       cleanup();
       this._showDifficultyPanel();

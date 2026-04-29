@@ -1072,6 +1072,20 @@ export function KisinV3(
     negRatioOf(i, playerNegColor),
   );
 
+  // ─── ぐるぐる強制: ネガ比率が低い路があれば即実行（DFS前に確定） ───
+  // KisinV3はぐるぐる特化のため、ぐるぐるできるなら必ず優先する。
+  // ネガ比率が高すぎる路（>= 0.7）のみスキップして最良路を選ぶ。
+  {
+    const guruCandidates = validPits.filter((p) => {
+      const n = initCounts[p];
+      return n > 0 && (p + n) % 12 === aiStore && initNegRatio[p] < 0.7;
+    });
+    if (guruCandidates.length > 0) {
+      guruCandidates.sort((a, b) => initNegRatio[a] - initNegRatio[b]);
+      return guruCandidates[0];
+    }
+  }
+
   function fastSow(counts, pitIndex) {
     const nc = counts.slice();
     const n = nc[pitIndex];
@@ -2996,13 +3010,64 @@ export function KyubiV3(
 
   const initCounts = state.pits.map((p) => p.stones.length);
 
-  // ちらちら強制: pit(playerStore)着地できる路があれば即選択（上限3回）
+  // ── fortune から石クラスを判定（depth=0 スコア補正用） ──
+  const ownFortuneK = fortune?.opp?.color ?? null;
+  let knownNegK = null;
+  const knownPosK = [];
+  for (const fc of fortune?.center ?? []) {
+    if (fc.seenBy?.includes("opp")) {
+      if (fc.bonus < 0) knownNegK = fc.color;
+      else if (fc.bonus > 0) knownPosK.push(fc.color);
+    }
+  }
+  function stoneClassK(stone) {
+    const c = stone.color;
+    if (knownNegK && c === knownNegK) return "neg";
+    if (ownFortuneK && c === ownFortuneK) return "own";
+    if (knownPosK.includes(c)) return "pos";
+    return "unknown";
+  }
+  // 路の石の色評価: 確定良石+3/neg石-5（depth=0 AI手のみ）
+  function pitStoneColorScore(pit) {
+    const stones = state.pits[pit]?.stones ?? [];
+    let bonus = 0;
+    for (const s of stones) {
+      const cls = stoneClassK(s);
+      if (cls === "own" || cls === "pos") bonus += 1;
+      else if (cls === "neg") bonus -= 2;
+    }
+    return bonus;
+  }
+
+  // ちらちら強制: 相手に現在ぐるぐる脅威がない場合のみ（上限3回）
   if (peeksDoneAI < 3) {
-    const chirachiraPit = validPits.find((p) => {
-      const n = initCounts[p];
-      return n > 0 && (p + n) % 12 === playerStore;
-    });
-    if (chirachiraPit !== undefined) return chirachiraPit;
+    // 現在の相手ぐるぐる脅威チェック（AIが動く前）
+    // ※AIのちらちら撒きが相手路を通過して石数を変えると、連鎖脅威を見落とすため事前に判定する
+    const oppHasGuruNow = Array.from(
+      { length: plLaneMax - plLaneMin + 1 },
+      (_, i) => plLaneMin + i,
+    ).some(
+      (pp) => initCounts[pp] > 0 && (pp + initCounts[pp]) % 12 === aiStore,
+    );
+
+    if (!oppHasGuruNow) {
+      const chirachiraCandidates = validPits.filter((p) => {
+        const n = initCounts[p];
+        return n > 0 && (p + n) % 12 === playerStore;
+      });
+      if (chirachiraCandidates.length > 0) {
+        const safePit = chirachiraCandidates.find((p) => {
+          const { counts: nc } = fastSow(initCounts, p);
+          const oppCanGuru = Array.from(
+            { length: plLaneMax - plLaneMin + 1 },
+            (_, i) => plLaneMin + i,
+          ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
+          return !oppCanGuru;
+        });
+        if (safePit !== undefined) return safePit;
+        // 全候補が相手ぐるぐるを招く → ちらちらスキップしてDFSに任せる
+      }
+    }
   }
 
   function fastSow(counts, pitIndex) {
@@ -3051,14 +3116,14 @@ export function KyubiV3(
           ? lastPit + 6
           : lastPit - 6;
       if (counts[mirror] > 0) {
-        score += isAI ? 4 : 15 + counts[mirror]; // AI: 低評価 / 相手: ペナルティ
+        score += isAI ? 4 : 15 + Math.min(counts[mirror], 4); // AI: 低評価 / 相手: ペナルティ(上限19)
       }
     }
 
     return { score, lastPit };
   }
 
-  function getTopMoves(counts, isAI, n, restrictTo) {
+  function getTopMoves(counts, isAI, n, restrictTo, useColorBonus = false) {
     const laneMin = isAI ? aiLaneMin : plLaneMin;
     const laneMax = isAI ? aiLaneMax : plLaneMax;
     const pool =
@@ -3068,7 +3133,24 @@ export function KyubiV3(
     for (const p of pool) {
       if (counts[p] === 0) continue;
       const { score } = scoreSow(counts, p, isAI);
-      scored.push({ pit: p, score });
+      const colorBonus = useColorBonus && isAI ? pitStoneColorScore(p) : 0;
+      // depth=0 のみ: 相手のぐるぐる脅威を解消する手にボーナス
+      let guruPreventBonus = 0;
+      if (useColorBonus && isAI) {
+        const oppCouldGuru = Array.from(
+          { length: plLaneMax - plLaneMin + 1 },
+          (_, i) => plLaneMin + i,
+        ).some((pp) => counts[pp] > 0 && (pp + counts[pp]) % 12 === aiStore);
+        if (oppCouldGuru) {
+          const { counts: nc } = fastSow(counts, p);
+          const oppCanStillGuru = Array.from(
+            { length: plLaneMax - plLaneMin + 1 },
+            (_, i) => plLaneMin + i,
+          ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
+          if (!oppCanStillGuru) guruPreventBonus = 18; // ぐるぐる脅威を解消できる手を優遇
+        }
+      }
+      scored.push({ pit: p, score: score + colorBonus + guruPreventBonus });
     }
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, n);
@@ -3091,19 +3173,18 @@ export function KyubiV3(
     const isAI = depth % 2 === 0; // depth 0,2 = AI; 1 = Player
     const topMoves =
       depth === 0
-        ? getTopMoves(counts, true, 3, validPits)
-        : getTopMoves(counts, isAI, 3, null);
+        ? getTopMoves(counts, true, 5, validPits, true) // 全validPitsを考慮（ぐるぐる阻止漏れを防ぐ）
+        : getTopMoves(counts, isAI, 3, null, false);
 
     if (topMoves.length === 0) {
       dfs(depth + 1, counts, aiScore, playerScore, firstPit);
       return;
     }
 
-    for (const { pit } of topMoves) {
-      const { score } = scoreSow(counts, pit, isAI);
+    for (const { pit, score: moveScore } of topMoves) {
       const { counts: newCounts } = fastSow(counts, pit);
-      const newAiScore = isAI ? aiScore + score : aiScore;
-      const newPlayerScore = !isAI ? playerScore + score : playerScore;
+      const newAiScore = isAI ? aiScore + moveScore : aiScore;
+      const newPlayerScore = !isAI ? playerScore + moveScore : playerScore;
       const fp = depth === 0 ? pit : firstPit;
       dfs(depth + 1, newCounts, newAiScore, newPlayerScore, fp);
     }
@@ -3207,7 +3288,15 @@ export function decidePlacementsFortuneKyubiV3(
     const cur = counts[pit];
     // pit10, pit9: ちらちら目標 / それ以外: ぐるぐる目標
     const target = pit >= 9 ? chirachiraCount(pit) : guruCount(pit);
-    const toPlace = Math.min(Math.max(0, target - cur), toDistribute);
+    // ざくざく脆弱性チェック: ミラーpit（相手側）が空の場合、大量積みを避ける
+    // pit10→mirror pit4, pit9→3, pit8→2, pit7→1, pit6→0
+    const mirrorPit = pit - 6;
+    const zakuzakuRisk = (counts[mirrorPit] ?? 0) === 0;
+    // ミラーが空なら最大でもぐるぐる目標数に抑える（ちらちら目標の大量積みを防ぐ）
+    const effectiveTarget = zakuzakuRisk
+      ? Math.min(target, guruCount(pit))
+      : target;
+    const toPlace = Math.min(Math.max(0, effectiveTarget - cur), toDistribute);
     if (toPlace > 0) {
       pitAllocs.push({ pit, count: toPlace });
       toDistribute -= toPlace;
@@ -3222,28 +3311,332 @@ export function decidePlacementsFortuneKyubiV3(
     toDistribute--;
   }
 
-  // Phase 2: 各スロットの着地先を計算し、最適石を割り当て
-  const available = stones.map((_, i) => i);
-  const result = [];
+  // Phase 2: 全スロットの着地先を事前計算
+  const tempCounts = state.pits.map((p) => p.stones.length);
+  const slotList = []; // { pit, slotPos, landingPit }
   for (const { pit, count } of pitAllocs) {
-    for (let slot = 0; slot < count; slot++) {
-      if (available.length === 0) break;
-      // この石が pit に追加されたとき着地するpit (counts[pit]は追加のたびに+1)
-      const landingPit = (pit + counts[pit] + 1) % 12;
-      let bestAvailIdx = 0;
-      let bestScore = -Infinity;
-      for (let ai = 0; ai < available.length; ai++) {
-        const sc = scoreForSlot(stones[available[ai]], landingPit);
-        if (sc > bestScore) {
-          bestScore = sc;
-          bestAvailIdx = ai;
-        }
-      }
-      result.push({ pitIndex: pit, stoneIndex: available[bestAvailIdx] });
-      available.splice(bestAvailIdx, 1);
-      counts[pit]++;
+    for (let s = 0; s < count; s++) {
+      const landingPit = (pit + tempCounts[pit] + 1) % 12;
+      slotList.push({ pit, slotPos: s, landingPit });
+      tempCounts[pit]++;
     }
   }
 
-  return result;
+  // 石の割り当て順: playerStore着地 → その他pit → aiStore着地
+  // （negをplayerStore/その他に先消費し、aiStoreには良石だけ残す）
+  function slotPriority(lp) {
+    if (lp === playerStore) return 0;
+    if (lp === aiStore) return 2;
+    return 1;
+  }
+  const sortedSlots = [...slotList].sort(
+    (a, b) => slotPriority(a.landingPit) - slotPriority(b.landingPit),
+  );
+
+  // 相手がplayerStoreに入れているunknown石の数 → AI自賽壇へのunknown許容枠
+  const unknownBudget = (state.pits[playerStore]?.stones ?? []).filter(
+    (s) => stoneClass(s) === "unknown",
+  ).length;
+  let unknownAiStoreUsed = 0;
+
+  const available = stones.map((_, i) => i);
+  const stoneAssign = new Map(); // `${pit}-${slotPos}` → stoneIndex
+  for (const slot of sortedSlots) {
+    if (available.length === 0) break;
+    let bestAvailIdx = 0;
+    let bestScore = -Infinity;
+    for (let ai = 0; ai < available.length; ai++) {
+      const stone = stones[available[ai]];
+      let sc;
+      // aiStore着地のunknown: 相手の許容数以内なら+20、超えたら-300
+      if (slot.landingPit === aiStore && stoneClass(stone) === "unknown") {
+        sc = unknownAiStoreUsed < unknownBudget ? 20 : -300;
+      } else {
+        sc = scoreForSlot(stone, slot.landingPit);
+      }
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestAvailIdx = ai;
+      }
+    }
+    const chosenIdx = available[bestAvailIdx];
+    stoneAssign.set(`${slot.pit}-${slot.slotPos}`, chosenIdx);
+    if (
+      slot.landingPit === aiStore &&
+      stoneClass(stones[chosenIdx]) === "unknown"
+    ) {
+      unknownAiStoreUsed++;
+    }
+    available.splice(bestAvailIdx, 1);
+  }
+
+  // 出力は元のスロット順（pit内の投入順が正しい着地先に対応）
+  return slotList.map(({ pit, slotPos }) => ({
+    pitIndex: pit,
+    stoneIndex: stoneAssign.get(`${pit}-${slotPos}`),
+  }));
+}
+
+// ─── AshuraV1: 阿修羅 - バランス型最強（鬼神+九尾統合） ────────────────────────────
+
+/**
+ * AshuraV1 - 阿修羅ピット選択
+ *
+ * 鬼神のぐるぐる連鎖評価 + 九尾の安全ちらちら + 相手妨害をバランスよく統合。
+ * - ちらちら3回強制（相手ぐるぐるを招く場合はスキップ）
+ * - ぐるぐる連鎖ボーナス付きDFS（depth=3）
+ * - 相手ぐるぐる・ざくざくへのペナルティ
+ * - depth=0 で石の色ボーナスを加味した路選択
+ */
+export function AshuraV1(
+  validPits,
+  state,
+  peeksDoneAI,
+  peeksDonePlayer,
+  fortune,
+  params,
+  role = "opp",
+) {
+  const isOppRole = role === "opp";
+  const aiLaneMin = isOppRole ? 6 : 0;
+  const aiLaneMax = isOppRole ? 10 : 4;
+  const aiStore = isOppRole ? 11 : 5;
+  const playerStore = isOppRole ? 5 : 11;
+  const plLaneMin = isOppRole ? 0 : 6;
+  const plLaneMax = isOppRole ? 4 : 10;
+
+  const initCounts = state.pits.map((p) => p.stones.length);
+
+  // ─── fortune から石クラス判定（depth=0 色ボーナス用） ───
+  const ownFortuneA = fortune?.opp?.color ?? null;
+  let knownNegA = null;
+  const knownPosA = [];
+  for (const fc of fortune?.center ?? []) {
+    if (fc.seenBy?.includes("opp")) {
+      if (fc.bonus < 0) knownNegA = fc.color;
+      else if (fc.bonus > 0) knownPosA.push(fc.color);
+    }
+  }
+  function stoneClassA(stone) {
+    const c = stone.color;
+    if (knownNegA && c === knownNegA) return "neg";
+    if (ownFortuneA && c === ownFortuneA) return "own";
+    if (knownPosA.includes(c)) return "pos";
+    return "unknown";
+  }
+  function pitStoneColorScoreA(pit) {
+    const stones = state.pits[pit]?.stones ?? [];
+    let bonus = 0;
+    for (const s of stones) {
+      const cls = stoneClassA(s);
+      if (cls === "own" || cls === "pos") bonus += 1;
+      else if (cls === "neg") bonus -= 2;
+    }
+    return bonus;
+  }
+
+  // ─── シミュレーション ───
+  function fastSow(counts, pitIndex) {
+    const nc = counts.slice();
+    const n = nc[pitIndex];
+    if (n === 0) return { counts: nc, lastPit: -1 };
+    nc[pitIndex] = 0;
+    let cur = pitIndex;
+    for (let i = 0; i < n; i++) {
+      cur = (cur + 1) % 12;
+      nc[cur]++;
+    }
+    return { counts: nc, lastPit: cur };
+  }
+
+  // ─── ちらちら安全チェック（上限3回） ───
+  if (peeksDoneAI < 3) {
+    const oppGuruPits = Array.from(
+      { length: plLaneMax - plLaneMin + 1 },
+      (_, i) => plLaneMin + i,
+    ).filter(
+      (pp) => initCounts[pp] > 0 && (pp + initCounts[pp]) % 12 === aiStore,
+    );
+    const oppHasGuruNow = oppGuruPits.length > 0;
+
+    const candidates = validPits.filter((p) => {
+      const n = initCounts[p];
+      return n > 0 && (p + n) % 12 === playerStore;
+    });
+
+    if (candidates.length > 0) {
+      // ① guru脅威を消しながらchira可能なpitを最優先
+      const blockAndChira = candidates.find((p) => {
+        const { counts: nc } = fastSow(initCounts, p);
+        return !Array.from(
+          { length: plLaneMax - plLaneMin + 1 },
+          (_, i) => plLaneMin + i,
+        ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
+      });
+      if (blockAndChira !== undefined) return blockAndChira;
+
+      // ② guru脅威がない時は安全なchiraを実行
+      if (!oppHasGuruNow) {
+        const safePit = candidates[0]; // candidates全員安全（脅威なし）
+        if (safePit !== undefined) return safePit;
+      }
+    }
+  }
+
+  // ─── スコア評価: バランス型強化（自ぐるぐる連鎖 + 相手妨害 + guru阻止） ───
+  function scoreSow(counts, pit, isAI) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const storeIndex = isAI ? aiStore : playerStore;
+    const oppStoreIndex = isAI ? playerStore : aiStore;
+    const n = counts[pit];
+    const lastPit = (pit + n) % 12;
+    let score = 0;
+
+    // ぐるぐる: AI積極(+14) / 相手はペナルティ(+16)
+    if (lastPit === storeIndex) {
+      score += isAI ? 14 : 16;
+      // マイナス石が賽壇に入るペナルティ（自AI限定）
+      if (isAI && knownNegA) {
+        const stones = state.pits[pit]?.stones ?? [];
+        const negCount = stones.filter((s) => s.color === knownNegA).length;
+        if (negCount > 0) score -= negCount * 12;
+      }
+    }
+
+    // ちらちら（相手賽壇着地）: 相手誘導
+    if (lastPit === oppStoreIndex && !isAI) score -= 6;
+
+    // ざくざく: AI通常 / 相手はペナルティ
+    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
+      const mirror = isAI
+        ? isOppRole
+          ? lastPit - 6
+          : lastPit + 6
+        : isOppRole
+          ? lastPit + 6
+          : lastPit - 6;
+      if (counts[mirror] > 0) {
+        score += isAI ? 7 + counts[mirror] : 10 + Math.min(counts[mirror], 4);
+      }
+    }
+
+    return { score, lastPit };
+  }
+
+  function getTopMovesA(counts, isAI, n, restrictTo, useColorBonus = false) {
+    const laneMin = isAI ? aiLaneMin : plLaneMin;
+    const laneMax = isAI ? aiLaneMax : plLaneMax;
+    const pool =
+      restrictTo ??
+      Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
+    const scored = [];
+    for (const p of pool) {
+      if (counts[p] === 0) continue;
+      let { score } = scoreSow(counts, p, isAI);
+      // depth=0 guru阻止ボーナス（相手のguru脅威を消せるpitを優遇）
+      if (useColorBonus && isAI) {
+        const { counts: nc } = fastSow(counts, p);
+        const stillHasGuru = Array.from(
+          { length: plLaneMax - plLaneMin + 1 },
+          (_, i) => plLaneMin + i,
+        ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
+        const hadGuru = Array.from(
+          { length: plLaneMax - plLaneMin + 1 },
+          (_, i) => plLaneMin + i,
+        ).some((pp) => counts[pp] > 0 && (pp + counts[pp]) % 12 === aiStore);
+        if (hadGuru && !stillHasGuru) score += 20; // guru脅威を消した
+        score += pitStoneColorScoreA(p);
+      }
+      scored.push({ pit: p, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, n);
+  }
+
+  // ─── DFS（深さ4: AI→P→AI→P、ぐるぐる連鎖追跡） ───
+  let bestFirstPit = validPits[0];
+  let bestNet = -Infinity;
+  const guruChainBonus = 14; // 鬼神(15)に近い強さ
+
+  function dfs(
+    depth,
+    isAITurn,
+    isFirstMove,
+    chainDepth,
+    counts,
+    aiScore,
+    playerScore,
+    firstPit,
+    guruChainCount,
+  ) {
+    if (depth === 4) {
+      const net = aiScore - playerScore + guruChainCount * guruChainBonus;
+      if (net > bestNet) {
+        bestNet = net;
+        bestFirstPit = firstPit;
+      }
+      return;
+    }
+
+    const isAI = isAITurn;
+    const storeIdx = isAI ? aiStore : playerStore;
+    const topMoves = isFirstMove
+      ? getTopMovesA(counts, true, 6, validPits, true)
+      : getTopMovesA(counts, isAI, 3, null, false);
+
+    if (topMoves.length === 0) {
+      dfs(
+        depth + 1,
+        !isAITurn,
+        false,
+        0,
+        counts,
+        aiScore,
+        playerScore,
+        firstPit,
+        guruChainCount,
+      );
+      return;
+    }
+
+    for (const { pit, score: moveScore } of topMoves) {
+      const { lastPit } = scoreSow(counts, pit, isAI);
+      const { counts: newCounts } = fastSow(counts, pit);
+      const newAiScore = isAI ? aiScore + moveScore : aiScore;
+      const newPlayerScore = !isAI ? playerScore + moveScore : playerScore;
+      const fp = isFirstMove ? pit : firstPit;
+
+      if (isAI && lastPit === storeIdx && chainDepth < 10) {
+        // ぐるぐる連鎖: AIターン継続
+        dfs(
+          depth,
+          isAITurn,
+          false,
+          chainDepth + 1,
+          newCounts,
+          newAiScore,
+          newPlayerScore,
+          fp,
+          guruChainCount + 1,
+        );
+      } else {
+        dfs(
+          depth + 1,
+          !isAITurn,
+          false,
+          0,
+          newCounts,
+          newAiScore,
+          newPlayerScore,
+          fp,
+          guruChainCount,
+        );
+      }
+    }
+  }
+
+  dfs(0, true, true, 0, initCounts, 0, 0, validPits[0], 0);
+
+  return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
 }

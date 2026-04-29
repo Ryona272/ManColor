@@ -1910,7 +1910,10 @@ export class UIScene extends Phaser.Scene {
         gs.matchMode === "solo" &&
         (gs.aiDifficulty === "rasetsu" ||
           gs.aiDifficulty === "yasha" ||
-          gs.aiDifficulty === "kugutsu");
+          gs.aiDifficulty === "kugutsu" ||
+          gs.aiDifficulty === "kyubi" ||
+          gs.aiDifficulty === "kisin" ||
+          gs.aiDifficulty === "ashura");
       if (isSmartAi) {
         // 1. ゲーム中の観察から推測した色を優先
         if (gs._aiMemo?.inferredPlayerColor) {

@@ -9,6 +9,7 @@ import {
   KugutsuV1 as aiPickPitKugutsu,
   pickPitTechDfsV1 as aiPickPitRasetsu,
   KyubiV3 as aiPickPitKyubi,
+  AshuraV1 as aiPickPitAshura,
   decidePlacementsFortuneV1 as aiDecidePlacements,
   decidePlacementsFortuneKisinV3 as aiDecidePlacementsKisin,
   decidePlacementsFortuneKyubiV3 as aiDecidePlacementsKyubi,
@@ -2202,6 +2203,10 @@ export class GameScene extends Phaser.Scene {
       // 九尾: ちらちら全力優先 + Kisin DFS
       return this._aiPickPitKyubiV1(validPits, state);
     }
+    if (this.aiDifficulty === "ashura") {
+      // 阿修羅: バランス型最強（鬼神+九尾統合）
+      return this._aiPickPitAshuraV1(validPits, state);
+    }
     if (this.aiDifficulty === "testKyubi") {
       // testKyubi: 防御・妨害特化テスト版
       return this._aiPickPitTestKyubiV1(validPits, state);
@@ -2459,6 +2464,25 @@ export class GameScene extends Phaser.Scene {
       peeksDonePlayer,
       fortune,
       DEFAULT_KYUBI_PARAMS,
+      "opp",
+    );
+  }
+
+  _aiPickPitAshuraV1(validPits, state) {
+    const peeksDoneAI = this.gameState.centerPeekProgress?.opp ?? 0;
+    const peeksDonePlayer = this.gameState.centerPeekProgress?.self ?? 0;
+    const fortune = {
+      center: this.gameState.getState().fortune.center,
+      opp: { color: this.gameState.getFortuneColorForPlayer("opp") },
+      self: { color: this.gameState.getFortuneColorForPlayer("self") },
+    };
+    return aiPickPitAshura(
+      validPits,
+      state,
+      peeksDoneAI,
+      peeksDonePlayer,
+      fortune,
+      null,
       "opp",
     );
   }
@@ -2723,8 +2747,8 @@ export class GameScene extends Phaser.Scene {
         } else {
           pitIndex = oppLanes[0];
         }
-      } else if (["kyubi"].includes(this.aiDifficulty)) {
-        // 九尾: pit10/pit9集中配置（ちらちら・ざくざく目標）
+      } else if (["kyubi", "ashura"].includes(this.aiDifficulty)) {
+        // 九尾/阿修羅: pit10/pit9集中配置（ちらちら・ざくざく目標）
         const st = this.gameState.getState();
         const pendingNow = this.gameState.getPendingPlacement();
         const fortune = {
@@ -2839,8 +2863,8 @@ export class GameScene extends Phaser.Scene {
     const state = this.gameState.getState();
     this.time.delayedCall(900, () => {
       if (this.gameState.canUseChirachira("opp")) {
-        // 九尾: ちらちらを必ず3回全部実施、その後は戦略的こびふり
-        if (this.aiDifficulty === "kyubi") {
+        // 九尾/阿修羅: ちらちらを必ず3回全部実施、その後は戦略的こびふり
+        if (this.aiDifficulty === "kyubi" || this.aiDifficulty === "ashura") {
           const peeksDone = this.gameState.centerPeekProgress?.opp ?? 0;
           if (peeksDone < 3) {
             const revealInfo = this.gameState.revealNextCenterForPlayer("opp");
@@ -3236,7 +3260,9 @@ export class GameScene extends Phaser.Scene {
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
       const shouldActivate =
-        this.aiDifficulty === "kisin" ? true : oppStoreCount > selfStoreCount;
+        this.aiDifficulty === "kisin" || this.aiDifficulty === "ashura"
+          ? true
+          : oppStoreCount > selfStoreCount;
       if (shouldActivate) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
 
