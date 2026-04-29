@@ -8,10 +8,10 @@ import {
   KisinV3 as aiPickPitKisin,
   KugutsuV1 as aiPickPitKugutsu,
   pickPitTechDfsV1 as aiPickPitRasetsu,
-  KyubiV2 as aiPickPitKyubi,
+  KyubiV3 as aiPickPitKyubi,
   decidePlacementsFortuneV1 as aiDecidePlacements,
   decidePlacementsFortuneKisinV3 as aiDecidePlacementsKisin,
-  decidePlacementsFortuneKyubiV1 as aiDecidePlacementsKyubi,
+  decidePlacementsFortuneKyubiV3 as aiDecidePlacementsKyubi,
   optimizeSowOrderFortuneV1 as aiOptimizeSowOrder,
   optimizeSowOrderFortuneKisinV1 as aiOptimizeSowOrderKisin,
 } from "../logic/GameAI.js";
@@ -3236,9 +3236,7 @@ export class GameScene extends Phaser.Scene {
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
       const oppStoreCount = this.gameState.getState().pits[11].stones.length;
       const shouldActivate =
-        this.aiDifficulty === "kisin"
-          ? oppStoreCount >= selfStoreCount
-          : oppStoreCount > selfStoreCount;
+        this.aiDifficulty === "kisin" ? true : oppStoreCount > selfStoreCount;
       if (shouldActivate) {
         this._announceTechnique("くたくた！", 0xe87070, "相手がゲーム終了！");
 
