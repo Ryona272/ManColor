@@ -2469,6 +2469,7 @@ export class UIScene extends Phaser.Scene {
       rasetsu: "羅刹",
       kisin: "鬼神",
       kyubi: "九尾",
+      ashura: "阿修羅",
       kugutsu: "傀儡",
       testKyubi: "九尾",
     };

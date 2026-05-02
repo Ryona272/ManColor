@@ -1,12 +1,12 @@
-/**
+﻿/**
  * simulate.mjs
- * AI vs AI シミュレーター
+ * AI vs AI 繧ｷ繝溘Η繝ｬ繝ｼ繧ｿ繝ｼ
  *
- * 使い方:
- *   node simulate.mjs <ai1> <ai2> [試合数]
- *   例: node simulate.mjs rasetsu kisin 500
+ * 菴ｿ縺・婿:
+ *   node simulate.mjs <ai1> <ai2> [隧ｦ蜷域焚]
+ *   萓・ node simulate.mjs rasetsu kisin 500
  *
- * 利用可能な AI:
+ * 蛻ｩ逕ｨ蜿ｯ閭ｽ縺ｪ AI:
  *   kooni / yasha / rasetsu / kisin / kyubi / kugutsu
  */
 
@@ -22,6 +22,8 @@ import {
   KyubiV3,
   SimKyubiV1,
   AshuraV1,
+  AshuraV2,
+  AshuraKiller,
   pickPitTechDfsV1,
   decidePlacementsFortuneV1,
   decidePlacementsFortuneKisinV1,
@@ -37,9 +39,9 @@ import {
   DEFAULT_KYUBI_PARAMS,
 } from "./src/data/GameParams.js";
 
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 // CLI
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 const AI_LIST = [
   "kooni",
   "yasha",
@@ -48,22 +50,25 @@ const AI_LIST = [
   "kyubi",
   "kugutsu",
   "ashura",
+  "ashurav2",
+  "ashuraki",
 ];
 const AI_LABELS = {
   kooni: "小鬼",
   yasha: "夜叉",
-  rasetsu: "羅刺",
+  rasetsu: "羅刹",
   kisin: "鬼神",
   kyubi: "九尾",
-  kugutsu: "傀倶",
   ashura: "阿修羅",
+  ashurav2: "阿修羅V2",
+  ashuraki: "阿修羅キラー",
 };
 
 const args = process.argv.slice(2);
 if (args.length < 2) {
-  console.log("使い方: node simulate.mjs <ai1> <ai2> [試合数]");
+  console.log("菴ｿ縺・婿: node simulate.mjs <ai1> <ai2> [隧ｦ蜷域焚]");
   console.log("  AI: " + AI_LIST.join(" / "));
-  console.log("  例: node simulate.mjs rasetsu kisin 500");
+  console.log("  萓・ node simulate.mjs rasetsu kisin 500");
   process.exit(1);
 }
 const ai1Name = args[0].toLowerCase();
@@ -73,19 +78,21 @@ const kkSweep = args.includes("--kk-sweep");
 const kkThresholdArg = args.find((a) => a.startsWith("--kk-threshold="));
 const kkThreshold = kkThresholdArg
   ? parseFloat(kkThresholdArg.split("=")[1])
-  : Infinity; // デフォルト: くたくたしない
+  : Infinity; // 繝・ヵ繧ｩ繝ｫ繝・ 縺上◆縺上◆縺励↑縺・
 
 if (!AI_LIST.includes(ai1Name) || !AI_LIST.includes(ai2Name)) {
-  console.error("不明な AI: " + AI_LIST.join(", ") + " から選んでください");
+  console.error(
+    "荳肴・縺ｪ AI: " + AI_LIST.join(", ") + " 縺九ｉ驕ｸ繧薙〒縺上□縺輔＞",
+  );
   process.exit(1);
 }
 
-// ─────────────────────────────────────────────────────────────
-// ヘルパー: pit インデックス変換 (0-4 ↔ 6-10, 5 ↔ 11)
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 繝倥Ν繝代・: pit 繧､繝ｳ繝・ャ繧ｯ繧ｹ螟画鋤 (0-4 竊・6-10, 5 竊・11)
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 const flipPit = (p) => (p + 6) % 12;
 
-/** 盤面の自陣・相手陣を入れ替えた state コピーを返す */
+/** 逶､髱｢縺ｮ閾ｪ髯｣繝ｻ逶ｸ謇矩劵繧貞・繧梧崛縺医◆ state 繧ｳ繝斐・繧定ｿ斐☆ */
 function flipState(state) {
   return {
     pits: Array.from({ length: 12 }, (_, i) => ({
@@ -108,9 +115,9 @@ function flipState(state) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// AI: ピット選択 (常に opp=pit6-10 視点で動作)
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// AI: 繝斐ャ繝磯∈謚・(蟶ｸ縺ｫ opp=pit6-10 隕也せ縺ｧ蜍穂ｽ・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function pickPitOppView(
   aiName,
   validPits,
@@ -132,14 +139,14 @@ function pickPitOppView(
     const tech = validPits.filter((p) => {
       const n = state.pits[p].stones.length;
       const last = (p + n) % 12;
-      if (last === 11) return true; // ぐるぐる
+      if (last === 11) return true; // 縺舌ｋ縺舌ｋ
       if (
         last >= 6 &&
         last <= 10 &&
         state.pits[last].stones.length === 0 &&
         state.pits[last - 6].stones.length > 0
       )
-        return true; // ざくざく
+        return true; // 縺悶￥縺悶￥
       return false;
     });
     if (tech.length > 0) return tech[Math.floor(Math.random() * tech.length)];
@@ -176,8 +183,30 @@ function pickPitOppView(
   if (aiName === "kugutsu") {
     return KugutsuV1(validPits, state, peeksAI, peeksPlayer, fortune, 3);
   }
+  if (aiName === "ashurav2") {
+    return AshuraV2(
+      validPits,
+      state,
+      peeksAI,
+      peeksPlayer,
+      fortune,
+      params ?? null,
+      "opp",
+    );
+  }
   if (aiName === "ashura") {
     return AshuraV1(
+      validPits,
+      state,
+      peeksAI,
+      peeksPlayer,
+      fortune,
+      params ?? null,
+      "opp",
+    );
+  }
+  if (aiName === "ashuraki") {
+    return AshuraKiller(
       validPits,
       state,
       peeksAI,
@@ -191,7 +220,7 @@ function pickPitOppView(
 }
 
 /**
- * 指定 role (opp/self) のために適切な視点でピット選択し、実際の pit index を返す。
+ * 謖・ｮ・role (opp/self) 縺ｮ縺溘ａ縺ｫ驕ｩ蛻・↑隕也せ縺ｧ繝斐ャ繝磯∈謚槭＠縲∝ｮ滄圀縺ｮ pit index 繧定ｿ斐☆縲・
  */
 function pickPitForRole(
   aiName,
@@ -212,7 +241,7 @@ function pickPitForRole(
       params,
     );
   }
-  // self 側 (pit0-4): state を反転して opp として扱い、結果を flip して戻す
+  // self 蛛ｴ (pit0-4): state 繧貞渚霆｢縺励※ opp 縺ｨ縺励※謇ｱ縺・∫ｵ先棡繧・flip 縺励※謌ｻ縺・
   const flipped = flipState(state);
   const flippedPits = validPits.map(flipPit);
   const result = pickPitOppView(
@@ -226,9 +255,9 @@ function pickPitForRole(
   return flipPit(result);
 }
 
-// ─────────────────────────────────────────────────────────────
-// AI: 撒き順最適化 (常に opp=pit6-10 視点で動作)
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// AI: 謦偵″鬆・怙驕ｩ蛹・(蟶ｸ縺ｫ opp=pit6-10 隕也せ縺ｧ蜍穂ｽ・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function getSowOrderForRole(aiName, stones, targets, state, role) {
   if (stones.length <= 1) return stones;
   if (["kooni", "yasha", "kugutsu"].includes(aiName)) return stones;
@@ -246,6 +275,18 @@ function getSowOrderForRole(aiName, stones, targets, state, role) {
     self: { color: workState.fortune.self.color },
   };
 
+  if (aiName === "ashuraki") {
+    // ashuraki: neg遏ｳ繧堤嶌謇句・縺ｸ騾√ｋ謦偵″鬆・怙驕ｩ蛹・
+    return optimizeSowOrderFortuneV1(
+      stones,
+      workTargets,
+      workState,
+      fortune,
+      {},
+      { dynamicUnknownPenalty: true, unknownPenaltyScale: 30 },
+    );
+  }
+
   // kisin / rasetsu / kyubi
   return optimizeSowOrderFortuneV1(
     stones,
@@ -260,9 +301,9 @@ function getSowOrderForRole(aiName, stones, targets, state, role) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// AI: ざくざく後の配置
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// AI: 縺悶￥縺悶￥蠕後・驟咲ｽｮ
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function getPlacementForRole(aiName, pending, state, role) {
   if (pending.length === 0) return [];
 
@@ -285,7 +326,18 @@ function getPlacementForRole(aiName, pending, state, role) {
       fortune,
       {},
     );
-  } else if (aiName === "kyubi" || aiName === "ashura") {
+  } else if (
+    aiName === "kyubi" ||
+    aiName === "ashura" ||
+    aiName === "ashurav2"
+  ) {
+    placements = decidePlacementsFortuneKyubiV3(
+      pending,
+      workState,
+      fortune,
+      {},
+    );
+  } else if (aiName === "ashuraki") {
     placements = decidePlacementsFortuneKyubiV3(
       pending,
       workState,
@@ -295,7 +347,7 @@ function getPlacementForRole(aiName, pending, state, role) {
   } else if (["kugutsu", "rasetsu"].includes(aiName)) {
     placements = decidePlacementsFortuneV1(pending, workState, fortune, {});
   } else {
-    // kooni / yasha: 石数が多い路から順に配置
+    // kooni / yasha: 遏ｳ謨ｰ縺悟､壹＞霍ｯ縺九ｉ鬆・↓驟咲ｽｮ
     const lanes = [10, 9, 8, 7, 6];
     placements = pending.map((_, si) => {
       const pitInFlipped = lanes[Math.min(si, lanes.length - 1)];
@@ -309,23 +361,28 @@ function getPlacementForRole(aiName, pending, state, role) {
   return placements;
 }
 
-// ─────────────────────────────────────────────────────────────
-// AI: pit5着地後のちらちら/ぽいぽい選択
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// AI: pit5逹蝨ｰ蠕後・縺｡繧峨■繧・縺ｽ縺・⊃縺・∈謚・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function chooseSpecialAction(aiName, gs, role) {
   const state = gs.getState();
   const peeks = gs.centerPeekProgress[role] ?? 0;
 
-  // ashura/kyubi は peeks < 3 なら常にちらちら
-  if (aiName === "ashura" || aiName === "kyubi") {
+  // ashura/kyubi/ashuraki 縺ｯ peeks < 3 縺ｪ繧牙ｸｸ縺ｫ縺｡繧峨■繧・
+  if (
+    aiName === "ashura" ||
+    aiName === "kyubi" ||
+    aiName === "ashuraki" ||
+    aiName === "ashurav2"
+  ) {
     if (peeks < 3) return "chirachira";
-    // ちらちら使い切り → ぽいぽい（相手賽壇に石があれば）
+    // 縺｡繧峨■繧我ｽｿ縺・・繧・竊・縺ｽ縺・⊃縺・ｼ育嶌謇玖ｳｽ螢・↓遏ｳ縺後≠繧後・・・
     const oppStoreIdx = role === "opp" ? 5 : 11;
     if (state.pits[oppStoreIdx].stones.length > 0) return "poipoi";
     return "pass";
   }
 
-  // rasetsu: peeks < 2 ならちらちら優先
+  // rasetsu: peeks < 2 縺ｪ繧峨■繧峨■繧牙━蜈・
   if (aiName === "rasetsu") {
     if (peeks < 2) return "chirachira";
     const oppStoreIdx = role === "opp" ? 5 : 11;
@@ -334,14 +391,14 @@ function chooseSpecialAction(aiName, gs, role) {
     return "pass";
   }
 
-  // 鬼神: ちらちらで情報収集（全回）→ 以降ぽいぽい
+  // 鬯ｼ逾・ 縺｡繧峨■繧峨〒諠・ｱ蜿朱寔・亥・蝗橸ｼ俄・ 莉･髯阪⊃縺・⊃縺・
   if (aiName === "kisin") {
     if (peeks < 3) return "chirachira";
     const oppStoreIdx = role === "opp" ? 5 : 11;
     if (state.pits[oppStoreIdx].stones.length > 0) return "poipoi";
     return "pass";
   }
-  // 傀儡: peeks<2ならちらちら優先、peeks=2でぽいぽい検討
+  // 蛯蜆｡: peeks<2縺ｪ繧峨■繧峨■繧牙━蜈医｝eeks=2縺ｧ縺ｽ縺・⊃縺・､懆ｨ・
   if (aiName === "kugutsu") {
     const oppStoreIdx = role === "opp" ? 5 : 11;
     if (peeks < 2) return "chirachira";
@@ -350,14 +407,14 @@ function chooseSpecialAction(aiName, gs, role) {
     return "pass";
   }
 
-  // yasha / kooni: ちらちら優先
+  // yasha / kooni: 縺｡繧峨■繧牙━蜈・
   if (peeks < 3) return "chirachira";
   return "pass";
 }
 
 /**
- * ぽいぽい: 指定側が対象 store から最も有利な石を1個除去する
- * role=opp なら pit5 から除去、role=self なら pit11 から除去
+ * 縺ｽ縺・⊃縺・ 謖・ｮ壼・縺悟ｯｾ雎｡ store 縺九ｉ譛繧よ怏蛻ｩ縺ｪ遏ｳ繧・蛟矩勁蜴ｻ縺吶ｋ
+ * role=opp 縺ｪ繧・pit5 縺九ｉ髯､蜴ｻ縲〉ole=self 縺ｪ繧・pit11 縺九ｉ髯､蜴ｻ
  */
 function doPoipoi(gs, role) {
   const state = gs.getState();
@@ -365,7 +422,7 @@ function doPoipoi(gs, role) {
   const ownStoreIdx = role === "opp" ? 11 : 5;
 
   if (state.pits[targetPit].stones.length === 0) {
-    // 相手賽壇が空なら自分の賽壇のマイナス石を捨てる
+    // 逶ｸ謇玖ｳｽ螢・′遨ｺ縺ｪ繧芽・蛻・・雉ｽ螢・・繝槭う繝翫せ遏ｳ繧呈昏縺ｦ繧・
     const ownFortune = state.fortune[role === "opp" ? "opp" : "self"].color;
     const negColor = getKnownNegColor(state, role);
     let worst = -1;
@@ -382,7 +439,7 @@ function doPoipoi(gs, role) {
     return;
   }
 
-  // 相手賽壇から最も価値の高い石を除去
+  // 逶ｸ謇玖ｳｽ螢・°繧画怙繧ゆｾ｡蛟､縺ｮ鬮倥＞遏ｳ繧帝勁蜴ｻ
   const ownFortune = state.fortune[role === "opp" ? "opp" : "self"].color;
   const playerFortune = state.fortune[role === "opp" ? "self" : "opp"].color;
   const negColor = getKnownNegColor(state, role);
@@ -393,11 +450,11 @@ function doPoipoi(gs, role) {
   state.pits[targetPit].stones.forEach((s, idx) => {
     let val = 0;
     if (ownFortune && s.color === ownFortune)
-      val = 40; // 自占い色 = 相手に+5点源
+      val = 40; // 閾ｪ蜊縺・牡 = 逶ｸ謇九↓+5轤ｹ貅・
     else if (playerFortune && s.color === playerFortune)
-      val = 25; // 相手占い色 = +3点
+      val = 25; // 逶ｸ謇句頃縺・牡 = +3轤ｹ
     else if (posColors.includes(s.color)) val = 10;
-    if (negColor && s.color === negColor) val = -99; // マイナス石は除去しない
+    if (negColor && s.color === negColor) val = -99; // 繝槭う繝翫せ遏ｳ縺ｯ髯､蜴ｻ縺励↑縺・
     if (val > bestVal) {
       bestVal = val;
       best = idx;
@@ -418,23 +475,32 @@ function getKnownPosColors(state, role) {
     .map((fc) => fc.color);
 }
 
-// ─────────────────────────────────────────────────────────────
-// AI: 最終フェーズ占い予測
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// AI: 譛邨ゅヵ繧ｧ繝ｼ繧ｺ蜊縺・ｺ域ｸｬ
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function predictOpponentColor(aiName, gs, role) {
   const state = gs.getState();
   const COLORS = ["red", "blue", "green", "yellow", "purple"];
 
-  // スマートAI: 相手賽壇の石の色頻度で推測
+  // 繧ｹ繝槭・繝・I: 逶ｸ謇玖ｳｽ螢・・遏ｳ縺ｮ濶ｲ鬆ｻ蠎ｦ縺ｧ謗ｨ貂ｬ
   if (
-    ["rasetsu", "kisin", "yasha", "kugutsu", "kyubi", "ashura"].includes(aiName)
+    [
+      "rasetsu",
+      "kisin",
+      "yasha",
+      "kugutsu",
+      "kyubi",
+      "ashura",
+      "ashurav2",
+      "ashuraki",
+    ].includes(aiName)
   ) {
     const oppStore = role === "opp" ? 5 : 11;
     const freq = {};
     for (const s of state.pits[oppStore].stones) {
       freq[s.color] = (freq[s.color] ?? 0) + 1;
     }
-    // ちらちらで確認済みの中央石色を除外
+    // 縺｡繧峨■繧峨〒遒ｺ隱肴ｸ医∩縺ｮ荳ｭ螟ｮ遏ｳ濶ｲ繧帝勁螟・
     const knownCenterColors = state.fortune.center
       .filter((fc) => fc.seenBy.includes(role))
       .map((fc) => fc.color);
@@ -443,7 +509,7 @@ function predictOpponentColor(aiName, gs, role) {
       .sort((a, b) => b[1] - a[1]);
     if (sorted.length > 0) return sorted[0][0];
 
-    // フォールバック: 路上の石の頻度
+    // 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ: 霍ｯ荳翫・遏ｳ縺ｮ鬆ｻ蠎ｦ
     const laneMin = role === "opp" ? 0 : 6;
     const laneMax = role === "opp" ? 4 : 10;
     const laneFreq = {};
@@ -456,15 +522,15 @@ function predictOpponentColor(aiName, gs, role) {
     if (laneSorted.length > 0) return laneSorted[0][0];
   }
 
-  // kooni / kisin: ランダム
+  // kooni / kisin: 繝ｩ繝ｳ繝繝
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
-// ─────────────────────────────────────────────────────────────
-// 最終ぽいぽい (予測的中時の2回除去)
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 譛邨ゅ⊃縺・⊃縺・(莠域ｸｬ逧・ｸｭ譎ゅ・2蝗樣勁蜴ｻ)
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function finalPoipoi(gs, role, times, oppFortuneColor) {
-  // 個人占い石が公開済みなのでより正確に判断できる
+  // 蛟倶ｺｺ蜊縺・浹縺悟・髢区ｸ医∩縺ｪ縺ｮ縺ｧ繧医ｊ豁｣遒ｺ縺ｫ蛻､譁ｭ縺ｧ縺阪ｋ
   for (let i = 0; i < times; i++) {
     const state = gs.getState();
     const targetPit = role === "opp" ? 5 : 11;
@@ -495,30 +561,30 @@ function finalPoipoi(gs, role, times, oppFortuneColor) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// 1試合のシミュレーション
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 1隧ｦ蜷医・繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ai1Role: 'opp'=pit6-10, 'self'=pit0-4
   const ai2Role = ai1Role === "opp" ? "self" : "opp";
   const gs = new GameState();
 
-  // ゲームループ用の変数
-  let currentRole = ai1Role === "opp" ? "opp" : "self"; // opp側が先手にする（先手/後手は呼び元が決定）
-  // NOTE: ai1Role='opp' → ai1が先手(opp), ai2が後手(self)
-  //        ai1Role='self' → ai1が後手(self), ai2が先手(opp)
+  // 繧ｲ繝ｼ繝繝ｫ繝ｼ繝礼畑縺ｮ螟画焚
+  let currentRole = ai1Role === "opp" ? "opp" : "self"; // opp蛛ｴ縺悟・謇九↓縺吶ｋ・亥・謇・蠕梧焔縺ｯ蜻ｼ縺ｳ蜈・′豎ｺ螳夲ｼ・
+  // NOTE: ai1Role='opp' 竊・ai1縺悟・謇・opp), ai2縺悟ｾ梧焔(self)
+  //        ai1Role='self' 竊・ai1縺悟ｾ梧焔(self), ai2縺悟・謇・opp)
 
-  // 統計カウンター (ゲーム内)
+  // 邨ｱ險医き繧ｦ繝ｳ繧ｿ繝ｼ (繧ｲ繝ｼ繝蜀・
   const techCounts = {
     opp: { guru: 0, zaku: 0, chira: 0 },
     self: { guru: 0, zaku: 0, chira: 0 },
   };
-  // ashura 用: 相手手番で pit11 に着地した石の色履歴
-  // ai1Role==='opp' なら ashura は opp → 相手は self → oppStore は pit11 for self
-  // ai1Role==='self' なら ashura は self → 相手は opp  → oppStore は pit5  for opp (pit11 を追跡不要)
+  // ashura 逕ｨ: 逶ｸ謇区焔逡ｪ縺ｧ pit11 縺ｫ逹蝨ｰ縺励◆遏ｳ縺ｮ濶ｲ螻･豁ｴ
+  // ai1Role==='opp' 縺ｪ繧・ashura 縺ｯ opp 竊・逶ｸ謇九・ self 竊・oppStore 縺ｯ pit11 for self
+  // ai1Role==='self' 縺ｪ繧・ashura 縺ｯ self 竊・逶ｸ謇九・ opp  竊・oppStore 縺ｯ pit5  for opp (pit11 繧定ｿｽ霍｡荳崎ｦ・
   const ashuraIsOpp = ai1Role === "opp";
   const ashuraParams = { opponentSentColors: [] };
-  const MAX_TURNS = 300; // 無限ループ防止
+  const MAX_TURNS = 300; // 辟｡髯舌Ν繝ｼ繝鈴亟豁｢
   let turns = 0;
   let sennitte = false;
   let isExtraTurn = false;
@@ -528,7 +594,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     turns++;
     const state = gs.getState();
 
-    // ─── くたくたチェック（ぐるぐる継続ターンはスキップ）─────────
+    // 笏笏笏 縺上◆縺上◆繝√ぉ繝・け・医＄繧九＄繧狗ｶ咏ｶ壹ち繝ｼ繝ｳ縺ｯ繧ｹ繧ｭ繝・・・俄楳笏笏笏笏笏笏笏笏
     if (!isExtraTurn && kkThresh !== Infinity) {
       const ownStoreIdx = currentRole === "opp" ? 11 : 5;
       const oppStoreIdx = currentRole === "opp" ? 5 : 11;
@@ -541,14 +607,14 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     }
     isExtraTurn = false;
 
-    // 千日手チェック
+    // 蜊・律謇九メ繧ｧ繝・け
     const sennitteLevel = gs.checkSennitte();
     if (sennitteLevel >= 2) {
       sennitte = true;
       break;
     }
 
-    // 現在の役割に応じた有効路
+    // 迴ｾ蝨ｨ縺ｮ蠖ｹ蜑ｲ縺ｫ蠢懊§縺滓怏蜉ｹ霍ｯ
     const laneMin = currentRole === "opp" ? 6 : 0;
     const laneMax = currentRole === "opp" ? 10 : 4;
     const validPits = [];
@@ -557,19 +623,19 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     }
 
     if (validPits.length === 0) {
-      // ゲーム終了
+      // 繧ｲ繝ｼ繝邨ゆｺ・
       break;
     }
 
     if (gs.isGameOver()) break;
 
-    // 現在の側の AI 名
+    // 迴ｾ蝨ｨ縺ｮ蛛ｴ縺ｮ AI 蜷・
     const aiName = currentRole === ai1Role ? ai1 : ai2;
     const peeksThisSide = gs.centerPeekProgress[currentRole] ?? 0;
     const peeksOtherSide =
       gs.centerPeekProgress[currentRole === "opp" ? "self" : "opp"] ?? 0;
 
-    // ピット選択
+    // 繝斐ャ繝磯∈謚・
     const pickParams =
       aiName === (ashuraIsOpp ? ai1 : ai2) ? ashuraParams : null;
     const chosenPit = pickPitForRole(
@@ -582,7 +648,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       pickParams,
     );
 
-    // 撒き
+    // 謦偵″
     const stones = [...state.pits[chosenPit].stones];
     state.pits[chosenPit].stones = [];
     const targets = [];
@@ -592,7 +658,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       targets.push(cur);
     }
 
-    // 撒き順最適化
+    // 謦偵″鬆・怙驕ｩ蛹・
     const orderedStones = getSowOrderForRole(
       aiName,
       stones,
@@ -601,7 +667,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       currentRole,
     );
 
-    // 実際に撒く
+    // 螳滄圀縺ｫ謦偵￥
     for (let i = 0; i < orderedStones.length; i++) {
       state.pits[targets[i]].stones.push(orderedStones[i]);
     }
@@ -610,7 +676,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     const ownStore = currentRole === "opp" ? 11 : 5;
     const oppStore = currentRole === "opp" ? 5 : 11;
 
-    // ─── ashura 向け: 相手(self)の撒きで pit11 に入った石の色を記録 ────
+    // 笏笏笏 ashura 蜷代￠: 逶ｸ謇・self)縺ｮ謦偵″縺ｧ pit11 縺ｫ蜈･縺｣縺溽浹縺ｮ濶ｲ繧定ｨ倬鹸 笏笏笏笏
     if (ashuraIsOpp && currentRole === "self") {
       for (let i = 0; i < targets.length; i++) {
         if (targets[i] === 11) {
@@ -619,21 +685,21 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       }
     }
 
-    // ─── ぐるぐる判定 ───────────────────────────────────────────
+    // 笏笏笏 縺舌ｋ縺舌ｋ蛻､螳・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     if (lastPit === ownStore) {
       techCounts[currentRole].guru++;
-      // extra turn: currentRole はそのまま
+      // extra turn: currentRole 縺ｯ縺昴・縺ｾ縺ｾ
       isExtraTurn = true;
       continue;
     }
 
-    // ─── ざくざく判定 ────────────────────────────────────────────
+    // 笏笏笏 縺悶￥縺悶￥蛻､螳・笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     const ownLaneMin = currentRole === "opp" ? 6 : 0;
     const ownLaneMax = currentRole === "opp" ? 10 : 4;
     if (
       lastPit >= ownLaneMin &&
       lastPit <= ownLaneMax &&
-      state.pits[lastPit].stones.length === 1 // 置いた1個だけ = 元々空だった
+      state.pits[lastPit].stones.length === 1 // 鄂ｮ縺・◆1蛟九□縺・= 蜈・・ｩｺ縺縺｣縺・
     ) {
       const mirrorPit = currentRole === "opp" ? lastPit - 6 : lastPit + 6;
       const captured = [...state.pits[mirrorPit].stones];
@@ -641,7 +707,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
         techCounts[currentRole].zaku++;
         state.pits[mirrorPit].stones = [];
 
-        // ざくざく後の配置
+        // 縺悶￥縺悶￥蠕後・驟咲ｽｮ
         let pending = captured;
         let safety = 0;
         while (pending.length > 0 && safety < 20) {
@@ -663,7 +729,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       continue;
     }
 
-    // ─── ちらちら判定 (相手賽壇着地) ─────────────────────────────
+    // 笏笏笏 縺｡繧峨■繧牙愛螳・(逶ｸ謇玖ｳｽ螢・捩蝨ｰ) 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     if (lastPit === oppStore) {
       const action = chooseSpecialAction(aiName, gs, currentRole);
       if (action === "chirachira") {
@@ -674,19 +740,19 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       } else if (action === "poipoi") {
         doPoipoi(gs, currentRole);
       }
-      // extra turn はなし（手番交代）
+      // extra turn 縺ｯ縺ｪ縺暦ｼ域焔逡ｪ莠､莉｣・・
       currentRole = currentRole === "opp" ? "self" : "opp";
       continue;
     }
 
-    // 通常手番交代
+    // 騾壼ｸｸ謇狗分莠､莉｣
     currentRole = currentRole === "opp" ? "self" : "opp";
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 最終フェーズ: 占い予測
-  // ─────────────────────────────────────────────────────────────
-  // くたくた終了: 最終フェーズをスキップして即時勝利判定
+  // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+  // 譛邨ゅヵ繧ｧ繝ｼ繧ｺ: 蜊縺・ｺ域ｸｬ
+  // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+  // 縺上◆縺上◆邨ゆｺ・ 譛邨ゅヵ繧ｧ繝ｼ繧ｺ繧偵せ繧ｭ繝・・縺励※蜊ｳ譎ょ享蛻ｩ蛻､螳・
   if (kutakutaRole !== null) {
     const kkWinRole = kutakutaRole;
     const kkLoseRole = kkWinRole === "opp" ? "self" : "opp";
@@ -717,14 +783,14 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     };
   }
 
-  // 個人占い石を公開
+  // 蛟倶ｺｺ蜊縺・浹繧貞・髢・
   gs.revealPersonalFortunes();
 
   const oppAiName = ai1Role === "opp" ? ai1 : ai2;
   const selfAiName = ai1Role === "opp" ? ai2 : ai1;
 
-  const oppPrediction = predictOpponentColor(oppAiName, gs, "opp"); // opp → selfの占い色を予測
-  const selfPrediction = predictOpponentColor(selfAiName, gs, "self"); // self → oppの占い色を予測
+  const oppPrediction = predictOpponentColor(oppAiName, gs, "opp"); // opp 竊・self縺ｮ蜊縺・牡繧剃ｺ域ｸｬ
+  const selfPrediction = predictOpponentColor(selfAiName, gs, "self"); // self 竊・opp縺ｮ蜊縺・牡繧剃ｺ域ｸｬ
 
   const selfActual = gs.getFortuneColorForPlayer("self");
   const oppActual = gs.getFortuneColorForPlayer("opp");
@@ -732,17 +798,17 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   const oppHit = oppPrediction === selfActual;
   const selfHit = selfPrediction === oppActual;
 
-  // 予測的中ぽいぽい (opp が先: 相手賽壇pit5から2個除去)
+  // 莠域ｸｬ逧・ｸｭ縺ｽ縺・⊃縺・(opp 縺悟・: 逶ｸ謇玖ｳｽ螢㎝it5縺九ｉ2蛟矩勁蜴ｻ)
   if (oppHit) finalPoipoi(gs, "opp", 2, selfActual);
   if (selfHit) finalPoipoi(gs, "self", 2, oppActual);
 
-  // ─────────────────────────────────────────────────────────────
-  // 得点計算
-  // ─────────────────────────────────────────────────────────────
+  // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+  // 蠕礼せ險育ｮ・
+  // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
   const selfScore = gs.calcScore("self");
   const oppScore = gs.calcScore("opp");
 
-  // 賽壇の石内訳（自占い+3 / 相手占い+5 / 中央+1 / 中央-2 / 中立0）を計算
+  // 雉ｽ螢・・遏ｳ蜀・ｨｳ・郁・蜊縺・3 / 逶ｸ謇句頃縺・5 / 荳ｭ螟ｮ+1 / 荳ｭ螟ｮ-2 / 荳ｭ遶・・峨ｒ險育ｮ・
   function storeBreakdown(role) {
     const storeIdx = role === "self" ? 5 : 11;
     const st = gs.getState();
@@ -778,7 +844,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   const selfBreak = storeBreakdown("self");
   const oppBreak = storeBreakdown("opp");
 
-  // ai1 の role に応じて勝敗を判定
+  // ai1 縺ｮ role 縺ｫ蠢懊§縺ｦ蜍晄風繧貞愛螳・
   const ai1Score = ai1Role === "opp" ? oppScore : selfScore;
   const ai2Score = ai1Role === "opp" ? selfScore : oppScore;
   const ai1Break = ai1Role === "opp" ? oppBreak : selfBreak;
@@ -786,12 +852,12 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   const ai1PredHit = ai1Role === "opp" ? oppHit : selfHit;
   const ai2PredHit = ai1Role === "opp" ? selfHit : oppHit;
 
-  // ai1 が先手かどうか
-  // opp が先手: ai1Role='opp' → ai1が先手
-  //             ai1Role='self' → ai2が先手
+  // ai1 縺悟・謇九°縺ｩ縺・°
+  // opp 縺悟・謇・ ai1Role='opp' 竊・ai1縺悟・謇・
+  //             ai1Role='self' 竊・ai2縺悟・謇・
   const ai1GoesFirst = ai1Role === "opp";
 
-  // 技カウント
+  // 謚繧ｫ繧ｦ繝ｳ繝・
   const ai1Tech = ai1Role === "opp" ? techCounts.opp : techCounts.self;
   const ai2Tech = ai1Role === "opp" ? techCounts.self : techCounts.opp;
 
@@ -816,26 +882,26 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// メインシミュレーション
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 繝｡繧､繝ｳ繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 const label1 = `${AI_LABELS[ai1Name]}(${ai1Name})`;
 const label2 = `${AI_LABELS[ai2Name]}(${ai2Name})`;
-console.log(`\n${"═".repeat(60)}`);
+console.log(`\n${"━".repeat(60)}`);
 console.log(
-  ` ${label1} vs ${label2}  —  ${N} 試合${kkSweep ? "  [くたくた閾値sweep]" : kkThreshold === Infinity ? "" : `  [くたくた≥${kkThreshold}倍]`}`,
+  ` ${label1} vs ${label2}  窶・ ${N} 隧ｦ蜷・${kkSweep ? "  [縺上◆縺上◆髢ｾ蛟､sweep]" : kkThreshold === Infinity ? "" : `  [縺上◆縺上◆竕･${kkThreshold}蛟江`}`,
 );
-console.log(`${"═".repeat(60)}\n`);
+console.log(`${"━".repeat(60)}\n`);
 
-// ─────────────────────────────────────────────────────────────
-// sweep モード: 複数閾値で比較
-// ─────────────────────────────────────────────────────────────
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// sweep 繝｢繝ｼ繝・ 隍・焚髢ｾ蛟､縺ｧ豈碑ｼ・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 if (kkSweep) {
   const sweepThresholds = [Infinity, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0];
   const sweepResults = [];
   for (const thr of sweepThresholds) {
-    const label = thr === Infinity ? "  なし(∞)" : `≥${thr.toFixed(2)}倍`;
-    process.stdout.write(`  閾値 ${label.padEnd(10)} 計算中...`);
+    const label = thr === Infinity ? "  縺ｪ縺・竏・" : `竕･${thr.toFixed(2)}個`;
+    process.stdout.write(`  髢ｾ蛟､ ${label.padEnd(10)} 險育ｮ嶺ｸｭ...`);
     let wins = 0,
       losses = 0,
       draws = 0;
@@ -848,47 +914,49 @@ if (kkSweep) {
     const pct = ((wins / N) * 100).toFixed(1);
     sweepResults.push({ thr, wins, losses, draws, pct });
     process.stdout.write(
-      `\r  閾値 ${label.padEnd(10)}: ${wins}勝 ${losses}負 ${draws}分 (${pct}%)\n`,
+      `\r  髢ｾ蛟､ ${label.padEnd(10)}: ${wins}蜍・${losses}雋 ${draws}蛻・(${pct}%)\n`,
     );
   }
-  console.log(`\n${"─".repeat(60)}`);
+  console.log(`\n${"笏".repeat(60)}`);
   const best = sweepResults.reduce((a, b) => (a.wins > b.wins ? a : b));
   const bestLabel =
-    best.thr === Infinity ? "なし(∞)" : `≥${best.thr.toFixed(2)}倍`;
-  console.log(` ★ 最適閾値: ${bestLabel}  →  ${best.wins}勝 (${best.pct}%)`);
-  console.log(`${"═".repeat(60)}\n`);
+    best.thr === Infinity ? "縺ｪ縺・竏・" : `竕･${best.thr.toFixed(2)}個`;
+  console.log(
+    ` 笘・譛驕ｩ髢ｾ蛟､: ${bestLabel}  竊・ ${best.wins}蜍・(${best.pct}%)`,
+  );
+  console.log(`${"━".repeat(60)}\n`);
   process.exit(0);
 }
 
-// ─────────────────────────────────────────────────────────────
-// 通常モード
-// ─────────────────────────────────────────────────────────────
-console.log("シミュレーション中...");
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 騾壼ｸｸ繝｢繝ｼ繝・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+console.log("繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ荳ｭ...");
 
 const totals = {
   ai1Wins: 0,
   ai2Wins: 0,
   draws: 0,
   sennitte: 0,
-  // 先手時
+  // 蜈域焔譎・
   ai1FirstWins: 0,
   ai1FirstGames: 0,
   ai2FirstWins: 0,
   ai2FirstGames: 0,
-  // 得点合計
+  // 蠕礼せ蜷郁ｨ・
   ai1ScoreSum: 0,
   ai2ScoreSum: 0,
-  // 技
+  // 謚
   ai1Guru: 0,
   ai1Zaku: 0,
   ai1Chira: 0,
   ai2Guru: 0,
   ai2Zaku: 0,
   ai2Chira: 0,
-  // 予測的中
+  // 莠域ｸｬ逧・ｸｭ
   ai1PredHits: 0,
   ai2PredHits: 0,
-  // 賽壇石内訳
+  // 雉ｽ螢・浹蜀・ｨｳ
   ai1Own3: 0,
   ai1Opp5: 0,
   ai1Pos1: 0,
@@ -902,7 +970,7 @@ const totals = {
 };
 
 for (let i = 0; i < N; i++) {
-  // 半数ずつ先手後手を交代
+  // 蜊頑焚縺壹▽蜈域焔蠕梧焔繧剃ｺ､莉｣
   const ai1Role = i % 2 === 0 ? "opp" : "self";
   const result = runOneGame(ai1Name, ai2Name, ai1Role, kkThreshold);
 
@@ -931,7 +999,7 @@ for (let i = 0; i < N; i++) {
   totals.ai2Neg2 += result.ai2Break.neg2;
   totals.ai2Neu0 += result.ai2Break.neu0;
 
-  // 先手時の成績
+  // 蜈域焔譎ゅ・謌千ｸｾ
   if (result.ai1First) {
     totals.ai1FirstGames++;
     totals.ai1FirstWins += result.ai1Win;
@@ -940,85 +1008,91 @@ for (let i = 0; i < N; i++) {
     totals.ai2FirstWins += result.ai2Win;
   }
 
-  // 進捗表示
+  // 騾ｲ謐苓｡ｨ遉ｺ
   if ((i + 1) % Math.max(1, Math.floor(N / 10)) === 0) {
-    process.stdout.write(`  ${i + 1}/${N} 完了\r`);
+    process.stdout.write(`  ${i + 1}/${N} 螳御ｺ・r`);
   }
 }
-console.log(`  ${N}/${N} 完了    \n`);
+console.log(`  ${N}/${N} 螳御ｺ・   \n`);
 
-// ─────────────────────────────────────────────────────────────
-// 結果出力
-// ─────────────────────────────────────────────────────────────
-const pct = (n, d) => (d === 0 ? "—" : ((n / d) * 100).toFixed(1) + "%");
-const avg = (n, d) => (d === 0 ? "—" : (n / d).toFixed(2));
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// 邨先棡蜃ｺ蜉・
+// 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+const pct = (n, d) => (d === 0 ? "-" : ((n / d) * 100).toFixed(1) + "%");
+const avg = (n, d) => (d === 0 ? "-" : (n / d).toFixed(2));
 
-console.log(`${"─".repeat(60)}`);
-console.log(` ■ 全体勝率`);
+console.log(`${"笏".repeat(60)}`);
+console.log(` 笆 蜈ｨ菴灘享邇㌔`);
 console.log(
-  `   ${label1.padEnd(18)} : ${totals.ai1Wins} 勝 / ${N}  (${pct(totals.ai1Wins, N)})`,
+  `   ${label1.padEnd(18)} : ${totals.ai1Wins} 蜍・/ ${N}  (${pct(totals.ai1Wins, N)})`,
 );
 console.log(
-  `   ${label2.padEnd(18)} : ${totals.ai2Wins} 勝 / ${N}  (${pct(totals.ai2Wins, N)})`,
+  `   ${label2.padEnd(18)} : ${totals.ai2Wins} 蜍・/ ${N}  (${pct(totals.ai2Wins, N)})`,
 );
 console.log(
-  `   引き分け              : ${totals.draws} 局  (${pct(totals.draws, N)})`,
+  `   蠑輔″蛻・￠              : ${totals.draws} 螻  (${pct(totals.draws, N)})`,
 );
 if (totals.sennitte > 0) {
-  console.log(`   千日手               : ${totals.sennitte} 局`);
+  console.log(`   蜊・律謇・              : ${totals.sennitte} 螻`);
 }
 
-console.log(`\n${"─".repeat(60)}`);
-console.log(` ■ 先手・後手別勝率`);
+console.log(`\n${"笏".repeat(60)}`);
+console.log(` 笆 蜈域焔繝ｻ蠕梧焔蛻･蜍晉紫`);
 console.log(
-  `   ${label1.padEnd(18)} 先手時 : ${totals.ai1FirstWins} 勝 / ${totals.ai1FirstGames}  (${pct(totals.ai1FirstWins, totals.ai1FirstGames)})`,
+  `   ${label1.padEnd(18)} 蜈域焔譎・: ${totals.ai1FirstWins} 蜍・/ ${totals.ai1FirstGames}  (${pct(totals.ai1FirstWins, totals.ai1FirstGames)})`,
 );
 console.log(
-  `   ${label1.padEnd(18)} 後手時 : ${totals.ai1Wins - totals.ai1FirstWins} 勝 / ${N - totals.ai1FirstGames}  (${pct(totals.ai1Wins - totals.ai1FirstWins, N - totals.ai1FirstGames)})`,
+  `   ${label1.padEnd(18)} 蠕梧焔譎・: ${totals.ai1Wins - totals.ai1FirstWins} 蜍・/ ${N - totals.ai1FirstGames}  (${pct(totals.ai1Wins - totals.ai1FirstWins, N - totals.ai1FirstGames)})`,
 );
 console.log(
-  `   ${label2.padEnd(18)} 先手時 : ${totals.ai2FirstWins} 勝 / ${totals.ai2FirstGames}  (${pct(totals.ai2FirstWins, totals.ai2FirstGames)})`,
+  `   ${label2.padEnd(18)} 蜈域焔譎・: ${totals.ai2FirstWins} 蜍・/ ${totals.ai2FirstGames}  (${pct(totals.ai2FirstWins, totals.ai2FirstGames)})`,
 );
 console.log(
-  `   ${label2.padEnd(18)} 後手時 : ${totals.ai2Wins - totals.ai2FirstWins} 勝 / ${N - totals.ai2FirstGames}  (${pct(totals.ai2Wins - totals.ai2FirstWins, N - totals.ai2FirstGames)})`,
+  `   ${label2.padEnd(18)} 蠕梧焔譎・: ${totals.ai2Wins - totals.ai2FirstWins} 蜍・/ ${N - totals.ai2FirstGames}  (${pct(totals.ai2Wins - totals.ai2FirstWins, N - totals.ai2FirstGames)})`,
 );
-// 全体の先手・後手勝率（各試合に必ず先手1人・後手1人いるので分母はN）
+// 蜈ｨ菴薙・蜈域焔繝ｻ蠕梧焔蜍晉紫・亥推隧ｦ蜷医↓蠢・★蜈域焔1莠ｺ繝ｻ蠕梧焔1莠ｺ縺・ｋ縺ｮ縺ｧ蛻・ｯ阪・N・・
 const totalFirstWins = totals.ai1FirstWins + totals.ai2FirstWins;
 const totalSecondWins =
   totals.ai1Wins - totals.ai1FirstWins + (totals.ai2Wins - totals.ai2FirstWins);
 console.log(
-  `\n   先手全体勝率           : ${totalFirstWins} 勝 / ${N}  (${pct(totalFirstWins, N)})`,
+  `\n   蜈域焔蜈ｨ菴灘享邇・          : ${totalFirstWins} 蜍・/ ${N}  (${pct(totalFirstWins, N)})`,
 );
 console.log(
-  `   後手全体勝率           : ${totalSecondWins} 勝 / ${N}  (${pct(totalSecondWins, N)})`,
+  `   蠕梧焔蜈ｨ菴灘享邇・          : ${totalSecondWins} 蜍・/ ${N}  (${pct(totalSecondWins, N)})`,
 );
 
-console.log(`\n${"─".repeat(60)}`);
-console.log(` ■ 平均得点`);
-console.log(`   ${label1.padEnd(18)} : ${avg(totals.ai1ScoreSum, N)} 点/試合`);
-console.log(`   ${label2.padEnd(18)} : ${avg(totals.ai2ScoreSum, N)} 点/試合`);
-
-console.log(`\n${"─".repeat(60)}`);
-console.log(` ■ 技の平均発動回数 (1試合あたり)`);
+console.log(`\n${"笏".repeat(60)}`);
+console.log(` 笆 蟷ｳ蝮・ｾ礼せ`);
 console.log(
-  `   ${label1.padEnd(18)} : ぐるぐる ${avg(totals.ai1Guru, N)} / ざくざく ${avg(totals.ai1Zaku, N)} / ちらちら ${avg(totals.ai1Chira, N)}`,
+  `   ${label1.padEnd(18)} : ${avg(totals.ai1ScoreSum, N)} 轤ｹ/隧ｦ蜷・`,
 );
 console.log(
-  `   ${label2.padEnd(18)} : ぐるぐる ${avg(totals.ai2Guru, N)} / ざくざく ${avg(totals.ai2Zaku, N)} / ちらちら ${avg(totals.ai2Chira, N)}`,
+  `   ${label2.padEnd(18)} : ${avg(totals.ai2ScoreSum, N)} 轤ｹ/隧ｦ蜷・`,
 );
 
-console.log(`\n${"─".repeat(60)}`);
-console.log(` ■ 占い予測的中率`);
+console.log(`\n${"笏".repeat(60)}`);
+console.log(` 笆 謚縺ｮ蟷ｳ蝮・匱蜍募屓謨ｰ (1隧ｦ蜷医≠縺溘ｊ)`);
 console.log(
-  `   ${label1.padEnd(18)} : ${totals.ai1PredHits} 的中 / ${N}  (${pct(totals.ai1PredHits, N)})`,
+  `   ${label1.padEnd(18)} : 縺舌ｋ縺舌ｋ ${avg(totals.ai1Guru, N)} / 縺悶￥縺悶￥ ${avg(totals.ai1Zaku, N)} / 縺｡繧峨■繧・${avg(totals.ai1Chira, N)}`,
 );
 console.log(
-  `   ${label2.padEnd(18)} : ${totals.ai2PredHits} 的中 / ${N}  (${pct(totals.ai2PredHits, N)})`,
+  `   ${label2.padEnd(18)} : 縺舌ｋ縺舌ｋ ${avg(totals.ai2Guru, N)} / 縺悶￥縺悶￥ ${avg(totals.ai2Zaku, N)} / 縺｡繧峨■繧・${avg(totals.ai2Chira, N)}`,
 );
 
-console.log(`\n${"─".repeat(60)}`);
-console.log(` ■ 賽壇の石内訳 (平均/試合)`);
-console.log(`   ${"".padEnd(18)} 自占(+3) 相手占(+5) 中央+(+1) 中央-(−2) 中立`);
+console.log(`\n${"笏".repeat(60)}`);
+console.log(` 笆 蜊縺・ｺ域ｸｬ逧・ｸｭ邇㌔`);
+console.log(
+  `   ${label1.padEnd(18)} : ${totals.ai1PredHits} 逧・ｸｭ / ${N}  (${pct(totals.ai1PredHits, N)})`,
+);
+console.log(
+  `   ${label2.padEnd(18)} : ${totals.ai2PredHits} 逧・ｸｭ / ${N}  (${pct(totals.ai2PredHits, N)})`,
+);
+
+console.log(`\n${"笏".repeat(60)}`);
+console.log(` 笆 雉ｽ螢・・遏ｳ蜀・ｨｳ (蟷ｳ蝮・隧ｦ蜷・`);
+console.log(
+  `   ${"".padEnd(18)} 閾ｪ蜊(+3) 逶ｸ謇句頃(+5) 荳ｭ螟ｮ+(+1) 荳ｭ螟ｮ-(竏・) 荳ｭ遶義`,
+);
 console.log(
   `   ${label1.padEnd(18)} ${avg(totals.ai1Own3, N).padStart(8)} ${avg(totals.ai1Opp5, N).padStart(10)} ${avg(totals.ai1Pos1, N).padStart(9)} ${avg(totals.ai1Neg2, N).padStart(9)} ${avg(totals.ai1Neu0, N)}`,
 );
@@ -1028,6 +1102,6 @@ console.log(
 const ai1NegLoss = (totals.ai1Neg2 * 2) / N;
 const ai2NegLoss = (totals.ai2Neg2 * 2) / N;
 console.log(
-  `\n   マイナス石による失点: ${label1} -${ai1NegLoss.toFixed(2)}点/試合 / ${label2} -${ai2NegLoss.toFixed(2)}点/試合`,
+  `\n   繝槭う繝翫せ遏ｳ縺ｫ繧医ｋ螟ｱ轤ｹ: ${label1} -${ai1NegLoss.toFixed(2)}轤ｹ/隧ｦ蜷・/ ${label2} -${ai2NegLoss.toFixed(2)}轤ｹ/隧ｦ蜷・`,
 );
-console.log(`\n${"═".repeat(60)}\n`);
+console.log(`\n${"━".repeat(60)}\n`);

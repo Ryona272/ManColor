@@ -247,6 +247,7 @@ export class GameScene extends Phaser.Scene {
         rasetsu: "羅刹",
         kisin: "鬼神",
         kyubi: "九尾",
+        ashura: "阿修羅",
         kugutsu: "傀儡",
       };
       const diffColors = {
@@ -255,6 +256,7 @@ export class GameScene extends Phaser.Scene {
         rasetsu: 0xcc3344,
         kisin: 0x9933dd,
         kyubi: 0xc49820,
+        ashura: 0xcc2200,
         kugutsu: 0xaa0000,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
