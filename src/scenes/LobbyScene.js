@@ -5,6 +5,8 @@
   signInWithGoogle,
   signOut,
 } from "../net/firebaseAuth.js";
+import { fetchBattleStats } from "../net/battleLogger.js";
+import { soundManager } from "../audio/SoundManager.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -21,6 +23,7 @@ export class LobbyScene extends Phaser.Scene {
     const W = 1080;
     const H = 1920;
 
+    soundManager.playBgm("lobby");
     this._drawBackground(W, H);
 
     this.add
@@ -264,7 +267,10 @@ export class LobbyScene extends Phaser.Scene {
         ease: "Sine.Out",
       });
     });
-    hitArea.on("pointerdown", onClick);
+    hitArea.on("pointerdown", () => {
+      soundManager.se_button();
+      onClick();
+    });
   }
 
   _showDifficultyPanel() {
@@ -995,6 +1001,33 @@ export class LobbyScene extends Phaser.Scene {
             .setOrigin(0.5);
           objs.push(pt);
         }
+      }
+
+      // 傀儡: 勝率バッジ（左上コーナー）
+      if (item.diff === "kugutsu" && !progressLocked) {
+        const wrTag = this.add
+          .text(rx + 14, iy + 10, "勝率 …", {
+            fontSize: "20px",
+            color: "#6699cc",
+            fontFamily: UI_FONT,
+            alpha: 0.9,
+          })
+          .setDepth(1);
+        objs.push(wrTag);
+        fetchBattleStats(true) // サーバーのみ（全プレイヤー共通統計）
+          .then((stats) => {
+            if (!wrTag.active) return;
+            const ks = stats?.byDifficulty?.kugutsu;
+            if (!ks || ks.total === 0) {
+              wrTag.setText("勝率 -");
+            } else {
+              const pct = Math.round((ks.wins / ks.total) * 100);
+              wrTag.setText(`勝率 ${pct}% (${ks.total}戦)`);
+            }
+          })
+          .catch(() => {
+            if (wrTag.active) wrTag.setText("勝率 -");
+          });
       }
 
       // アニメーション用 objsRange記録

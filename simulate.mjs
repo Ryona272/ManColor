@@ -13,25 +13,16 @@
 import { GameState } from "./src/logic/GameState.js";
 import { shuffle } from "./src/data/constants.js";
 import {
-  KisinV1,
-  KisinV2,
-  KisinV3,
-  SimKisinV1,
-  KugutsuV1,
-  KyubiV1,
-  KyubiV3,
-  SimKyubiV1,
-  AshuraV1,
-  AshuraV2,
+  Kisin,
+  Kugutsu,
+  Kyubi,
+  Ashura,
   AshuraKiller,
-  pickPitTechDfsV1,
-  decidePlacementsFortuneV1,
-  decidePlacementsFortuneKisinV1,
-  decidePlacementsFortuneKisinV3,
-  decidePlacementsFortuneKyubiV1,
-  decidePlacementsFortuneKyubiV3,
-  optimizeSowOrderFortuneV1,
-  optimizeSowOrderFortuneKisinV1,
+  pickPitTechDfs,
+  decidePlacementsFortune,
+  decidePlacementsFortuneKisin,
+  decidePlacementsFortuneKyubi,
+  optimizeSowOrderFortune,
 } from "./src/logic/GameAI.js";
 import {
   DEFAULT_KISIN_PARAMS,
@@ -50,7 +41,6 @@ const AI_LIST = [
   "kyubi",
   "kugutsu",
   "ashura",
-  "ashurav2",
   "ashuraki",
 ];
 const AI_LABELS = {
@@ -60,7 +50,6 @@ const AI_LABELS = {
   kisin: "鬼神",
   kyubi: "九尾",
   ashura: "阿修羅",
-  ashurav2: "阿修羅V2",
   ashuraki: "阿修羅キラー",
 };
 
@@ -156,10 +145,10 @@ function pickPitOppView(
     return validPits[0];
   }
   if (aiName === "rasetsu") {
-    return pickPitTechDfsV1(validPits, state, peeksAI);
+    return pickPitTechDfs(validPits, state, peeksAI);
   }
   if (aiName === "kisin") {
-    return KisinV3(
+    return Kisin(
       validPits,
       state,
       peeksAI,
@@ -170,7 +159,7 @@ function pickPitOppView(
     );
   }
   if (aiName === "kyubi") {
-    return SimKyubiV1(
+    return Kyubi(
       validPits,
       state,
       peeksAI,
@@ -181,21 +170,10 @@ function pickPitOppView(
     );
   }
   if (aiName === "kugutsu") {
-    return KugutsuV1(validPits, state, peeksAI, peeksPlayer, fortune, 3);
-  }
-  if (aiName === "ashurav2") {
-    return AshuraV2(
-      validPits,
-      state,
-      peeksAI,
-      peeksPlayer,
-      fortune,
-      params ?? null,
-      "opp",
-    );
+    return Kugutsu(validPits, state, peeksAI, peeksPlayer, fortune, 3);
   }
   if (aiName === "ashura") {
-    return AshuraV1(
+    return Ashura(
       validPits,
       state,
       peeksAI,
@@ -277,7 +255,7 @@ function getSowOrderForRole(aiName, stones, targets, state, role) {
 
   if (aiName === "ashuraki") {
     // ashuraki: neg遏ｳ繧堤嶌謇句・縺ｸ騾√ｋ謦偵″鬆・怙驕ｩ蛹・
-    return optimizeSowOrderFortuneV1(
+    return optimizeSowOrderFortune(
       stones,
       workTargets,
       workState,
@@ -288,7 +266,7 @@ function getSowOrderForRole(aiName, stones, targets, state, role) {
   }
 
   // kisin / rasetsu / kyubi
-  return optimizeSowOrderFortuneV1(
+  return optimizeSowOrderFortune(
     stones,
     workTargets,
     workState,
@@ -320,32 +298,15 @@ function getPlacementForRole(aiName, pending, state, role) {
 
   let placements;
   if (aiName === "kisin") {
-    placements = decidePlacementsFortuneKisinV3(
-      pending,
-      workState,
-      fortune,
-      {},
-    );
+    placements = decidePlacementsFortuneKisin(pending, workState, fortune, {});
   } else if (
     aiName === "kyubi" ||
     aiName === "ashura" ||
-    aiName === "ashurav2"
+    aiName === "ashuraki"
   ) {
-    placements = decidePlacementsFortuneKyubiV3(
-      pending,
-      workState,
-      fortune,
-      {},
-    );
-  } else if (aiName === "ashuraki") {
-    placements = decidePlacementsFortuneKyubiV3(
-      pending,
-      workState,
-      fortune,
-      {},
-    );
+    placements = decidePlacementsFortuneKyubi(pending, workState, fortune, {});
   } else if (["kugutsu", "rasetsu"].includes(aiName)) {
-    placements = decidePlacementsFortuneV1(pending, workState, fortune, {});
+    placements = decidePlacementsFortune(pending, workState, fortune, {});
   } else {
     // kooni / yasha: 遏ｳ謨ｰ縺悟､壹＞霍ｯ縺九ｉ鬆・↓驟咲ｽｮ
     const lanes = [10, 9, 8, 7, 6];
@@ -369,12 +330,7 @@ function chooseSpecialAction(aiName, gs, role) {
   const peeks = gs.centerPeekProgress[role] ?? 0;
 
   // ashura/kyubi/ashuraki 縺ｯ peeks < 3 縺ｪ繧牙ｸｸ縺ｫ縺｡繧峨■繧・
-  if (
-    aiName === "ashura" ||
-    aiName === "kyubi" ||
-    aiName === "ashuraki" ||
-    aiName === "ashurav2"
-  ) {
+  if (aiName === "ashura" || aiName === "kyubi" || aiName === "ashuraki") {
     if (peeks < 3) return "chirachira";
     // 縺｡繧峨■繧我ｽｿ縺・・繧・竊・縺ｽ縺・⊃縺・ｼ育嶌謇玖ｳｽ螢・↓遏ｳ縺後≠繧後・・・
     const oppStoreIdx = role === "opp" ? 5 : 11;
@@ -491,7 +447,6 @@ function predictOpponentColor(aiName, gs, role) {
       "kugutsu",
       "kyubi",
       "ashura",
-      "ashurav2",
       "ashuraki",
     ].includes(aiName)
   ) {
@@ -568,6 +523,16 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ai1Role: 'opp'=pit6-10, 'self'=pit0-4
   const ai2Role = ai1Role === "opp" ? "self" : "opp";
   const gs = new GameState();
+
+  // 阿修羅: 初期ちらちら2回済み（中央石2枚確認済みでスタート）
+  if (ai1 === "ashura" || ai1 === "ashuraki") {
+    gs.revealNextCenterForPlayer(ai1Role);
+    gs.revealNextCenterForPlayer(ai1Role);
+  }
+  if (ai2 === "ashura" || ai2 === "ashuraki") {
+    gs.revealNextCenterForPlayer(ai2Role);
+    gs.revealNextCenterForPlayer(ai2Role);
+  }
 
   // 繧ｲ繝ｼ繝繝ｫ繝ｼ繝礼畑縺ｮ螟画焚
   let currentRole = ai1Role === "opp" ? "opp" : "self"; // opp蛛ｴ縺悟・謇九↓縺吶ｋ・亥・謇・蠕梧焔縺ｯ蜻ｼ縺ｳ蜈・′豎ｺ螳夲ｼ・

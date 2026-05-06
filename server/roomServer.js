@@ -7,6 +7,63 @@ const DISCONNECT_GRACE_MS = 120000;
 const ACTION_LOG_FILE = (process.env.ACTION_LOG_FILE || "").trim();
 const MAX_LOG_ENTRIES = 50000;
 
+// ─── 対戦記録 ────────────────────────────────────────────────────────────────
+const BATTLE_LOG_FILE = (process.env.BATTLE_LOG_FILE || "").trim();
+const MAX_BATTLE_RECORDS = 10000;
+const battleRecords = []; // { ts, mode, difficulty, result, playerScore, aiScore, turns, techCounts, lossReason }
+
+function _computeKugutsuLevel(records) {
+  const ks = records.filter((r) => r.difficulty === "kugutsu");
+  if (ks.length < 3) return 1;
+  const wins = ks.filter((r) => r.result === "win").length;
+  const winRate = wins / ks.length;
+  const base = Math.min(5, Math.floor(ks.length / 10) + 1);
+  return winRate < 0.25 && base > 1 ? base - 1 : base;
+}
+
+function _aggregateBattleRecords(records) {
+  const stats = {
+    total: records.length,
+    byDifficulty: {},
+    byMode: {},
+    source: "server",
+  };
+  for (const r of records) {
+    const diff = r.difficulty ?? "unknown";
+    if (!stats.byDifficulty[diff]) {
+      stats.byDifficulty[diff] = {
+        total: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        lossReasons: {},
+      };
+    }
+    const d = stats.byDifficulty[diff];
+    d.total++;
+    if (r.result === "win") d.wins++;
+    else if (r.result === "lose") {
+      d.losses++;
+      if (r.lossReason)
+        d.lossReasons[r.lossReason] = (d.lossReasons[r.lossReason] ?? 0) + 1;
+    } else d.draws++;
+
+    const mode = r.mode ?? "unknown";
+    if (!stats.byMode[mode])
+      stats.byMode[mode] = { total: 0, wins: 0, losses: 0, draws: 0 };
+    const m = stats.byMode[mode];
+    m.total++;
+    if (r.result === "win") m.wins++;
+    else if (r.result === "lose") m.losses++;
+    else m.draws++;
+  }
+  // 傀儡レベルを付加
+  if (stats.byDifficulty.kugutsu) {
+    stats.byDifficulty.kugutsu.kugutsuLevel = _computeKugutsuLevel(records);
+  }
+  return stats;
+}
+
 const actionLog = [];
 
 function logAction(room, role, type, detail = {}) {
@@ -111,6 +168,67 @@ const httpServer = http.createServer((req, res) => {
         res.end("Bad Request");
       }
     });
+    return;
+  }
+
+  // ─── 対戦記録: POST /battle-record ───────────────────────────────────────────
+  if (url.pathname === "/battle-record" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 65536) req.destroy();
+    });
+    req.on("end", () => {
+      try {
+        const raw = JSON.parse(body);
+        if (!raw || typeof raw !== "object") throw new Error("invalid");
+        const safe = {
+          ts: typeof raw.ts === "number" ? raw.ts : Date.now(),
+          mode: ["solo", "online"].includes(raw.mode) ? raw.mode : "solo",
+          difficulty:
+            typeof raw.difficulty === "string"
+              ? raw.difficulty.slice(0, 32)
+              : "unknown",
+          result: ["win", "lose", "draw"].includes(raw.result)
+            ? raw.result
+            : "draw",
+          playerScore: Number.isFinite(raw.playerScore) ? raw.playerScore : 0,
+          aiScore: Number.isFinite(raw.aiScore) ? raw.aiScore : 0,
+          turns: Number.isFinite(raw.turns) ? raw.turns : 0,
+          techCounts:
+            raw.techCounts && typeof raw.techCounts === "object"
+              ? raw.techCounts
+              : {},
+          lossReason:
+            typeof raw.lossReason === "string"
+              ? raw.lossReason.slice(0, 64)
+              : null,
+        };
+        battleRecords.push(safe);
+        if (battleRecords.length > MAX_BATTLE_RECORDS) battleRecords.shift();
+        if (BATTLE_LOG_FILE) {
+          try {
+            fs.appendFileSync(BATTLE_LOG_FILE, JSON.stringify(safe) + "\n");
+          } catch (_e) {}
+        }
+        res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
+        res.end();
+      } catch (_e) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad Request");
+      }
+    });
+    return;
+  }
+
+  // ─── 対戦統計: GET /battle-stats ─────────────────────────────────────────────
+  if (url.pathname === "/battle-stats" && req.method === "GET") {
+    const stats = _aggregateBattleRecords(battleRecords);
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify(stats));
     return;
   }
 

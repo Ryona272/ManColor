@@ -1,6 +1,8 @@
 import { STONE_COLORS } from "../data/constants.js";
 import { getPlayerName } from "../net/firebaseAuth.js";
 import { logSoloAction } from "../net/actionLogger.js";
+import { logBattleResult, analyzeLossReason } from "../net/battleLogger.js";
+import { soundManager } from "../audio/SoundManager.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -129,7 +131,10 @@ export class UIScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1)
       .setInteractive();
-    this.surrenderButton.on("pointerdown", () => this._handleSurrender());
+    this.surrenderButton.on("pointerdown", () => {
+      soundManager.se_button();
+      this._handleSurrender();
+    });
     this.surrenderButton.setDepth(DEPTH_MESSAGE);
 
     // ルールボタン（左下・長押しでポップアップ）
@@ -144,7 +149,10 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setInteractive();
     this.rulesButton.setDepth(DEPTH_MESSAGE);
-    this.rulesButton.on("pointerdown", () => this._showRulesPopup());
+    this.rulesButton.on("pointerdown", () => {
+      soundManager.se_button();
+      this._showRulesPopup();
+    });
     this.rulesButton.on("pointerup", () => this._hideRulesPopup());
     this.rulesButton.on("pointerout", () => this._hideRulesPopup());
     this.rulesOverlay = null;
@@ -405,6 +413,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     yesBtn.on("pointerdown", () => {
+      soundManager.se_button();
       container.destroy();
       this.gameScene.surrender();
     });
@@ -422,6 +431,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     noBtn.on("pointerdown", () => {
+      soundManager.se_button();
       container.destroy();
     });
     container.add(noBtn);
@@ -439,6 +449,7 @@ export class UIScene extends Phaser.Scene {
     const state = gs.gameState.getState();
     const fortune = state?.fortune;
     if (!fortune) return;
+    const negOverrideOpp = gs.gameState._negBonusOverride?.opp ?? null;
 
     const W = 1080;
     const H = 1920;
@@ -507,11 +518,15 @@ export class UIScene extends Phaser.Scene {
         this.fortuneSprites.push(q);
       }
 
+      const bonusForOppSide =
+        !isOppView && fc.bonus < 0 && negOverrideOpp != null
+          ? negOverrideOpp
+          : fc.bonus;
       this._drawFortuneScoreText(
         fx,
         fortuneY,
         fc.bonus,
-        fc.bonus,
+        bonusForOppSide,
         0,
         0,
         isOppView,
@@ -808,6 +823,7 @@ export class UIScene extends Phaser.Scene {
     );
     if (shouldAnimateTurnStart && canShowInitialTurnBanner) {
       this.gameScene._clearTurnStartSweep?.();
+      soundManager.se_turnStart(isPlayerTurn);
       if (this.gameScene.mode === "turn") {
         this.showCenterBanner(
           isPlayerTurn ? "あなたの番です" : "相手の番です",
@@ -1008,6 +1024,7 @@ export class UIScene extends Phaser.Scene {
 
       const zone = this.add.zone(x, btnY, 100, 100).setInteractive();
       zone.on("pointerdown", () => {
+        soundManager.se_button();
         this.gameScene.submitOnlineFinalPrediction?.(option.key);
       });
       container.add(zone);
@@ -1433,6 +1450,7 @@ export class UIScene extends Phaser.Scene {
 
   showSpecialChoice() {
     this.hideSpecialChoice();
+    soundManager.se_select();
 
     const W = 1080;
     const H = 1920;
@@ -1472,6 +1490,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     chirachiraButton.on("pointerdown", () => {
+      soundManager.se_button();
       this.gameScene.chooseSpecialAction("chirachira");
     });
     container.add(chirachiraButton);
@@ -1487,6 +1506,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     poipoiButton.on("pointerdown", () => {
+      soundManager.se_button();
       this.gameScene.chooseSpecialAction("poipoi");
     });
     container.add(poipoiButton);
@@ -1502,6 +1522,7 @@ export class UIScene extends Phaser.Scene {
 
   showKutakutaChoice() {
     this.hideKutakutaChoice();
+    soundManager.se_select();
 
     const W = 1080;
     const H = 1920;
@@ -1541,6 +1562,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     kutakutaBtn.on("pointerdown", () => {
+      soundManager.se_button();
       this.gameScene.chooseKutakutaAction("kutakuta");
     });
     container.add(kutakutaBtn);
@@ -1556,6 +1578,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     continueBtn.on("pointerdown", () => {
+      soundManager.se_button();
       this.gameScene.chooseKutakutaAction("madamada");
     });
     container.add(continueBtn);
@@ -1668,6 +1691,8 @@ export class UIScene extends Phaser.Scene {
       return;
     }
 
+    soundManager.se_banner();
+
     this.tweens.add({
       targets: [banner, plaque],
       alpha: 1,
@@ -1717,6 +1742,8 @@ export class UIScene extends Phaser.Scene {
   showResult(options = {}) {
     this.clearCenterBanner();
     this.gameScene.enterFinalPhase();
+    soundManager.stopBgm();
+    soundManager.se_gameEnd();
 
     // 「ゲーム終了！」バナーを表示してから予測フェーズへ
     const W = 1080;
@@ -1861,7 +1888,10 @@ export class UIScene extends Phaser.Scene {
       container.add(sub);
 
       const zone = this.add.zone(x, btnY, 100, 100).setInteractive();
-      zone.on("pointerdown", () => this._resolvePredictionPhase(option.key));
+      zone.on("pointerdown", () => {
+        soundManager.se_button();
+        this._resolvePredictionPhase(option.key);
+      });
       container.add(zone);
     });
 
@@ -2095,42 +2125,53 @@ export class UIScene extends Phaser.Scene {
     const knownNeg = gs._aiKnownNegativeColor?.();
     const knownPos = gs._aiKnownPositiveColors?.() ?? [];
 
-    // pit5に石があれば必ずpit5から、空の場合のみpit11
-    const targetPit =
-      pits[5].stones.length > 0 ? 5 : pits[11].stones.length > 0 ? 11 : null;
-    if (targetPit === null) return;
-
-    let bestStoneIdx = 0;
-    let bestScore = -Infinity;
-
-    pits[targetPit].stones.forEach((stone, idx) => {
+    // pit5の最良石を評価
+    let bestPit5Idx = 0,
+      bestPit5Score = -Infinity;
+    pits[5].stones.forEach((stone, idx) => {
       let score = 0;
-      if (targetPit === 5) {
-        // AI自身の占い色 → 相手に+5点の源泉、最優先で除去
-        if (ownFortune && stone.color === ownFortune) score = 40;
-        // プレイヤーの確定占い色 → +3点（ファイナルフェーズは公開済み確定情報）
-        else if (playerFortune && stone.color === playerFortune) score = 25;
-        // ちらちら確認済み+1石
-        else if (knownPos.includes(stone.color)) score = 10;
-        // 確定マイナス石 → 取るとプレイヤーのマイナスが消えて損、絶対回避
-        if (knownNeg && stone.color === knownNeg) score = -99;
-        // 未確認色でも pit5 にある石は除去対象（score=0のまま）
-      } else {
-        // pit11（自賽壇）: マイナス確定石を優先して捨てる
-        if (knownNeg && stone.color === knownNeg) score = 50;
-        else if (!ownFortune || stone.color !== ownFortune) score = 1;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestStoneIdx = idx;
+      if (ownFortune && stone.color === ownFortune) score = 40;
+      else if (playerFortune && stone.color === playerFortune) score = 25;
+      else if (knownPos.includes(stone.color)) score = 10;
+      if (knownNeg && stone.color === knownNeg) score = -99;
+      if (score > bestPit5Score) {
+        bestPit5Score = score;
+        bestPit5Idx = idx;
       }
     });
 
-    // pit5の場合: 確定マイナス石（-99）以外は全部除去対象
-    // pit11の場合: 常に除去
-    if (targetPit === 11 || bestScore >= 0) {
-      gs.gameState.removeStoneFromPit(targetPit, bestStoneIdx);
+    // pit11（自賽壇）の最良石を評価: 確定マイナス石を最優先で捨てる
+    let bestPit11Idx = -1,
+      bestPit11Score = -Infinity;
+    pits[11].stones.forEach((stone, idx) => {
+      let score = 0;
+      if (knownNeg && stone.color === knownNeg) score = 50;
+      else if (!ownFortune || stone.color !== ownFortune) score = 1;
+      if (score > bestPit11Score) {
+        bestPit11Score = score;
+        bestPit11Idx = idx;
+      }
+    });
+
+    // 価値の高い方のpitから除去（pit11のマイナス石 > pit5の価値石 ならpit11優先）
+    let targetPit = null,
+      bestStoneIdx = 0;
+    const pit5Valid = pits[5].stones.length > 0 && bestPit5Score >= 0;
+    const pit11Valid = bestPit11Idx >= 0 && bestPit11Score > 0;
+
+    if (pit11Valid && (!pit5Valid || bestPit11Score > bestPit5Score)) {
+      targetPit = 11;
+      bestStoneIdx = bestPit11Idx;
+    } else if (pit5Valid) {
+      targetPit = 5;
+      bestStoneIdx = bestPit5Idx;
+    } else if (pit11Valid) {
+      targetPit = 11;
+      bestStoneIdx = bestPit11Idx;
     }
+
+    if (targetPit === null) return;
+    gs.gameState.removeStoneFromPit(targetPit, bestStoneIdx);
   }
 
   _chooseStoreForOppPoipoi() {
@@ -2271,6 +2312,46 @@ export class UIScene extends Phaser.Scene {
           ? "あなたの負け…"
           : "引き分け";
 
+    // 勝敗SE
+    if (ownScore > rivalScore) soundManager.se_win();
+    else if (ownScore < rivalScore) soundManager.se_lose();
+    else soundManager.se_draw();
+    soundManager.playBgm("result");
+
+    // 対戦記録を保存
+    try {
+      const gs = this.gameScene;
+      const result =
+        ownScore > rivalScore ? "win" : ownScore < rivalScore ? "lose" : "draw";
+      if (gs && !gs._isOnlineRoomMode?.()) {
+        const lossReason =
+          result === "lose"
+            ? analyzeLossReason(gs, ownScore, rivalScore)
+            : null;
+        logBattleResult({
+          mode: "solo",
+          difficulty: gs.aiDifficulty ?? "unknown",
+          result,
+          playerScore: ownScore,
+          aiScore: rivalScore,
+          turns: gs.gameState?.getState?.()?.turn ?? 0,
+          techCounts: gs._battleTechCounts ?? {},
+          lossReason,
+        });
+      } else if (gs?._isOnlineRoomMode?.()) {
+        logBattleResult({
+          mode: "online",
+          difficulty: "online",
+          result,
+          playerScore: ownScore,
+          aiScore: rivalScore,
+          turns: gs.gameState?.getState?.()?.turn ?? 0,
+          techCounts: {},
+          lossReason: null,
+        });
+      }
+    } catch (_e) {}
+
     const container = this.add.container(0, 0);
     container.setDepth(DEPTH_MESSAGE);
     this.children.bringToTop(container);
@@ -2346,6 +2427,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     replayBtn.on("pointerdown", () => {
+      soundManager.se_button();
       if (this.gameScene?._isOnlineRoomMode?.()) {
         this.gameScene.requestOnlineRematch?.();
         return;
@@ -2374,9 +2456,10 @@ export class UIScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive();
-    viewBoardBtn.on("pointerdown", () =>
-      this._showBoardView(selfScore, oppScore),
-    );
+    viewBoardBtn.on("pointerdown", () => {
+      soundManager.se_button();
+      this._showBoardView(selfScore, oppScore);
+    });
     container.add(viewBoardBtn);
 
     const homeBtn = this.add
@@ -2390,6 +2473,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive();
     homeBtn.on("pointerdown", () => {
+      soundManager.se_button();
       this._clearResultOverlay();
       this.scene.stop("UIScene");
       this.scene.stop("GameScene");
@@ -2429,9 +2513,10 @@ export class UIScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive();
-    backBtn.on("pointerdown", () =>
-      this._showStaticFinalResult(selfScore, oppScore),
-    );
+    backBtn.on("pointerdown", () => {
+      soundManager.se_button();
+      this._showStaticFinalResult(selfScore, oppScore);
+    });
     container.add(backBtn);
 
     this.resultOverlay = container;
@@ -2574,6 +2659,7 @@ export class UIScene extends Phaser.Scene {
         });
 
         // カウンター更新
+        soundManager.se_score();
         if (isOpp) {
           oppRunning += pts;
           oppCounterText.setText(`${oppLabel}: ${oppRunning}点`);

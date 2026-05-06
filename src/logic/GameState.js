@@ -19,11 +19,22 @@ export class GameState {
     this.placementHistory = [];
     this.centerPeekProgress = { self: 0, opp: 0 };
     this.state.discard = [];
+    // プレイヤー別マイナスボーナス上書き（null = 通常通り fortune.center の bonus を使用）
+    this._negBonusOverride = { self: null, opp: null };
     // 千日手検出
     this._sennitteMap = new Map(); // hash → 出現回数
     this._sennitteLastStoreTotal = -1; // 前回記録時の賽壇総石数（self+opp）
     this._sennitteLastHash = null; // 直前に記録したハッシュ（undoSennitteCheck用）
     this._initBoard();
+  }
+
+  /**
+   * 特定プレイヤーのマイナス石スコアを上書きする（AI能力用）。
+   * @param {"self"|"opp"} player
+   * @param {number} bonus  例: -2
+   */
+  setNegBonusOverride(player, bonus) {
+    this._negBonusOverride[player] = bonus;
   }
 
   /**
@@ -235,7 +246,10 @@ export class GameState {
       } else {
         for (const fc of center) {
           if (stone.color === fc.color) {
-            score += fc.bonus;
+            const override = this._negBonusOverride?.[player];
+            const bonus =
+              fc.bonus < 0 && override != null ? override : fc.bonus;
+            score += bonus;
             break;
           }
         }

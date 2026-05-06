@@ -4,23 +4,25 @@ import { roomClient } from "../net/roomClient.js";
 import { logSoloAction } from "../net/actionLogger.js";
 import { STONE_COLORS, PIT_NAMES } from "../data/constants.js";
 import {
-  updateMemoV1 as aiUpdateMemo,
-  KisinV3 as aiPickPitKisin,
-  KugutsuV1 as aiPickPitKugutsu,
-  pickPitTechDfsV1 as aiPickPitRasetsu,
-  KyubiV3 as aiPickPitKyubi,
-  AshuraV1 as aiPickPitAshura,
-  decidePlacementsFortuneV1 as aiDecidePlacements,
-  decidePlacementsFortuneKisinV3 as aiDecidePlacementsKisin,
-  decidePlacementsFortuneKyubiV3 as aiDecidePlacementsKyubi,
-  optimizeSowOrderFortuneV1 as aiOptimizeSowOrder,
-  optimizeSowOrderFortuneKisinV1 as aiOptimizeSowOrderKisin,
+  updateMemo as aiUpdateMemo,
+  Kisin as aiPickPitKisin,
+  Kugutsu as aiPickPitKugutsu,
+  pickPitTechDfs as aiPickPitRasetsu,
+  Kyubi as aiPickPitKyubi,
+  Ashura as aiPickPitAshura,
+  decidePlacementsFortune as aiDecidePlacements,
+  decidePlacementsFortuneKisin as aiDecidePlacementsKisin,
+  decidePlacementsFortuneKyubi as aiDecidePlacementsKyubi,
+  optimizeSowOrderFortune as aiOptimizeSowOrder,
+  optimizeSowOrderFortuneKisin as aiOptimizeSowOrderKisin,
 } from "../logic/GameAI.js";
 import {
   DEFAULT_KISIN_PARAMS,
   DEFAULT_TEST_KYUBI_PARAMS,
   DEFAULT_KYUBI_PARAMS,
 } from "../data/GameParams.js";
+import { fetchKugutsuLevel } from "../net/battleLogger.js";
+import { soundManager } from "../audio/SoundManager.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -101,6 +103,13 @@ export class GameScene extends Phaser.Scene {
     this.playerFirst = true;
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
+    // 対戦記録用: 技の使用回数カウンタ（self=プレイヤー, opp=AI）
+    this._battleTechCounts = {
+      self: { guru: 0, zaku: 0, chira: 0 },
+      opp: { guru: 0, zaku: 0, chira: 0 },
+    };
+    // 傀儡の DFS 深さ（戦績に応じて成長: 3〜5）
+    this._kugutsuMaxDepth = 3;
   }
 
   init(data) {
@@ -220,6 +229,39 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.gameState.reset();
+
+    // 技カウンタをリセット
+    this._battleTechCounts = {
+      self: { guru: 0, zaku: 0, chira: 0 },
+      opp: { guru: 0, zaku: 0, chira: 0 },
+    };
+    this._kugutsuMaxDepth = 3;
+    // 傀儡は戦績に応じて DFS 深さが成長する（非同期で取得）
+    if (!this._isOnlineRoomMode() && this.aiDifficulty === "kugutsu") {
+      fetchKugutsuLevel()
+        .then((level) => {
+          this._kugutsuMaxDepth = Math.min(5, level + 2);
+        })
+        .catch(() => {});
+    }
+
+    // AI難易度別特殊設定（ソロモードのみ）
+    if (!this._isOnlineRoomMode()) {
+      // 鬼神: AIのマイナス石スコアを-4→-2点に変更（プレイヤーは-4のまま）
+      if (this.aiDifficulty === "kisin") {
+        this.gameState.setNegBonusOverride("opp", -2);
+      }
+      // 九尾: ちらちら1回実行済み（中央石1枚を確認済みでスタート）
+      if (this.aiDifficulty === "kyubi") {
+        this.gameState.revealNextCenterForPlayer("opp");
+      }
+      // 阿修羅: ちらちら2回実行済み（中央石2枚を確認済みでスタート）
+      if (this.aiDifficulty === "ashura") {
+        this.gameState.revealNextCenterForPlayer("opp");
+        this.gameState.revealNextCenterForPlayer("opp");
+      }
+    }
+
     // オンライン時は白(self)が先手、黒(opp)が後手
     this.playerTurn = this._isOnlineRoomMode()
       ? this.onlineSide === "self"
@@ -238,6 +280,9 @@ export class GameScene extends Phaser.Scene {
     this._renderStones();
     this._setupInput();
     this.scene.launch("UIScene", { gameScene: this });
+    soundManager.playBgm(
+      this._isOnlineRoomMode() ? "game" : "game_" + this.aiDifficulty,
+    );
 
     if (!this._isOnlineRoomMode()) {
       // ソロ対戦: AI難易度バナーを表示
@@ -688,6 +733,7 @@ export class GameScene extends Phaser.Scene {
     const selfFortuneY = fortuneY + 220;
     const oppFortuneY = fortuneY - 220;
 
+    const negOverrideOpp = this.gameState._negBonusOverride?.opp ?? null;
     fortune.center.forEach((fc, i) => {
       const fx = W / 2 + (i - 1) * 120;
       const visibleToSelf = fc.seenBy.includes("self");
@@ -704,7 +750,10 @@ export class GameScene extends Phaser.Scene {
       }
       this.stoneSprites.push(g);
 
-      this._drawFortuneScoreText(fx, fortuneY, fc.bonus, fc.bonus, 0, 0);
+      // opp側はnegBonusOverrideを反映（鬼神はマイナス石が-2）
+      const oppBonus =
+        fc.bonus < 0 && negOverrideOpp != null ? negOverrideOpp : fc.bonus;
+      this._drawFortuneScoreText(fx, fortuneY, fc.bonus, oppBonus, 0, 0);
 
       if (!visibleToSelf) {
         const hiddenText = this.add
@@ -1087,6 +1136,7 @@ export class GameScene extends Phaser.Scene {
   playTurnStartSweep(isPlayerTurn = this.playerTurn) {
     this._clearTurnStartSweep();
     if (this.mode !== "turn") return;
+    soundManager.se_turnStart(isPlayerTurn);
 
     const laneIndexes = isPlayerTurn
       ? this._getLocalLaneIndexes()
@@ -1237,6 +1287,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   _flashZakuzakuTarget(pitIndex) {
+    soundManager.se_zakuzaku();
     const pos = this._getViewPos(pitIndex);
     if (!pos) return;
 
@@ -1390,6 +1441,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   _announceTechnique(message, accent = 0xf0c36a, description = null) {
+    // 技の使用回数を記録（対戦分析用）
+    const _role = this.playerTurn ? "self" : "opp";
+    if (message === "ぐるぐる！") {
+      this._battleTechCounts[_role].guru++;
+      soundManager.se_guruguru();
+    } else if (message === "ざくざく！") {
+      this._battleTechCounts[_role]
+        .zaku++; /* se_zakuzaku played by _flashZakuzakuTarget */
+    } else if (message === "ちらちら！") {
+      this._battleTechCounts[_role].chira++;
+      soundManager.se_chirachira();
+    } else if (message.includes("ぽいぽい")) soundManager.se_poipoi();
+    else if (message.includes("くたくた")) soundManager.se_kutakuta();
     this.scene.get("UIScene").showCenterBanner(message, accent, description);
   }
 
@@ -1501,9 +1565,6 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // 千日手チェック（プレイヤーが撒く直前）
-    if (this._checkSennitteAndHandle()) return;
-
     this._clearTurnLaneGuidance();
     state.pits[pitIndex].stones = [];
     this.mode = "sowing";
@@ -1513,6 +1574,7 @@ export class GameScene extends Phaser.Scene {
     this.sowSourcePitIndex = pitIndex;
     this.selectedPlacementStoneIndex = 0;
     this._renderStones();
+    soundManager.se_sow();
     this.scene.get("UIScene").showSowingPrompt(null, this.sowPending.length);
   }
 
@@ -1636,6 +1698,7 @@ export class GameScene extends Phaser.Scene {
     const targetPit = this.sowTargets.shift();
     const [stone] = this.sowPending.splice(pendingIndex, 1);
     this.gameState.getState().pits[targetPit].stones.push(stone);
+    soundManager.se_sowStone();
     this.sowHistory.push({ targetPit, stone, pendingIndex });
 
     // AI向け: プレイヤー(self)の撒きで pit11 に入った石を記録（neg色推定用）
@@ -1668,8 +1731,6 @@ export class GameScene extends Phaser.Scene {
     if (!last) {
       // まだ1個も置いていない最初の状態なら、元の路へ戻して再選択可能にする
       if (this.sowSourcePitIndex != null && this.sowPending.length > 0) {
-        // 選択時に記録した千日手ハッシュをアンドゥ（盤面が元に戻るので）
-        this.gameState.undoSennitteCheck();
         this.gameState.getState().pits[this.sowSourcePitIndex].stones = [
           ...this.sowPending,
         ];
@@ -1752,6 +1813,9 @@ export class GameScene extends Phaser.Scene {
       this.scene.get("UIScene").showResult();
       return;
     }
+
+    // 千日手チェック（撒き＋配置完了後）
+    if (this._checkSennitteAndHandle(false)) return;
 
     if (
       !extraTurn &&
@@ -2123,9 +2187,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 千日手チェック（AI撒く直前）
-    if (this._checkSennitteAndHandle()) return;
-
     // 全難易度: ターン開始時に相手の意図を更新（ぽいぽい石選択に使う）
     this._aiUpdateMemo(state);
 
@@ -2136,18 +2197,19 @@ export class GameScene extends Phaser.Scene {
   /**
    * 千日手チェック。
    * 0=問題なし → false を返す（呼び元は処理続行）
-   * 1=2回目 → 警告表示して操作ロック、true を返す（呼び元は中断）
+   * 1=2回目 → 警告表示。lockOnWarning=true なら操作ロック（旧来）、false なら警告のみで継続
    * 2以上=3回目以降 → 引き分け強制終了、true を返す
+   * @param {boolean} lockOnWarning 警告時に操作をロックするか（撒き後チェックではfalse）
    */
-  _checkSennitteAndHandle() {
+  _checkSennitteAndHandle(lockOnWarning = true) {
     const level = this.gameState.checkSennitte();
     if (level === 0) return false;
 
     const ui = this.scene.get("UIScene");
-    this.mode = "sennitte-lock"; // 操作ロック
 
     if (level >= 2) {
-      // 引き分け
+      // 引き分け（常にロック）
+      this.mode = "sennitte-lock";
       ui.showCenterBanner("引き分け", 0x888888, "同じ局面が繰り返されました");
       this.time.delayedCall(2500, () => {
         this._forceDraw();
@@ -2156,23 +2218,34 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 警告（1回目）
-    ui.showCenterBanner("警告", 0xff8800, "同じ操作が繰り返されました");
-    this.time.delayedCall(2500, () => {
-      ui.showCenterBanner(
-        "警告",
-        0xff4400,
-        "この操作を続けると無効試合となります",
-      );
+    if (lockOnWarning) {
+      this.mode = "sennitte-lock";
+      ui.showCenterBanner("警告", 0xff8800, "同じ操作が繰り返されました");
       this.time.delayedCall(2500, () => {
-        this.mode = "turn";
-        ui.clearCenterBanner();
-        // 操作ロック解除後にターンを戻す
-        if (!this.playerTurn) {
-          this.time.delayedCall(500, () => this._aiTurn());
-        }
+        ui.showCenterBanner(
+          "警告",
+          0xff4400,
+          "この操作を続けると無効試合となります",
+        );
+        this.time.delayedCall(2500, () => {
+          this.mode = "turn";
+          ui.clearCenterBanner();
+          if (!this.playerTurn) {
+            this.time.delayedCall(500, () => this._aiTurn());
+          }
+        });
       });
-    });
-    return true;
+      return true;
+    }
+
+    // lockOnWarning=false: 警告バナーを一時表示するだけ、ターン継続
+    ui.showCenterBanner(
+      "警告",
+      0xff8800,
+      "同じ局面が繰り返されました\nもう一度繰り返すと引き分けになります",
+    );
+    this.time.delayedCall(3000, () => ui.clearCenterBanner());
+    return false;
   }
 
   /** 引き分け強制終了 */
@@ -2451,7 +2524,7 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      3,
+      this._kugutsuMaxDepth,
     );
   }
 
@@ -2491,7 +2564,7 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      { opponentSentColors: [...this._ashuraReceivedColors] },
+      {},
       "opp",
     );
   }
@@ -2574,6 +2647,7 @@ export class GameScene extends Phaser.Scene {
     return aiOptimizeSowOrder(stones, targets, state, fortune, memo, {
       dynamicUnknownPenalty: true,
       unknownPenaltyScale: 30,
+      ignoreNegForStore: this.aiDifficulty === "kisin",
     });
   }
 
@@ -2594,6 +2668,7 @@ export class GameScene extends Phaser.Scene {
       .get("UIScene")
       ?.showCenterBanner("相手が撒いています", 0xf3b7b7, null, false, true);
     this.scene.get("UIScene")?.updateOppHandDisplay(this.sowPending);
+    soundManager.se_sow();
     this._aiSowNextStone();
   }
 
@@ -2608,6 +2683,7 @@ export class GameScene extends Phaser.Scene {
       const targetPit = this.sowTargets.shift();
       const [stone] = this.sowPending.splice(0, 1);
       this.gameState.getState().pits[targetPit].stones.push(stone);
+      soundManager.se_sowStone();
       this.sowHistory.push({ targetPit, stone, pendingIndex: 0 });
       this._renderStones();
       this.scene.get("UIScene")?.updateOppHandDisplay(this.sowPending);
@@ -3264,6 +3340,9 @@ export class GameScene extends Phaser.Scene {
       this.scene.get("UIScene").showResult();
       return;
     }
+
+    // 千日手チェック（AI撒き＋配置完了後）
+    if (this._checkSennitteAndHandle(false)) return;
 
     if (!extraTurn && this.gameState.canActivateKutakuta("opp")) {
       const selfStoreCount = this.gameState.getState().pits[5].stones.length;
