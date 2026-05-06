@@ -17,7 +17,7 @@
 
 # 1. AI能力一覧
 
-最終更新: 2026-04-28
+最終更新: 2026-05-06
 
 ---
 
@@ -26,18 +26,22 @@
 #### 路選択
 
 - `KugutsuV1` — 5手DFS・攻守バランス型 → **kugutsu（傀儡）**
-- `KisinV1` / `KisinV2` — ぐるぐる連鎖特化DFS → **kisin（鬼神）**（V2が現行ゲーム用）
+- `KisinV1` / `KisinV2` / `KisinV3` — ぐるぐる連鎖特化DFS → **kisin（鬼神）**（**V3が現行ゲーム用**）
 - `pickPitTechDfsV1` — 技特化3手DFS → **rasetsu（羅刹）**
 - `KyubiV1` — KugutsuV1 完コピ（ベースライン）
-- `KyubiV2` — 知力特化DFS（ちらちら・ざくざく・妨害）→ **kyubi（九尾）**（現行ゲーム用）
+- `KyubiV2` / `KyubiV3` — 知力特化DFS（ちらちら・ざくざく・妨害）→ **kyubi（九尾）**（**V3が現行ゲーム用**）
+- `AshuraV1` / `AshuraV2` — バランス型DFS（ぐるぐる連鎖+ちらちら+neg送出）→ **ashura（阿修羅）**（**V2が現行ゲーム用**）
+- `AshuraKiller` — **シミュ用**（AshuraV2対策テストAI）
 
 #### ざくざく配置・撒き順
 
-- `decidePlacementsFortuneKisinV1` — 確定情報のみ・ぐるぐる/ちらちら圏最適配置 → **kisin専用**
+- `decidePlacementsFortuneKisinV3` — negデコイ配置（neg石を対面ざくざく路へ誘導）→ **kisin専用（現行）**
+- `decidePlacementsFortuneKisinV1` — `decidePlacementsFortuneV1` のラッパー（旧版）
 - `optimizeSowOrderFortuneKisinV1` — 確定情報のみ・撒き前石並び替え → **kisin専用**
-- `decidePlacementsFortuneKyubiV1` — pit10/pit9 集中配置（ちらちら目標） → **kyubi専用（ラウンド開始時）**
-- `decidePlacementsFortuneV1` — 占い情報活用の最適配置 → **rasetsu・kugutsu共通**（kyubiのざくざく後も使用）
-- `optimizeSowOrderFortuneV1` — 撒き前の石並び替え → **rasetsu・kyubi・kugutsu共通**
+- `decidePlacementsFortuneKyubiV3` — color classスコア（neg→相手賽壇、pos/own→AI賽壇）→ **kyubi・ashura専用（現行）**
+- `decidePlacementsFortuneKyubiV1` — pit10/pit9 集中配置（旧版）
+- `decidePlacementsFortuneV1` — 占い情報活用の最適配置 → **rasetsu・kugutsu共通**（ざくざく後も使用）
+- `optimizeSowOrderFortuneV1` — 撒き前の石並び替え → **rasetsu・kisin・kyubi・ashura共通**
 
 #### SimAI専用
 
@@ -59,8 +63,9 @@ flowchart TD
     D -->|rasetsu| C{ちらちら消費 < 3?}
     C -->|Yes| P5["pit5 着地を最優先"]
     C -->|No| T["pickPitTechDfsV1\n3手DFS・ぐるぐる連鎖最大化"]
-    D -->|kisin| K["KisinV2\nぐるぐる連鎖特化DFS"]
-    D -->|kyubi| Q["KyubiV2\n知力特化DFS（ちらちら・ざくざく）"]
+    D -->|kisin| K["KisinV3\nぐるぐる連鎖特化DFS"]
+    D -->|kyubi| Q["KyubiV3\n知力特化DFS（ちらちら・ざくざく）"]
+    D -->|ashura| A2["AshuraV2\nバランスDFS（ぐるぐる+ちらちら+neg送出）"]
     D -->|kugutsu| G["KugutsuV1\n5手DFS・攻守バランス評価"]
 ```
 
@@ -166,13 +171,8 @@ midUnknownPenalty（未確定石）
 
 ```
 ✗ なし  →  kooni / yasha / kugutsu
-○ あり（確定情報のみ）
-        →  kisin  optimizeSowOrderFortuneKisinV1
-            └ 自賽壇: 自占い(+3) > 確定ポジ(+1) > 不明 > ネガ厳禁
-            └ 相手賽壇: ネガ色を流し込む
-            └ メモ推測・ランダム性なし
 ○ あり（メモ推測込み）
-        →  rasetsu / kyubi  optimizeSowOrderFortuneV1
+        →  rasetsu / kisin / kyubi / ashura  optimizeSowOrderFortuneV1
             └ 高価値石 → pit11（AI賽壇）
             └ 低価値石 → pit5（相手賽壇）
             └ 優先順: 推測相手占い色 > 自占い色 > 確認プラス色 > 確定マイナス（絶対入れない）
@@ -184,12 +184,13 @@ midUnknownPenalty（未確定石）
 ランダム         kooni
 占い色優先        yasha    → 自占い色ならぐるぐるセットアップ路へ / それ以外は非空路ランダム
 リスク回避        rasetsu  → ぐるぐるセットアップ路優先 + 被ざくざくリスクの低い路をさらに優先
-Kisin専用        kisin    decidePlacementsFortuneKisinV1
-              → 各路が[ちらちら圏-2, ちらちら圏]なら ちらちら数を目標
-              → それ以外はぐるぐる数を目標 / 確定情報のみで色割り当て
-Kyubi専用        kyubi    decidePlacementsFortuneKyubiV1（ラウンド開始時）
-              → pit10/pit9 集中・ちらちら回数目標
-スコア最適（推測込み） kyubi（ざくざく後）/ kugutsu  decidePlacementsFortuneV1
+Kisin専用        kisin    decidePlacementsFortuneKisinV3（現行）
+              → neg石を対面ざくざく路へ優先配置（デコイ）
+              → pos/own/inferred石はpit11方向へ / 確定情報＋メモ推測込み
+Kyubi/Ashura専用 kyubi / ashura  decidePlacementsFortuneKyubiV3（現行）
+              → color class scoring: neg→相手賽壇(+100) / own/pos→AI賽壇(+50)
+              → 未確認石は相手賽壇へやや誘導(-300は自AI賽壇)
+スコア最適       kugutsu  decidePlacementsFortuneV1
               → 知識色込みスコアで全路評価し最適配置
 ```
 
@@ -228,8 +229,8 @@ flowchart TD
 ### くたくた発動条件
 
 ```
-標準（AI賽壇 ≥ 相手賽壇）       →  kooni / yasha / rasetsu / kugutsu
-条件付き（AI賽壇 ≥ 相手賽壇 × 2）→  kisin のみ  ← AI石が相手の2倍以上で発動
+標準（AI賽壇 ≥ 相手賽壇）       →  kooni / yasha / rasetsu / kugutsu / kyubi
+条件なし（発動可能なら常に発動）  →  kisin / ashura
 ```
 
 ### 予測フェーズ（ゲーム終了後の占い色当て）
@@ -283,19 +284,28 @@ flowchart TD
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ 🟣 kisin（鬼神）                               ぐるぐる連鎖特化型 │
-│  路選択: KisinV2（5路5深DFS）                                 │
-│    ぐるぐる最優先 / ちらちら・ざくざくはぐるぐる連鎖後のみ    │
-│  撒き順: ○（Kisin専用・確定情報のみ）                         │
-│  配置: Kisin専用（ぐるぐる/ちらちら圏判定・確定情報のみ）      │
-│  ちらちら: 価値比較   くたくた: 条件付き（AI ≥ 相手×2）       │
-│  予測: 推測色   色読みなし（確定情報のみ・メモ推測なし）        │
+│  路選択: KisinV3（ぐるぐる連鎖特化DFS・neg比率追跡）          │
+│    ぐるぐる最優先 / neg色をデコイとしてざくざく路へ誘導        │
+│  撒き順: ○（optimizeSowOrderFortuneV1・メモ推測込み）         │
+│  配置: decidePlacementsFortuneKisinV3（negデコイ配置）        │
+│  ちらちら: 価値比較   くたくた: 発動可能なら常に発動           │
+│  予測: 推測色                                                 │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ 🟡 kyubi（九尾）                               知力・ちらちら特化型│
-│  路選択: KyubiV2（ちらちら×3・ざくざく超優先・妨害）          │
-│  配置: pit10/pit9集中（KyubiV1専用）→ ざくざく後はスコア最適  │
+│  路選択: KyubiV3（ちらちら×3・color class DFS・妨害）         │
+│  配置: decidePlacementsFortuneKyubiV3（neg→相手賽壇誘導）     │
 │  撒き順: ○   ちらちら: 全3回最優先                            │
 │  くたくた: 標準   予測: 推測色                                │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ 🔴 ashura（阿修羅）                            全方位バランス型  │
+│  路選択: AshuraV2（depth=5 DFS・ぐるぐる+ちらちら+neg送出）   │
+│  配置: decidePlacementsFortuneKyubiV3（kyubiと共通）          │
+│  撒き順: ○（optimizeSowOrderFortuneV1・メモ推測込み）         │
+│  ちらちら: 全3回最優先（kyubiと同じ）                         │
+│  くたくた: 発動可能なら常に発動（kisinと同じ）                 │
+│  予測: 推測色                                                 │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
 │ ⚫ kugutsu（傀儡）                             攻守バランス型  │
@@ -313,9 +323,6 @@ flowchart TD
 # 2. やることリスト
 
 ---
-
-阿修羅改善案
-マイナスだと思われる石は竹に溜めて、確実にプラスになる石が来たタイミングでちらちらが狙えればやるし、できなくても相手にネガ石を送れる。
 
 ## 2-1. ゲーム性に関するメモ（検討中）
 
