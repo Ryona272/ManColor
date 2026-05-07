@@ -96,19 +96,17 @@ export class LobbyScene extends Phaser.Scene {
       title: "ランダム対戦",
       sub: "オンラインで自動マッチ",
       fill: 0x7a3f45,
-      onClick: () => this.scene.start("RandomLobbyScene"),
+      onClick: () => {
+        if (!getStoredUser()) {
+          this._showNotice("ランダム対戦にはGoogleログインが必要です");
+          return;
+        }
+        this.scene.start("RandomLobbyScene");
+      },
     });
 
-    this.noticeText = this.add
-      .text(W / 2, 1490, "まずはソロで遊べます", {
-        fontSize: "30px",
-        color: "#b8c8de",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.95);
-
     this._createPlayerPanel(W, H);
+    this._createSoundButton(W);
 
     // 阿修羅解放チェック: 条件が揃っていてまだ演出未表示なら自動でパネルを開く
     this.time.delayedCall(300, () => {
@@ -124,6 +122,173 @@ export class LobbyScene extends Phaser.Scene {
         }
       } catch (_) {}
     });
+  }
+
+  _createSoundButton(W) {
+    // ⚙ ボタン（右上コーナー）
+    const bx = W - 80,
+      by = 80,
+      br = 44;
+    const g = this.add.graphics();
+    g.fillStyle(0x1a1e2e, 0.85);
+    g.fillCircle(bx, by, br);
+    g.lineStyle(1.5, 0xe5d5b1, 0.4);
+    g.strokeCircle(bx, by, br);
+
+    const icon = this.add
+      .text(bx, by, "⚙", {
+        fontSize: "44px",
+        color: "#d4c89a",
+      })
+      .setOrigin(0.5);
+
+    const hit = this.add.zone(bx, by, br * 2, br * 2).setInteractive();
+    hit.on("pointerover", () => icon.setAlpha(0.7));
+    hit.on("pointerout", () => icon.setAlpha(1.0));
+    hit.on("pointerdown", () => {
+      soundManager.se_button();
+      this._showVolumePanel();
+    });
+  }
+
+  _showVolumePanel() {
+    const W = 1080;
+    const objs = [];
+
+    const overlay = this.add.rectangle(W / 2, 960, W, 1920, 0x000000, 0.72);
+    overlay.setInteractive();
+    objs.push(overlay);
+
+    const close = () => {
+      objs.forEach((o) => o.destroy());
+    };
+    overlay.on("pointerdown", close);
+
+    // パネル本体
+    const pw = 700,
+      ph = 480,
+      px = W / 2 - pw / 2,
+      py = 700;
+    const panelG = this.add.graphics();
+    panelG.fillStyle(0x080d18, 1);
+    panelG.fillRoundedRect(px, py, pw, ph, 24);
+    panelG.lineStyle(1.5, 0xe5d5b1, 0.4);
+    panelG.strokeRoundedRect(px, py, pw, ph, 24);
+    objs.push(panelG);
+
+    const title = this.add
+      .text(W / 2, py + 52, "音量設定", {
+        fontSize: "46px",
+        color: "#f4deb1",
+        fontFamily: DISPLAY_FONT,
+        stroke: "#000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5);
+    objs.push(title);
+
+    // 閉じるボタン
+    const closeBtn = this.add
+      .text(px + pw - 28, py + 28, "✕", {
+        fontSize: "38px",
+        color: "#c0a888",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    closeBtn.on("pointerdown", close);
+    objs.push(closeBtn);
+
+    // スライダー共通設定
+    const trackW = 520,
+      trackH = 12,
+      thumbR = 26;
+    const sliderX = W / 2 - trackW / 2;
+
+    const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
+      const label = this.add
+        .text(W / 2 - trackW / 2, rowY - 36, labelText, {
+          fontSize: "32px",
+          color: "#d7e2f1",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0, 0.5);
+      objs.push(label);
+
+      const trackG = this.add.graphics();
+      const redrawTrack = (ratio) => {
+        trackG.clear();
+        // トラック背景
+        trackG.fillStyle(0x2a2e40, 1);
+        trackG.fillRoundedRect(
+          sliderX,
+          rowY - trackH / 2,
+          trackW,
+          trackH,
+          trackH / 2,
+        );
+        // 塗り済み部分
+        trackG.fillStyle(0xf0d39a, 1);
+        trackG.fillRoundedRect(
+          sliderX,
+          rowY - trackH / 2,
+          trackW * ratio,
+          trackH,
+          trackH / 2,
+        );
+        // サム
+        trackG.fillStyle(0xfff8e6, 1);
+        trackG.fillCircle(sliderX + trackW * ratio, rowY, thumbR);
+        trackG.lineStyle(2, 0xc8a860, 1);
+        trackG.strokeCircle(sliderX + trackW * ratio, rowY, thumbR);
+      };
+
+      let ratio = getValue();
+      redrawTrack(ratio);
+      objs.push(trackG);
+
+      // パーセント表示
+      const valText = this.add
+        .text(sliderX + trackW + 30, rowY, `${Math.round(ratio * 100)}%`, {
+          fontSize: "30px",
+          color: "#f4deb1",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0, 0.5);
+      objs.push(valText);
+
+      // インタラクティブ領域（トラック全体＋サム分余白）
+      const zone = this.add
+        .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
+        .setInteractive();
+
+      const updateFromPointer = (ptr) => {
+        const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
+        ratio = rx / trackW;
+        redrawTrack(ratio);
+        valText.setText(`${Math.round(ratio * 100)}%`);
+        onChangeValue(ratio);
+      };
+
+      zone.on("pointerdown", updateFromPointer);
+      zone.on("pointermove", (ptr) => {
+        if (ptr.isDown) updateFromPointer(ptr);
+      });
+      objs.push(zone);
+    };
+
+    makeSlider(
+      "BGM",
+      py + 180,
+      () => soundManager._bgmVolume,
+      (v) => soundManager.setBgmVolume(v),
+    );
+
+    makeSlider(
+      "効果音",
+      py + 350,
+      () => soundManager._seVolume,
+      (v) => soundManager.setSeVolume(v),
+    );
   }
 
   _drawBackground(W, H) {
@@ -1012,7 +1177,7 @@ export class LobbyScene extends Phaser.Scene {
             fontFamily: UI_FONT,
             alpha: 0.9,
           })
-          .setDepth(1);
+          .setDepth(0);
         objs.push(wrTag);
         fetchBattleStats(true) // サーバーのみ（全プレイヤー共通統計）
           .then((stats) => {
@@ -1774,16 +1939,34 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   _showNotice(message) {
-    if (!this.noticeText) return;
-    this.noticeText.setText(message);
-    this.noticeText.setAlpha(1);
-
-    this.tweens.killTweensOf(this.noticeText);
-    this.tweens.add({
-      targets: this.noticeText,
-      alpha: 0.55,
-      duration: 1400,
-      ease: "Sine.Out",
+    const W = 1080;
+    if (this._noticeTween) {
+      this._noticeTween.stop();
+      this._noticeObj?.destroy();
+    }
+    const tx = this.add
+      .text(W / 2, 1420, message, {
+        fontSize: "30px",
+        color: "#ffcc88",
+        fontFamily: UI_FONT,
+        stroke: "#000000",
+        strokeThickness: 4,
+        backgroundColor: "#1a1e2e",
+        padding: { x: 24, y: 14 },
+      })
+      .setOrigin(0.5)
+      .setDepth(999)
+      .setAlpha(1);
+    this._noticeObj = tx;
+    this._noticeTween = this.tweens.add({
+      targets: tx,
+      alpha: 0,
+      delay: 2200,
+      duration: 700,
+      ease: "Sine.In",
+      onComplete: () => {
+        if (tx.active) tx.destroy();
+      },
     });
   }
 

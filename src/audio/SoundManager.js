@@ -27,6 +27,8 @@ class SoundManager {
     this._bgmPitch = 0.5; // global BGM transpose (0.5 = 1 octave down)
     this._scoreStep = 0;
     this._sowStep = 0;
+    this._htmlAudio = null; // for MP3-backed BGM keys
+    this._loadVolumes();
   }
 
   // ---------------------------------------------------------------------------
@@ -369,34 +371,34 @@ class SoundManager {
     if (!ctx) return;
     const t = ctx.currentTime;
     // Coin ring: instant attack, slow metallic ring-down (sine pairs for bell quality)
-    this._osc(3136, 0.7, {
-      vol: 0.38,
+    this._osc(1568, 0.7, {
+      vol: 0.18,
       t,
       attack: 0.001,
       release: 0.55,
       wet: 0.45,
-    }); // G7 fundamental
-    this._osc(4186, 0.55, {
-      vol: 0.22,
+    }); // G6 fundamental
+    this._osc(2093, 0.55, {
+      vol: 0.12,
       t,
       attack: 0.001,
       release: 0.4,
       wet: 0.4,
-    }); // C8 overtone
-    this._osc(2637, 0.85, {
-      vol: 0.18,
+    }); // C7 overtone
+    this._osc(1319, 0.85, {
+      vol: 0.1,
       t,
       attack: 0.001,
       release: 0.7,
       wet: 0.38,
-    }); // E7 sub-ring
+    }); // E6 sub-ring
     // Strike transient: very short bright noise burst
-    this._noise(0.03, { vol: 0.3, bandFreq: 8000, q: 0.9, t, wet: 0.15 });
+    this._noise(0.03, { vol: 0.15, bandFreq: 4000, q: 0.9, t, wet: 0.15 });
     // Tiny pitch drop for natural "ringing coin" feel
-    this._osc(3136, 0.6, {
-      vol: 0.12,
+    this._osc(1568, 0.6, {
+      vol: 0.07,
       t: t + 0.01,
-      freqEnd: 3000,
+      freqEnd: 1500,
       attack: 0.001,
       release: 0.5,
       wet: 0.4,
@@ -566,6 +568,10 @@ class SoundManager {
   // BGM
   // ---------------------------------------------------------------------------
 
+  // Keys listed here are played from an MP3 file in /audio/<key>.mp3
+  // instead of the procedural synth engine.
+  static MP3_KEYS = new Set(["lobby"]);
+
   playBgm(key) {
     if (this._currentBgm === key) return;
     // Cancel any pending gain-restore from a previous stopBgm()
@@ -576,12 +582,26 @@ class SoundManager {
     this.stopBgm();
     this._currentBgm = key;
     this._bgmActive = true;
-    this._loopBgm(key, 0);
+    if (SoundManager.MP3_KEYS.has(key)) {
+      this._ctx(); // ensure AudioContext is running
+      const audio = new Audio(`./audio/${key}.mp3`);
+      audio.loop = true;
+      audio.volume = this._bgmVolume;
+      audio.play().catch(() => {});
+      this._htmlAudio = audio;
+    } else {
+      this._loopBgm(key, 0);
+    }
   }
 
   stopBgm() {
     this._bgmActive = false;
     this._currentBgm = null;
+    if (this._htmlAudio) {
+      this._htmlAudio.pause();
+      this._htmlAudio.src = "";
+      this._htmlAudio = null;
+    }
     if (this._bgmLoopTimer !== null) {
       clearTimeout(this._bgmLoopTimer);
       this._bgmLoopTimer = null;
@@ -1101,11 +1121,27 @@ class SoundManager {
   setSeVolume(v) {
     this._seVolume = Math.max(0, Math.min(1, v));
     if (this._seBus) this._seBus.gain.value = this._seVolume;
+    try {
+      localStorage.setItem("seVolume", this._seVolume);
+    } catch (_) {}
   }
 
   setBgmVolume(v) {
     this._bgmVolume = Math.max(0, Math.min(1, v));
     if (this._bgmBus) this._bgmBus.gain.value = this._bgmVolume;
+    if (this._htmlAudio) this._htmlAudio.volume = this._bgmVolume;
+    try {
+      localStorage.setItem("bgmVolume", this._bgmVolume);
+    } catch (_) {}
+  }
+
+  _loadVolumes() {
+    try {
+      const bgm = parseFloat(localStorage.getItem("bgmVolume"));
+      const se = parseFloat(localStorage.getItem("seVolume"));
+      if (!isNaN(bgm)) this._bgmVolume = Math.max(0, Math.min(1, bgm));
+      if (!isNaN(se)) this._seVolume = Math.max(0, Math.min(1, se));
+    } catch (_) {}
   }
 }
 

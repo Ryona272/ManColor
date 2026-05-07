@@ -157,6 +157,37 @@ export class UIScene extends Phaser.Scene {
     this.rulesButton.on("pointerout", () => this._hideRulesPopup());
     this.rulesOverlay = null;
 
+    // ⚙ 音量ボタン（ルールボタンの真右）
+    // 直径 = ルールボタンの高さ (fontSize28 + paddingY*2=24) = 52px → 半径26
+    const gearBR = 31;
+    const gearX = 250,
+      gearY = 1920 - 16 - gearBR; // ルールボタン下端 1904 から中心を合わせる
+    const gearG = this.add.graphics();
+    gearG.fillStyle(0x1a1e2e, 0.85);
+    gearG.fillCircle(gearX, gearY, gearBR);
+    gearG.lineStyle(1.5, 0xe5d5b1, 0.4);
+    gearG.strokeCircle(gearX, gearY, gearBR);
+    gearG.setDepth(DEPTH_MESSAGE);
+
+    const gearIcon = this.add
+      .text(gearX, gearY, "⚙", {
+        fontSize: "34px",
+        color: "#d4c89a",
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTH_MESSAGE);
+
+    const gearHit = this.add
+      .zone(gearX, gearY, gearBR * 2, gearBR * 2)
+      .setInteractive()
+      .setDepth(DEPTH_MESSAGE);
+    gearHit.on("pointerover", () => gearIcon.setAlpha(0.7));
+    gearHit.on("pointerout", () => gearIcon.setAlpha(1.0));
+    gearHit.on("pointerdown", () => {
+      soundManager.se_button();
+      this._showVolumePanel();
+    });
+
     // オンライン対戦時のプレイヤー名ラベル
     const isOnline = this.gameScene._isOnlineRoomMode?.() ?? false;
     const selfName = this.gameScene.selfPlayerName;
@@ -189,6 +220,141 @@ export class UIScene extends Phaser.Scene {
     this.refreshFortuneAndDiscard();
     this.gameScene.refreshTurnLaneGuidance?.(
       (this.gameScene.playerTurn ?? true) && this.gameScene.mode === "turn",
+    );
+  }
+
+  _showVolumePanel() {
+    const W = 1080;
+    const objs = [];
+
+    const overlay = this.add.rectangle(W / 2, 960, W, 1920, 0x000000, 0.72);
+    overlay.setInteractive();
+    overlay.setDepth(DEPTH_BANNER_TOP + 10);
+    objs.push(overlay);
+
+    const close = () => {
+      objs.forEach((o) => o.destroy());
+    };
+    overlay.on("pointerdown", close);
+
+    const pw = 700,
+      ph = 480,
+      px = W / 2 - pw / 2,
+      py = 700;
+    const panelG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
+    panelG.fillStyle(0x080d18, 1);
+    panelG.fillRoundedRect(px, py, pw, ph, 24);
+    panelG.lineStyle(1.5, 0xe5d5b1, 0.4);
+    panelG.strokeRoundedRect(px, py, pw, ph, 24);
+    objs.push(panelG);
+
+    const titleTx = this.add
+      .text(W / 2, py + 52, "音量設定", {
+        fontSize: "46px",
+        color: "#f4deb1",
+        fontFamily: DISPLAY_FONT,
+        stroke: "#000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTH_BANNER_TOP + 11);
+    objs.push(titleTx);
+
+    const closeBtn = this.add
+      .text(px + pw - 28, py + 28, "✕", {
+        fontSize: "38px",
+        color: "#c0a888",
+      })
+      .setOrigin(0.5)
+      .setInteractive()
+      .setDepth(DEPTH_BANNER_TOP + 11);
+    closeBtn.on("pointerdown", close);
+    objs.push(closeBtn);
+
+    const trackW = 520,
+      trackH = 12,
+      thumbR = 26;
+    const sliderX = W / 2 - trackW / 2;
+
+    const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
+      const lbl = this.add
+        .text(sliderX, rowY - 36, labelText, {
+          fontSize: "32px",
+          color: "#d7e2f1",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0, 0.5)
+        .setDepth(DEPTH_BANNER_TOP + 11);
+      objs.push(lbl);
+
+      const trackG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
+      const redraw = (ratio) => {
+        trackG.clear();
+        trackG.fillStyle(0x2a2e40, 1);
+        trackG.fillRoundedRect(
+          sliderX,
+          rowY - trackH / 2,
+          trackW,
+          trackH,
+          trackH / 2,
+        );
+        trackG.fillStyle(0xf0d39a, 1);
+        trackG.fillRoundedRect(
+          sliderX,
+          rowY - trackH / 2,
+          trackW * ratio,
+          trackH,
+          trackH / 2,
+        );
+        trackG.fillStyle(0xfff8e6, 1);
+        trackG.fillCircle(sliderX + trackW * ratio, rowY, thumbR);
+        trackG.lineStyle(2, 0xc8a860, 1);
+        trackG.strokeCircle(sliderX + trackW * ratio, rowY, thumbR);
+      };
+
+      let ratio = getValue();
+      redraw(ratio);
+      objs.push(trackG);
+
+      const valTx = this.add
+        .text(sliderX + trackW + 30, rowY, `${Math.round(ratio * 100)}%`, {
+          fontSize: "30px",
+          color: "#f4deb1",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0, 0.5)
+        .setDepth(DEPTH_BANNER_TOP + 11);
+      objs.push(valTx);
+
+      const zone = this.add
+        .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
+        .setInteractive()
+        .setDepth(DEPTH_BANNER_TOP + 11);
+      const update = (ptr) => {
+        const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
+        ratio = rx / trackW;
+        redraw(ratio);
+        valTx.setText(`${Math.round(ratio * 100)}%`);
+        onChangeValue(ratio);
+      };
+      zone.on("pointerdown", update);
+      zone.on("pointermove", (ptr) => {
+        if (ptr.isDown) update(ptr);
+      });
+      objs.push(zone);
+    };
+
+    makeSlider(
+      "BGM",
+      py + 180,
+      () => soundManager._bgmVolume,
+      (v) => soundManager.setBgmVolume(v),
+    );
+    makeSlider(
+      "効果音",
+      py + 350,
+      () => soundManager._seVolume,
+      (v) => soundManager.setSeVolume(v),
     );
   }
 
