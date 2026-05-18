@@ -1908,7 +1908,7 @@ export class UIScene extends Phaser.Scene {
   showResult(options = {}) {
     this.clearCenterBanner();
     this.gameScene.enterFinalPhase();
-    soundManager.stopBgm();
+    soundManager.stopBgmFade(1200);
     soundManager.se_gameEnd();
 
     // 「ゲーム終了！」バナーを表示してから予測フェーズへ
@@ -2482,7 +2482,9 @@ export class UIScene extends Phaser.Scene {
     if (ownScore > rivalScore) soundManager.se_win();
     else if (ownScore < rivalScore) soundManager.se_lose();
     else soundManager.se_draw();
-    soundManager.playBgm("result");
+    // 勝ち→lobby / 負け・引き分け→魔王魂_敗北
+    if (ownScore > rivalScore) soundManager.playBgm("lobby");
+    else soundManager.playBgm("魔王魂_敗北");
 
     // 対戦記録を保存
     try {

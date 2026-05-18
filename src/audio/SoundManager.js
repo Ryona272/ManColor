@@ -22,12 +22,13 @@ class SoundManager {
     this._bgmGainResetTimer = null; // guards against gain restore racing new BGM
     this._bgmActive = false;
     this._currentBgm = null;
-    this._bgmVolume = 0.38;
+    this._bgmVolume = 0.3;
     this._seVolume = 0.62;
     this._bgmPitch = 0.5; // global BGM transpose (0.5 = 1 octave down)
     this._scoreStep = 0;
     this._sowStep = 0;
     this._htmlAudio = null; // for MP3-backed BGM keys
+    this._htmlFadeTimer = null; // setInterval ID for fade-in / fade-out
     this._loadVolumes();
   }
 
@@ -568,33 +569,82 @@ class SoundManager {
   // BGM
   // ---------------------------------------------------------------------------
 
-  // Keys listed here are played from an MP3 file in /audio/<key>.mp3
-  // instead of the procedural synth engine.
-  static MP3_KEYS = new Set(["lobby"]);
+  // Maps logical BGM keys to MP3 filenames (without .mp3 extension).
+  // game_* keys are remapped to the corresponding AI-character MP3.
+  static _KEY_MAP = {
+    game_kooni: "魔王魂_小鬼",
+    game_yasha: "魔王魂_夜叉",
+    game_rasetsu: "魔王魂_羅刹",
+    game_kisin: "魔王魂_鬼神",
+    game_kyubi: "魔王魂_九尾",
+    game_ashura: "魔王魂_阿修羅",
+    game_kugutsu: "魔王魂_傀儡",
+    game: "魔王魂_羅刹", // online fallback
+  };
+
+  // Keys played from an MP3 file in /audio/<key>.mp3 instead of the procedural synth.
+  static MP3_KEYS = new Set([
+    "lobby",
+    "魔王魂_小鬼",
+    "魔王魂_夜叉",
+    "魔王魂_羅刹",
+    "魔王魂_鬼神",
+    "魔王魂_九尾",
+    "魔王魂_阿修羅",
+    "魔王魂_傀儡",
+    "魔王魂_敗北",
+    "魔王魂_阿修羅出現",
+  ]);
+
+  // Keys that play once (no loop). On ended, automatically transitions to ONESHOT_NEXT.
+  static ONESHOT_KEYS = new Set(["魔王魂_阿修羅出現"]);
+  static ONESHOT_NEXT = { 魔王魂_阿修羅出現: "魔王魂_阿修羅" };
 
   playBgm(key) {
-    if (this._currentBgm === key) return;
+    // Resolve alias (e.g. game_kooni → 魔王魂_小鬼)
+    const resolvedKey = SoundManager._KEY_MAP[key] ?? key;
+    if (this._currentBgm === resolvedKey) return;
     // Cancel any pending gain-restore from a previous stopBgm()
     if (this._bgmGainResetTimer !== null) {
       clearTimeout(this._bgmGainResetTimer);
       this._bgmGainResetTimer = null;
     }
     this.stopBgm();
-    this._currentBgm = key;
+    this._currentBgm = resolvedKey;
     this._bgmActive = true;
-    if (SoundManager.MP3_KEYS.has(key)) {
+    if (SoundManager.MP3_KEYS.has(resolvedKey)) {
       this._ctx(); // ensure AudioContext is running
-      const audio = new Audio(`./audio/${key}.mp3`);
-      audio.loop = true;
-      audio.volume = this._bgmVolume;
+      const audio = new Audio(`./audio/${resolvedKey}.mp3`);
+      const isOneShot = SoundManager.ONESHOT_KEYS.has(resolvedKey);
+      audio.loop = !isOneShot;
+      audio.volume = 0;
       audio.play().catch(() => {});
+      this._startHtmlFadeIn(audio);
+      if (isOneShot) {
+        const nextKey = SoundManager.ONESHOT_NEXT[resolvedKey];
+        if (nextKey) {
+          audio.addEventListener(
+            "ended",
+            () => {
+              // Only transition if this track is still current
+              if (this._currentBgm === resolvedKey) this.playBgm(nextKey);
+            },
+            { once: true },
+          );
+        }
+      }
       this._htmlAudio = audio;
     } else {
-      this._loopBgm(key, 0);
+      this._loopBgm(resolvedKey, 0);
     }
   }
 
   stopBgm() {
+    // Cancel any in-progress fade-in or fade-out
+    if (this._htmlFadeTimer !== null) {
+      clearInterval(this._htmlFadeTimer);
+      this._htmlFadeTimer = null;
+    }
     this._bgmActive = false;
     this._currentBgm = null;
     if (this._htmlAudio) {
@@ -630,6 +680,109 @@ class SoundManager {
         this._bgmConvReturn.connect(this._bgmBus);
       }
     }
+  }
+
+  /** Gradually ramp up an HTML Audio element from 0 to _bgmVolume over ~1.5 s. */
+  _startHtmlFadeIn(audio, durationMs = 1500) {
+    if (this._htmlFadeTimer !== null) {
+      clearInterval(this._htmlFadeTimer);
+      this._htmlFadeTimer = null;
+    }
+    const STEPS = 30;
+    const STEP_MS = Math.round(durationMs / STEPS);
+    let step = 0;
+    const id = setInterval(() => {
+      // If audio was replaced (e.g. track switched), cancel
+      if (this._htmlAudio !== audio) {
+        clearInterval(id);
+        if (this._htmlFadeTimer === id) this._htmlFadeTimer = null;
+        return;
+      }
+      step++;
+      audio.volume = Math.min(
+        this._bgmVolume,
+        this._bgmVolume * (step / STEPS),
+      );
+      if (step >= STEPS) {
+        clearInterval(id);
+        if (this._htmlFadeTimer === id) this._htmlFadeTimer = null;
+      }
+    }, STEP_MS);
+    this._htmlFadeTimer = id;
+  }
+
+  /**
+   * Fade out the current BGM over `durationMs` ms, then stop it.
+   * Use this instead of stopBgm() when a graceful fadeout is wanted
+   * (e.g. entering the prediction phase).
+   */
+  stopBgmFade(durationMs = 1200) {
+    if (this._htmlFadeTimer !== null) {
+      clearInterval(this._htmlFadeTimer);
+      this._htmlFadeTimer = null;
+    }
+    const audio = this._htmlAudio;
+    if (!audio) {
+      // No HTML audio active — just do an immediate stop
+      this.stopBgm();
+      return;
+    }
+    // Logically mark BGM as stopped so no auto-transitions fire
+    this._bgmActive = false;
+    this._currentBgm = null;
+    if (this._bgmLoopTimer !== null) {
+      clearTimeout(this._bgmLoopTimer);
+      this._bgmLoopTimer = null;
+    }
+    if (this._bgmGainResetTimer !== null) {
+      clearTimeout(this._bgmGainResetTimer);
+      this._bgmGainResetTimer = null;
+    }
+    // Fade WebAudio bus (handles any procedural overtones still ringing)
+    const ctx = this._actx;
+    if (ctx && this._bgmBus) {
+      const now = ctx.currentTime;
+      this._bgmBus.gain.cancelScheduledValues(now);
+      this._bgmBus.gain.setValueAtTime(this._bgmBus.gain.value, now);
+      this._bgmBus.gain.linearRampToValueAtTime(
+        0.0001,
+        now + durationMs / 1000,
+      );
+    }
+    // Fade out HTML audio volume, then clean up
+    const startVol = audio.volume;
+    const STEPS = 24;
+    const STEP_MS = Math.round(durationMs / STEPS);
+    let step = 0;
+    const id = setInterval(() => {
+      step++;
+      audio.volume = Math.max(0, startVol * (1 - step / STEPS));
+      if (step >= STEPS) {
+        clearInterval(id);
+        if (this._htmlFadeTimer === id) this._htmlFadeTimer = null;
+        audio.pause();
+        audio.src = "";
+        if (this._htmlAudio === audio) this._htmlAudio = null;
+        // Rebuild clean WebAudio bus for the next BGM
+        if (ctx && this._bgmBus) {
+          try {
+            this._bgmBus.disconnect();
+          } catch (_) {}
+          if (this._bgmConvReturn) {
+            try {
+              this._bgmConvReturn.disconnect();
+            } catch (_) {}
+          }
+          this._bgmBus = ctx.createGain();
+          this._bgmBus.gain.value = 0.0001;
+          this._bgmBus.connect(this._masterGain);
+          if (this._bgmConv && this._bgmConvReturn) {
+            this._bgmConvReturn.connect(this._bgmBus);
+          }
+        }
+      }
+    }, STEP_MS);
+    this._htmlFadeTimer = id;
   }
 
   _loopBgm(key, iteration) {

@@ -23,7 +23,10 @@ export class LobbyScene extends Phaser.Scene {
     const W = 1080;
     const H = 1920;
 
-    soundManager.playBgm("lobby");
+    // 阿修羅解放済みならロビーBGMを差し替え
+    const _lobbyBgmKey =
+      localStorage.getItem("ashuraShown") === "1" ? "魔王魂_阿修羅" : "lobby";
+    soundManager.playBgm(_lobbyBgmKey);
     this._drawBackground(W, H);
 
     this.add
@@ -289,6 +292,16 @@ export class LobbyScene extends Phaser.Scene {
       () => soundManager._seVolume,
       (v) => soundManager.setSeVolume(v),
     );
+
+    // クレジット
+    const credit = this.add
+      .text(W / 2, py + ph - 36, "BGM：魔王魂", {
+        fontSize: "24px",
+        color: "#7a8899",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5);
+    objs.push(credit);
   }
 
   _drawBackground(W, H) {
@@ -533,16 +546,13 @@ export class LobbyScene extends Phaser.Scene {
       ashura: "阿修羅",
       kugutsu: "傀儡",
     };
-    let progressMode;
     let beatenData;
     try {
-      progressMode = localStorage.getItem("soloProgressMode") ?? "progression";
       beatenData = JSON.parse(localStorage.getItem("soloBeaten") ?? "{}");
     } catch (_e) {
-      progressMode = "progression";
       beatenData = {};
     }
-    const isProgressionMode = progressMode === "progression";
+    const isProgressionMode = true; // 常に段位モード（前のAIを倒さないと解放されない）
 
     // diff を「完全クリア済み（先手・後手両方）」かどうか判定
     function isFullyBeaten(diff) {
@@ -1664,7 +1674,8 @@ export class LobbyScene extends Phaser.Scene {
                   duration: 140,
                   yoyo: true,
                   onComplete: () => {
-                    // Step7: 阿修羅フェードイン
+                    // Step7: 阿修羅フェードイン + 出現BGM再生
+                    soundManager.playBgm("魔王魂_阿修羅出現");
                     this.tweens.add({
                       targets: ashuraList,
                       alpha: 1,
@@ -1903,6 +1914,7 @@ export class LobbyScene extends Phaser.Scene {
       cleanup();
       this._showDifficultyPanel();
     });
+    resetT.setVisible(false);
     objs.push(resetT);
 
     const cancelT = this.add
@@ -1915,27 +1927,6 @@ export class LobbyScene extends Phaser.Scene {
       .setInteractive();
     cancelT.on("pointerdown", cleanup);
     objs.push(cancelT);
-
-    // 切替ボタン
-    const toggleLabel = isProgressionMode ? "自由モード切替" : "段位モード切替";
-    const toggleColor = isProgressionMode ? "#44bb88" : "#aa88cc";
-    const toggleT = this.add
-      .text(W / 2 + 200, 1510, toggleLabel, {
-        fontSize: "30px",
-        color: toggleColor,
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    toggleT.on("pointerdown", () => {
-      try {
-        const next = isProgressionMode ? "free" : "progression";
-        localStorage.setItem("soloProgressMode", next);
-      } catch (_e) {}
-      cleanup();
-      this._showDifficultyPanel();
-    });
-    objs.push(toggleT);
   }
 
   _showNotice(message) {
