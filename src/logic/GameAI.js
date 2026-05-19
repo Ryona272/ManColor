@@ -1806,59 +1806,7 @@ export function Ashura(
     }
   }
 
-  if (!knownNegA) {
-    const sentColors = params?.opponentSentColors ?? [];
-    if (sentColors.length > 0) {
-      const oppSeenColors = new Set(
-        (fortune?.center ?? [])
-          .filter((fc) => fc.seenBy?.includes("self"))
-          .map((fc) => fc.color),
-      );
-      const colorCount = {};
-      for (const c of sentColors) {
-        if (c === ownFortuneA) continue;
-        if (knownPosA.includes(c)) continue;
-        colorCount[c] = (colorCount[c] ?? 0) + 1;
-      }
-      let inferredNeg = null;
-      let bestScore = -1;
-      for (const [color, cnt] of Object.entries(colorCount)) {
-        const isSeen = oppSeenColors.has(color);
-        let sc = 0;
-        if (cnt >= 3) sc = 100;
-        else if (cnt >= 2 && isSeen) sc = 90;
-        else if (cnt >= 2) sc = 80;
-        if (sc > bestScore) {
-          bestScore = sc;
-          inferredNeg = color;
-        }
-      }
-      if (inferredNeg && bestScore >= 80) knownNegA = inferredNeg;
-    }
-  }
-
-  // 相手賽壇の多い色でneg推論（二択時の追加シグナル）
-  if (!knownNegA) {
-    const playerStorePit = state.pits[playerStore]?.stones ?? [];
-    if (playerStorePit.length >= 4) {
-      const storeCounts = {};
-      for (const s of playerStorePit) {
-        const c = s.color;
-        if (c === ownFortuneA) continue;
-        if (knownPosA.includes(c)) continue;
-        storeCounts[c] = (storeCounts[c] ?? 0) + 1;
-      }
-      let bestColor = null;
-      let bestCnt = 0;
-      for (const [c, cnt] of Object.entries(storeCounts)) {
-        if (cnt > bestCnt) {
-          bestCnt = cnt;
-          bestColor = c;
-        }
-      }
-      if (bestColor && bestCnt >= 3) knownNegA = bestColor;
-    }
-  }
+  // neg推論不要: 初期2枚ペーク済み。未判明なら強制ちらちらで3枚目を確認する。
 
   const initNegCounts = initCounts.map((cnt, pit) => {
     if (!knownNegA || cnt === 0) return 0;
