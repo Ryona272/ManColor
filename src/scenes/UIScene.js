@@ -350,12 +350,24 @@ export class UIScene extends Phaser.Scene {
       () => soundManager._bgmVolume,
       (v) => soundManager.setBgmVolume(v),
     );
+
     makeSlider(
       "効果音",
       py + 350,
       () => soundManager._seVolume,
       (v) => soundManager.setSeVolume(v),
     );
+
+    // クレジット
+    const credit = this.add
+      .text(W / 2, py + ph - 36, "BGM：魔王魂", {
+        fontSize: "24px",
+        color: "#7a8899",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTH_BANNER_TOP + 11);
+    objs.push(credit);
   }
 
   _showRulesPopup() {

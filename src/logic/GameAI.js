@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GameAI.js
  * 繧ｲ繝ｼ繝 AI 繝ｭ繧ｸ繝・け・・1・・
  * 繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ髱樔ｾ晏ｭ倥・邏皮ｲ矩未謨ｰ AI
@@ -44,91 +44,224 @@ export function Kugutsu(
   peeksDonePlayer,
   fortune,
   maxDepth = 5,
+  params = {},
 ) {
-  // 陋ｻ譎・ｄpit驕擾ｽｳ隰ｨ・ｰ繝ｻ蛹ｻ縺咲ｹｧ・ｦ郢晢ｽｳ郢晏現繝ｻ邵ｺ・ｿ邵ｲ繝ｻ・ｫ蛟ｬﾂ貅倥☆郢晄ｺ佩礼ｹ晢ｽｬ郢晢ｽｼ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ騾包ｽｨ繝ｻ繝ｻ
   const initCounts = state.pits.map((p) => p.stones.length);
 
-  // AI邵ｺ・ｮ2陜玲ｨ貞ｲｼ邵ｺ・｡郢ｧ蟲ｨ笆郢ｧ蟲ｨ縲堤ｹ晄ｧｭ縺・ｹ晉ｿｫ縺帶ｿｶ・ｲ郢ｧ蝣､・｢・ｺ陞ｳ螢ｹ縲堤ｸｺ髦ｪ・狗ｸｺ繝ｻ
-  const hasUnconfirmedNegForAI = fortune.center.some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes("opp"),
-  );
-  // 郢晏干ﾎ樒ｹｧ・､郢晢ｽ､郢晢ｽｼ邵ｺ・ｮ2陜玲ｨ貞ｲｼ邵ｺ・｡郢ｧ蟲ｨ笆郢ｧ蟲ｨ縲堤ｹ晄ｧｭ縺・ｹ晉ｿｫ縺帶ｿｶ・ｲ郢ｧ蝣､・｢・ｺ陞ｳ螢ｹ縲堤ｸｺ髦ｪ・狗ｸｺ繝ｻ
-  const hasUnconfirmedNegForPlayer = fortune.center.some(
-    (fc) => fc.bonus < 0 && !fc.seenBy.includes("self"),
-  );
+  // === Color inference (from center peeks + opponent sent colors) ===
+  const ownFortuneK = fortune?.opp?.color ?? null;
+  let knownNegK = null;
+  const knownPosK = [];
+  for (const fc of fortune?.center ?? []) {
+    if (fc.seenBy?.includes("opp")) {
+      if (fc.bonus < 0) knownNegK = fc.color;
+      else if (fc.bonus > 0) knownPosK.push(fc.color);
+    }
+  }
 
-  // 隨渉隨渉隨渉 鬯ｮ蛟ｬﾂ貊馴教邵ｺ髦ｪ縺咏ｹ晄ｺ佩礼ｹ晢ｽｬ郢晢ｽｼ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ繝ｻ閧ｲ豬ｹ隰ｨ・ｰ郢ｧ・ｫ郢ｧ・ｦ郢晢ｽｳ郢晏現繝ｻ邵ｺ・ｿ繝ｻ菫・･ｳ隨渉隨渉
-  function fastSow(counts, pitIndex) {
+  // Infer neg color from opponent stones sent into AI store
+  if (!knownNegK) {
+    const sentColors = params?.opponentSentColors ?? [];
+    if (sentColors.length > 0) {
+      const oppSeenColors = new Set(
+        (fortune?.center ?? [])
+          .filter((fc) => fc.seenBy?.includes("self"))
+          .map((fc) => fc.color),
+      );
+      const colorCount = {};
+      for (const c of sentColors) {
+        if (c === ownFortuneK) continue;
+        if (knownPosK.includes(c)) continue;
+        colorCount[c] = (colorCount[c] ?? 0) + 1;
+      }
+      let inferredNeg = null;
+      let bestSc = -1;
+      for (const [color, cnt] of Object.entries(colorCount)) {
+        const isSeen = oppSeenColors.has(color);
+        let sc = 0;
+        if (cnt >= 3) sc = 100;
+        else if (cnt >= 2 && isSeen) sc = 90;
+        else if (cnt >= 2) sc = 80;
+        if (sc > bestSc) {
+          bestSc = sc;
+          inferredNeg = color;
+        }
+      }
+      if (inferredNeg && bestSc >= 80) knownNegK = inferredNeg;
+    }
+  }
+
+  // Infer neg from absence in player's store (player avoids guru with neg color,
+  // so neg stays out of their shrine while other colors accumulate there)
+  if (!knownNegK) {
+    const playerStore = state.pits[5]?.stones ?? [];
+    if (playerStore.length >= 4) {
+      // Collect all colors in circulation, excluding kugutsu's own fortune and known pos
+      const gameColors = new Set();
+      for (const pit of state.pits) {
+        for (const s of pit.stones) {
+          if (
+            s.color &&
+            s.color !== ownFortuneK &&
+            !knownPosK.includes(s.color)
+          ) {
+            gameColors.add(s.color);
+          }
+        }
+      }
+      // Count each color in player's store
+      const storeCount = {};
+      for (const c of gameColors) storeCount[c] = 0;
+      for (const s of playerStore) {
+        if (s.color && storeCount[s.color] !== undefined) storeCount[s.color]++;
+      }
+      // Absent color with 3+ others present = strong neg signal
+      const absent = [...gameColors].filter((c) => storeCount[c] === 0);
+      const present = [...gameColors].filter((c) => storeCount[c] >= 1);
+      if (absent.length === 1 && present.length >= 3) {
+        knownNegK = absent[0];
+      }
+    }
+  }
+
+  // neg stone counts per pit
+  const initNegCounts = initCounts.map((cnt, pit) => {
+    if (!knownNegK || cnt === 0) return 0;
+    return (state.pits[pit]?.stones ?? []).filter((s) => s.color === knownNegK)
+      .length;
+  });
+
+  // === Fast sow with proportional neg tracking ===
+  function fastSowWithNeg(counts, negCounts, pitIndex) {
     const nc = counts.slice();
+    const ng = negCounts.slice();
     const n = nc[pitIndex];
-    if (n === 0) return { counts: nc, lastPit: -1 };
+    if (n === 0) return { counts: nc, negCounts: ng, lastPit: -1 };
+    const negFrac = n > 0 ? ng[pitIndex] / n : 0;
     nc[pitIndex] = 0;
+    ng[pitIndex] = 0;
     let cur = pitIndex;
     for (let i = 0; i < n; i++) {
       cur = (cur + 1) % 12;
       nc[cur]++;
+      ng[cur] += negFrac;
     }
-    return { counts: nc, lastPit: cur };
+    return { counts: nc, negCounts: ng, lastPit: cur };
   }
 
-  // 隨渉隨渉隨渉 闕ｳﾂ隰・ｹ昴・郢ｧ・ｹ郢ｧ・ｳ郢ｧ・｢髫ｪ閧ｲ・ｮ繝ｻ隨渉隨渉隨渉
-  // isAI: true=AI(pit6-10遶頑▼it11), false=Player(pit0-4遶頑▼it5)
-  // peeks: 邵ｺ譏ｴ繝ｻ陟厄ｽｹ邵ｺ・ｮ邵ｺ・｡郢ｧ蟲ｨ笆郢ｧ迚呻ｽｮ蠕｡・ｺ繝ｻ螻楢ｬｨ・ｰ
-  function scoreSow(counts, pit, isAI, peeks) {
-    const laneMin = isAI ? 6 : 0;
-    const laneMax = isAI ? 10 : 4;
+  // === Neg dump pre-check (force chirachira dump when neg known, no guru) ===
+  if (knownNegK) {
+    const guruExists = validPits.some((p) => {
+      const n = initCounts[p];
+      return n > 0 && (p + n) % 12 === 11;
+    });
+    if (!guruExists) {
+      const dumpCandidates = validPits.filter((p) => {
+        const n = initCounts[p];
+        if (n === 0) return false;
+        if ((p + n) % 12 !== 5) return false;
+        return (state.pits[p]?.stones ?? []).some((s) => s.color === knownNegK);
+      });
+      if (dumpCandidates.length > 0) {
+        dumpCandidates.sort((a, b) => {
+          const aN = (state.pits[a]?.stones ?? []).filter(
+            (s) => s.color === knownNegK,
+          ).length;
+          const bN = (state.pits[b]?.stones ?? []).filter(
+            (s) => s.color === knownNegK,
+          ).length;
+          return bN - aN;
+        });
+        return dumpCandidates[0];
+      }
+    }
+  }
+
+  // === Chirachira trap score ===
+  // When player does chirachira, their sow passes through AI lane pits (6-10)
+  // adding +1 to each. Pits where (pit+count)%12===10 are "one short" of guru
+  // and will become guru-ready after any player chirachira. This creates a
+  // dilemma: player chirachira feeds AI's guru chain; not chirachira = less info.
+  function trapScore(counts) {
+    let traps = 0;
+    for (let p = 6; p <= 10; p++) {
+      if (counts[p] > 0 && (p + counts[p] + 1) % 12 === 11) traps++;
+    }
+    return traps * 8 + (traps >= 2 ? 6 : 0);
+  }
+
+  // === Scoring function ===
+  function scoreSow(counts, negCounts, pit, isAI, peeks) {
     const storeIndex = isAI ? 11 : 5;
     const oppStoreIndex = isAI ? 5 : 11;
+    const laneMin = isAI ? 6 : 0;
+    const laneMax = isAI ? 10 : 4;
     const n = counts[pit];
     const lastPit = (pit + n) % 12;
     let score = 0;
 
-    // 邵ｺ闊鯉ｽ狗ｸｺ闊鯉ｽ・ +5
-    if (lastPit === storeIndex) score += 5;
-
-    // 邵ｺ・｡郢ｧ蟲ｨ笆郢ｧ繝ｻ +9 (闕ｳ莨∝応2陜励・, 2陜玲ｨ貞ｲｼ邵ｺ・ｫ郢晄ｧｭ縺・ｹ晉ｿｫ縺幃￡・ｺ陞ｳ螢ｹ竊醍ｹｧ繝ｻ8髴托ｽｽ陷会｣ｰ
-    if (lastPit === oppStoreIndex && peeks < 2) {
-      score += 9;
-      if (peeks === 1) {
-        score += isAI
-          ? hasUnconfirmedNegForAI
-            ? 8
-            : 0
-          : hasUnconfirmedNegForPlayer
-            ? 8
-            : 0;
+    if (lastPit === storeIndex) {
+      // guru: high base + stone quality
+      if (isAI) {
+        const negInPit = negCounts[pit] ?? 0;
+        const safeStones = Math.max(0, n - negInPit);
+        score += 55 + safeStones * 2 - negInPit * 28;
+      } else {
+        score += 8;
       }
-    }
-
-    // 邵ｺ謔ｶ・･邵ｺ謔ｶ・･: +7 + 陷ｿ謔ｶ・檎ｸｺ貅ｽ豬ｹ隰ｨ・ｰ・・・ (騾ｹﾂ陜ｨ・ｰ陷亥現窶ｲ髢ｾ・ｪ鬮ｯ・｣邵ｺ・ｮ驕ｨ・ｺ邵ｺ髦ｪﾂｰ邵ｺ・､鬮・｡邵ｺ・ｫ驕擾ｽｳ邵ｺ繧・ｽ・
-    if (lastPit >= laneMin && lastPit <= laneMax && counts[lastPit] === 0) {
+    } else if (lastPit === oppStoreIndex) {
+      // chirachira
+      if (isAI) {
+        if (!knownNegK) {
+          // Peek for information: highly valuable before neg is known
+          score += peeks < 2 ? 28 : peeks < 3 ? 18 : 4;
+        } else {
+          // Neg dump: send neg stones to opponent
+          const negInPit = negCounts[pit] ?? 0;
+          score += negInPit > 0 ? 6 + negInPit * 9 : 2;
+        }
+      } else {
+        score += 5;
+      }
+    } else if (
+      lastPit >= laneMin &&
+      lastPit <= laneMax &&
+      counts[lastPit] === 0
+    ) {
+      // zakuzaku: capture opponent stones
       const mirror = isAI ? lastPit - 6 : lastPit + 6;
-      if (counts[mirror] > 0) score += 7 + counts[mirror];
+      if (mirror >= 0 && mirror < 12 && counts[mirror] > 0) {
+        const negInMirror = negCounts[mirror] ?? 0;
+        let zakuScore = 7 + counts[mirror] - negInMirror * 20;
+        if (isAI) {
+          // Bonus for blocking opponent's guru or chirachira path
+          const mirrorFinal = (mirror + counts[mirror]) % 12;
+          if (mirrorFinal === oppStoreIndex)
+            zakuScore += 18; // block opp guru
+          else if (mirrorFinal === storeIndex) zakuScore += 10; // block opp chirachira
+        }
+        score += zakuScore;
+      }
     }
 
     return { score, lastPit };
   }
 
-  // 隨渉隨渉隨渉 陷茨ｽｨ隰・ｹ晢ｽ定愾髢・ｾ證ｦ・ｼ逎ｯ竏郁ｬ壽ｧｫ蠎・妙・ｽ邵ｺ・ｪ髴搾ｽｯ邵ｺ蜷ｶ竏狗ｸｺ・ｦ郢ｧ螳夲ｽｩ遨ゑｽｾ・｡繝ｻ菫・･ｳ隨渉隨渉
-  function getTopMoves(counts, isAI, peeks, restrictTo) {
+  function getTopMoves(counts, negCounts, isAI, peeks, restrictTo) {
     const laneMin = isAI ? 6 : 0;
     const laneMax = isAI ? 10 : 4;
     const pool =
       restrictTo ??
       Array.from({ length: laneMax - laneMin + 1 }, (_, i) => laneMin + i);
-
     const scored = [];
     for (const p of pool) {
       if (counts[p] === 0) continue;
-      const { score } = scoreSow(counts, p, isAI, peeks);
+      const { score } = scoreSow(counts, negCounts, p, isAI, peeks);
       scored.push({ pit: p, score });
     }
     return scored;
   }
 
-  // 隨渉隨渉隨渉 邵ｺ荳岩螺邵ｺ荳岩螺騾具ｽｺ陷榊供蠎・妙・ｽ郢昶・縺臥ｹ昴・縺・隨渉隨渉隨渉
-  // AI: aiStore >= playerStore - 6 (鬯ｯ・ｼ邵ｺ・ｮ霑ｪ・ｶ闔繝ｻ
-  // Player: playerStore >= aiStore
   function canKutakutaAI(counts) {
     return counts[11] >= counts[5] - 6;
   }
@@ -136,12 +269,10 @@ export function Kugutsu(
     return counts[5] >= counts[11];
   }
 
-  // 隨渉隨渉隨渉 DFS繝ｻ莠･繝ｻ陝ｶ・ｰ雎ｺ・ｱ邵ｺ繝ｻ繝ｻ菫・･ｳ隨渉隨渉
+  // === DFS ===
   let bestFirstPit = validPits[0];
   let bestNet = -Infinity;
 
-  // prevAiKk / prevPlayerKk: 陷題ざ辟秘｡・ｪ驍ｨ繧・ｽｺ繝ｻ蜃ｾ霓､・ｹ邵ｺ・ｧ邵ｺ・ｮ邵ｺ荳岩螺邵ｺ荳岩螺騾具ｽｺ陷榊供蠎・妙・ｽ郢晁ｼ釆帷ｹｧ・ｰ
-  // 繝ｻ蝓溽悛邵ｺ貅倪・陷ｿ・ｯ髢ｭ・ｽ邵ｺ・ｫ邵ｺ・ｪ邵ｺ・｣邵ｺ貊灘・邵ｺ・ｰ邵ｺ繝ｻ2郢ｧ雋槫・驍ょ干笘・ｹｧ荵昶螺郢ｧ繝ｻ・ｼ繝ｻ
   const initAiKk = canKutakutaAI(initCounts);
   const initPlayerKk = canKutakutaPlayer(initCounts);
 
@@ -151,6 +282,7 @@ export function Kugutsu(
     isFirstMove,
     chainDepth,
     counts,
+    negCounts,
     aiPeeks,
     playerPeeks,
     aiScore,
@@ -160,7 +292,11 @@ export function Kugutsu(
     prevPlayerKk,
   ) {
     if (depth === maxDepth) {
-      const net = aiScore - playerScore;
+      // At leaf: add trap score + store advantage (can end game when ahead)
+      const trap = trapScore(counts);
+      const storeAdv = Math.max(0, counts[11] - counts[5]) * 4;
+      const kkBonus = canKutakutaAI(counts) ? 12 : 0;
+      const net = aiScore - playerScore + trap + storeAdv + kkBonus;
       if (net > bestNet) {
         bestNet = net;
         bestFirstPit = firstPit;
@@ -173,36 +309,43 @@ export function Kugutsu(
     const peeks = isAI ? aiPeeks : playerPeeks;
     const oppStoreIndex = isAI ? 5 : 11;
 
-    // 隰・ｹ昴・陋溷揃・｣諛ｶ・ｼ蝓滓呵崕譏ｴ繝ｻ1隰・ｹ昴・邵ｺ・ｿvalidPits邵ｺ・ｫ陋ｻ・ｶ鬮ｯ謦ｰ・ｼ繝ｻ
     const topMoves = isFirstMove
-      ? getTopMoves(counts, true, aiPeeks, validPits)
-      : getTopMoves(counts, isAI, peeks, null);
+      ? getTopMoves(counts, negCounts, true, aiPeeks, validPits)
+      : getTopMoves(counts, negCounts, isAI, peeks, null);
 
-    if (topMoves.length === 0) {
-      // 隰・侭窶ｻ郢ｧ蛹ｺ辟皮ｸｺ・ｪ邵ｺ繝ｻ遶翫・邵ｺ阮吶・郢晄じﾎ帷ｹ晢ｽｳ郢昶・繝ｻ髫ｧ遨ゑｽｾ・｡邵ｺ蜉ｱ竊醍ｸｺ繝ｻ
-      return;
-    }
+    if (topMoves.length === 0) return;
+
+    const oldTrap = isAI ? trapScore(counts) : 0;
 
     for (const { pit } of topMoves) {
-      const { score, lastPit } = scoreSow(counts, pit, isAI, peeks);
-      const { counts: newCounts } = fastSow(counts, pit);
+      const { score, lastPit } = scoreSow(counts, negCounts, pit, isAI, peeks);
+      const { counts: newCounts, negCounts: newNegCounts } = fastSowWithNeg(
+        counts,
+        negCounts,
+        pit,
+      );
 
-      // 邵ｺ・｡郢ｧ蟲ｨ笆郢ｧ迚吝ｱ楢ｬｨ・ｰ隴厄ｽｴ隴・ｽｰ
+      // Trap setup bonus: reward moves that increase "one short" pit count
+      let trapBonus = 0;
+      if (isAI && lastPit !== storeIndex && lastPit !== oppStoreIndex) {
+        const newTrap = trapScore(newCounts);
+        trapBonus = Math.max(0, newTrap - oldTrap);
+      }
+
       let newAiPeeks = aiPeeks;
       let newPlayerPeeks = playerPeeks;
-      if (lastPit === oppStoreIndex && peeks < 2) {
+      if (lastPit === oppStoreIndex && peeks < 3) {
         if (isAI) newAiPeeks++;
         else newPlayerPeeks++;
       }
 
-      // 邵ｺ荳岩螺邵ｺ荳岩螺隴・ｽｰ髫募臆・ｧ・｣隰ｾ・ｾ: +2
       const newAiKk = canKutakutaAI(newCounts);
       const newPlayerKk = canKutakutaPlayer(newCounts);
       const aiKkBonus = !prevAiKk && newAiKk ? 2 : 0;
       const playerKkBonus = !prevPlayerKk && newPlayerKk ? 2 : 0;
 
       const newAiScore = isAI
-        ? aiScore + score + aiKkBonus
+        ? aiScore + score + trapBonus + aiKkBonus
         : aiScore + aiKkBonus;
       const newPlayerScore = !isAI
         ? playerScore + score + playerKkBonus
@@ -211,13 +354,13 @@ export function Kugutsu(
       const fp = isFirstMove ? pit : firstPit;
 
       if (lastPit === storeIndex && chainDepth < 10) {
-        // 邵ｺ闊鯉ｽ狗ｸｺ闊鯉ｽ・ depth 郢ｧ蜻茨ｽｶ驛・ｽｲ・ｻ邵ｺ蜉ｱ竊醍ｸｺ繝ｻﾂ竏晞・郢晏干ﾎ樒ｹｧ・､郢晢ｽ､郢晢ｽｼ驍ｯ蜥擾ｽｶ螟ｲ・ｼ蛹ｻ繝｡郢ｧ・ｧ郢晢ｽｼ郢晢ｽｳ闕ｳ莨∝応10繝ｻ繝ｻ
         dfs(
           depth,
           isAITurn,
           false,
           chainDepth + 1,
           newCounts,
+          newNegCounts,
           newAiPeeks,
           newPlayerPeeks,
           newAiScore,
@@ -227,13 +370,13 @@ export function Kugutsu(
           newPlayerKk,
         );
       } else {
-        // 鬨ｾ螢ｼ・ｸ・ｸ or 邵ｺ闊鯉ｽ狗ｸｺ闊鯉ｽ玖叉莨∝応陋ｻ・ｰ鬩輔・ depth+1邵ｲ竏ｫ蠍瑚ｬ・ｹ昶・闔・､闔会ｽ｣
         dfs(
           depth + 1,
           !isAITurn,
           false,
           0,
           newCounts,
+          newNegCounts,
           newAiPeeks,
           newPlayerPeeks,
           newAiScore,
@@ -252,6 +395,7 @@ export function Kugutsu(
     true,
     0,
     initCounts,
+    initNegCounts,
     peeksDoneAI,
     peeksDonePlayer,
     0,
@@ -263,7 +407,6 @@ export function Kugutsu(
 
   return validPits.includes(bestFirstPit) ? bestFirstPit : validPits[0];
 }
-
 // ===== Kisin: 1深ぐるぐる特化型 =====
 
 /**
@@ -1677,21 +1820,16 @@ export function Ashura(
       .length;
   });
 
+  // params から推測済みプレイヤー占い色を取得（5pt石の優先ぐるぐる用）
+  const inferredPlayerColorA = params?.inferredPlayerColor ?? null;
+
   function stoneClassA(stone) {
     const c = stone.color;
     if (knownNegA && c === knownNegA) return "neg";
     if (ownFortuneA && c === ownFortuneA) return "own";
+    if (inferredPlayerColorA && c === inferredPlayerColorA) return "player"; // 5pt stone
     if (knownPosA.includes(c)) return "pos";
     return "unknown";
-  }
-  function pitStoneColorScoreA(pit) {
-    let bonus = 0;
-    for (const s of state.pits[pit]?.stones ?? []) {
-      const cls = stoneClassA(s);
-      if (cls === "own" || cls === "pos") bonus += 1;
-      else if (cls === "neg") bonus -= 4;
-    }
-    return bonus;
   }
 
   function fastSow(counts, pitIndex) {
@@ -1754,25 +1892,31 @@ export function Ashura(
     }
   }
 
-  // neg石ダンプ
+  // neg石ダンプ: ぐるぐる機会がない場合のみ緊急実行（通常はDFSに任せる）
   if (knownNegA) {
-    const minusDumpCandidates = validPits.filter((p) => {
+    const guruExists = validPits.some((p) => {
       const n = initCounts[p];
-      if (n === 0) return false;
-      if ((p + n) % 12 !== playerStore) return false;
-      return (state.pits[p]?.stones ?? []).some((s) => s.color === knownNegA);
+      return n > 0 && (p + n) % 12 === aiStore;
     });
-    if (minusDumpCandidates.length > 0) {
-      minusDumpCandidates.sort((a, b) => {
-        const aN = (state.pits[a]?.stones ?? []).filter(
-          (s) => s.color === knownNegA,
-        ).length;
-        const bN = (state.pits[b]?.stones ?? []).filter(
-          (s) => s.color === knownNegA,
-        ).length;
-        return bN - aN;
+    if (!guruExists) {
+      const minusDumpCandidates = validPits.filter((p) => {
+        const n = initCounts[p];
+        if (n === 0) return false;
+        if ((p + n) % 12 !== playerStore) return false;
+        return (state.pits[p]?.stones ?? []).some((s) => s.color === knownNegA);
       });
-      return minusDumpCandidates[0];
+      if (minusDumpCandidates.length > 0) {
+        minusDumpCandidates.sort((a, b) => {
+          const aN = (state.pits[a]?.stones ?? []).filter(
+            (s) => s.color === knownNegA,
+          ).length;
+          const bN = (state.pits[b]?.stones ?? []).filter(
+            (s) => s.color === knownNegA,
+          ).length;
+          return bN - aN;
+        });
+        return minusDumpCandidates[0];
+      }
     }
   }
 
@@ -1785,22 +1929,34 @@ export function Ashura(
     const lastPit = (pit + n) % 12;
     let score = 0;
 
-    // ぐるぐる: neg確定済みなら+45で最優先
+    // ぐるぐる: 高価値石の質を反映したスコア最優先
     if (lastPit === storeIndex) {
-      score += isAI ? 45 : 16;
+      score += isAI ? 55 : 16;
       if (isAI) {
-        const expectedNeg = negCounts[pit] ?? 0;
-        if (expectedNeg > 0) score -= expectedNeg * 28;
+        for (const s of state.pits[pit]?.stones ?? []) {
+          const cls = stoneClassA(s);
+          if (cls === "own")
+            score += 8; // AI占い色 → 3pt
+          else if (cls === "player")
+            score += 12; // 相手占い色 → 5pt（最高価値）
+          else if (cls === "pos")
+            score += 4; // 中央+1石（意図的に混ぜる）
+          else if (cls === "neg")
+            score -= 25; // 自賽壇にneg石を入れない
+          else score += 1; // 中立石（混ぜることで予測困難化）
+        }
       }
     }
 
-    // ちらちら
+    // ちらちら / neg送出: ぐるぐるより低優先
     if (lastPit === oppStoreIndex) {
       if (!isAI) score -= 6;
       if (isAI) {
-        if (peeks < 3) score += knownNegA ? 8 : 30;
-        const expectedNeg = negCounts[pit] ?? 0;
-        if (expectedNeg > 0) score += expectedNeg * 35;
+        if (peeks < 3 && !knownNegA) score += 28; // neg色未特定 → ちらちら優先
+        if (knownNegA) {
+          const expectedNeg = negCounts[pit] ?? 0;
+          if (expectedNeg > 0) score += 6 + expectedNeg * 9; // neg送出（ぐるぐる基本55より低く抑える）
+        }
       }
     }
 
@@ -1854,20 +2010,7 @@ export function Ashura(
           { length: plLaneMax - plLaneMin + 1 },
           (_, i) => plLaneMin + i,
         ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
-        if (hadGuru && !stillHasGuru) score += 20;
-        score += pitStoneColorScoreA(p);
-        if (knownNegA) {
-          const negInPit = negCounts[p] ?? 0;
-          if (negInPit > 0) {
-            const sowN = counts[p];
-            let oppLandCount = 0;
-            for (let i = 1; i <= sowN; i++) {
-              const landPit = (p + i) % 12;
-              if (landPit >= plLaneMin && landPit <= plLaneMax) oppLandCount++;
-            }
-            if (oppLandCount > 0) score += negInPit * oppLandCount * 4;
-          }
-        }
+        if (hadGuru && !stillHasGuru) score += 20; // 相手ぐるぐる機会を潰す
       }
       scored.push({ pit: p, score });
     }

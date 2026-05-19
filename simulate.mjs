@@ -170,7 +170,15 @@ function pickPitOppView(
     );
   }
   if (aiName === "kugutsu") {
-    return Kugutsu(validPits, state, peeksAI, peeksPlayer, fortune, 3);
+    return Kugutsu(
+      validPits,
+      state,
+      peeksAI,
+      peeksPlayer,
+      fortune,
+      3,
+      params ?? {},
+    );
   }
   if (aiName === "ashura") {
     return Ashura(
@@ -549,6 +557,16 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ai1Role==='self' 縺ｪ繧・ashura 縺ｯ self 竊・逶ｸ謇九・ opp  竊・oppStore 縺ｯ pit5  for opp (pit11 繧定ｿｽ霍｡荳崎ｦ・
   const ashuraIsOpp = ai1Role === "opp";
   const ashuraParams = { opponentSentColors: [] };
+  // kugutsu用: opponentSentColorsを追跡
+  const kugutsuAiName = [ai1, ai2].find((a) => a === "kugutsu") ?? null;
+  const kugutsuRole = kugutsuAiName
+    ? kugutsuAiName === ai1
+      ? ai1Role
+      : ai2Role
+    : null;
+  const kugutsuStore =
+    kugutsuRole === "opp" ? 11 : kugutsuRole === "self" ? 5 : null;
+  const kugutsuParams = kugutsuAiName ? { opponentSentColors: [] } : null;
   const MAX_TURNS = 300; // 辟｡髯舌Ν繝ｼ繝鈴亟豁｢
   let turns = 0;
   let sennitte = false;
@@ -560,12 +578,15 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     const state = gs.getState();
 
     // 笏笏笏 縺上◆縺上◆繝√ぉ繝・け・医＄繧九＄繧狗ｶ咏ｶ壹ち繝ｼ繝ｳ縺ｯ繧ｹ繧ｭ繝・・・俄楳笏笏笏笏笏笏笏笏
-    if (!isExtraTurn && kkThresh !== Infinity) {
+    if (!isExtraTurn) {
       const ownStoreIdx = currentRole === "opp" ? 11 : 5;
       const oppStoreIdx = currentRole === "opp" ? 5 : 11;
       const own = state.pits[ownStoreIdx].stones.length;
       const opp = state.pits[oppStoreIdx].stones.length;
-      if (gs.canActivateKutakuta(currentRole) && own >= opp * kkThresh) {
+      // kugutsu: trigger kutakuta when ahead (own >= opp) — strategic game end
+      const isKugutsuTurn = kugutsuRole !== null && currentRole === kugutsuRole;
+      const effectiveThresh = isKugutsuTurn ? 1.0 : kkThresh;
+      if (effectiveThresh !== Infinity && gs.canActivateKutakuta(currentRole) && own >= opp * effectiveThresh) {
         kutakutaRole = currentRole;
         break;
       }
@@ -602,7 +623,11 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
 
     // 繝斐ャ繝磯∈謚・
     const pickParams =
-      aiName === (ashuraIsOpp ? ai1 : ai2) ? ashuraParams : null;
+      kugutsuParams && aiName === "kugutsu"
+        ? kugutsuParams
+        : aiName === (ashuraIsOpp ? ai1 : ai2)
+          ? ashuraParams
+          : null;
     const chosenPit = pickPitForRole(
       aiName,
       validPits,
@@ -646,6 +671,15 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       for (let i = 0; i < targets.length; i++) {
         if (targets[i] === 11) {
           ashuraParams.opponentSentColors.push(orderedStones[i].color);
+        }
+      }
+    }
+
+    // kugutsu専用: 相手手番でkugutsuストアに入った石の色を記録
+    if (kugutsuParams && kugutsuStore !== null && currentRole !== kugutsuRole) {
+      for (let i = 0; i < targets.length; i++) {
+        if (targets[i] === kugutsuStore) {
+          kugutsuParams.opponentSentColors.push(orderedStones[i].color);
         }
       }
     }

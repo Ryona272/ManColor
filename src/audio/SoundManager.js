@@ -29,6 +29,7 @@ class SoundManager {
     this._sowStep = 0;
     this._htmlAudio = null; // for MP3-backed BGM keys
     this._htmlFadeTimer = null; // setInterval ID for fade-in / fade-out
+    this._pendingBgm = null; // key waiting for first user gesture (autoplay policy)
     this._loadVolumes();
   }
 
@@ -618,7 +619,19 @@ class SoundManager {
       const isOneShot = SoundManager.ONESHOT_KEYS.has(resolvedKey);
       audio.loop = !isOneShot;
       audio.volume = 0;
-      audio.play().catch(() => {});
+      audio.play().catch(() => {
+        // Autoplay blocked — retry on first user gesture
+        this._pendingBgm = resolvedKey;
+        const retry = () => {
+          if (this._pendingBgm) {
+            const k = this._pendingBgm;
+            this._pendingBgm = null;
+            this.playBgm(k);
+          }
+        };
+        document.addEventListener("pointerdown", retry, { once: true });
+        document.addEventListener("keydown", retry, { once: true });
+      });
       this._startHtmlFadeIn(audio);
       if (isOneShot) {
         const nextKey = SoundManager.ONESHOT_NEXT[resolvedKey];
@@ -647,6 +660,7 @@ class SoundManager {
     }
     this._bgmActive = false;
     this._currentBgm = null;
+    this._pendingBgm = null;
     if (this._htmlAudio) {
       this._htmlAudio.pause();
       this._htmlAudio.src = "";

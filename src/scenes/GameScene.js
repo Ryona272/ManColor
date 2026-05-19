@@ -302,7 +302,7 @@ export class GameScene extends Phaser.Scene {
         kisin: 0x9933dd,
         kyubi: 0xc49820,
         ashura: 0xcc2200,
-        kugutsu: 0xaa0000,
+        kugutsu: 0x2266ff,
       };
       const label = diffLabels[this.aiDifficulty] ?? "普通";
       const color = diffColors[this.aiDifficulty] ?? 0x4a7bbf;
@@ -2190,6 +2190,22 @@ export class GameScene extends Phaser.Scene {
     // 全難易度: ターン開始時に相手の意図を更新（ぽいぽい石選択に使う）
     this._aiUpdateMemo(state);
 
+    // 傀儡: ストア優位時はくたくた発動（早期ゲーム終了戦略）
+    if (
+      this.aiDifficulty === "kugutsu" &&
+      this.gameState.canActivateKutakuta("opp")
+    ) {
+      const ownStore = state.pits[11].stones.length;
+      const oppStore = state.pits[5].stones.length;
+      if (ownStore >= oppStore) {
+        this._announceTechnique("くたくた！", 0x2266ff, "ゲーム終了！");
+        this.time.delayedCall(450, () =>
+          this.scene.get("UIScene").showResult(),
+        );
+        return;
+      }
+    }
+
     const chosen = this._aiPickPit(validPits, state);
     this._aiStartSowing(chosen);
   }
@@ -2525,6 +2541,10 @@ export class GameScene extends Phaser.Scene {
       peeksDonePlayer,
       fortune,
       this._kugutsuMaxDepth,
+      {
+        inferredPlayerColor: this._aiMemo?.inferredPlayerColor ?? null,
+        opponentSentColors: this._ashuraReceivedColors ?? [],
+      },
     );
   }
 
@@ -2564,7 +2584,10 @@ export class GameScene extends Phaser.Scene {
       peeksDoneAI,
       peeksDonePlayer,
       fortune,
-      {},
+      {
+        inferredPlayerColor: this._aiMemo?.inferredPlayerColor ?? null,
+        opponentSentColors: this._ashuraReceivedColors ?? [],
+      },
       "opp",
     );
   }

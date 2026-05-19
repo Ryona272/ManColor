@@ -329,7 +329,8 @@ export class GameState {
       } else {
         for (const fc of center) {
           if (stone.color === fc.color) {
-            pts = fc.bonus;
+            const override = this._negBonusOverride?.[player];
+            pts = fc.bonus < 0 && override != null ? override : fc.bonus;
             break;
           }
         }
