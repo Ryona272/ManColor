@@ -1837,6 +1837,29 @@ export function Ashura(
     }
   }
 
+  // 相手賽壇の多い色でneg推論（二択時の追加シグナル）
+  if (!knownNegA) {
+    const playerStorePit = state.pits[playerStore]?.stones ?? [];
+    if (playerStorePit.length >= 4) {
+      const storeCounts = {};
+      for (const s of playerStorePit) {
+        const c = s.color;
+        if (c === ownFortuneA) continue;
+        if (knownPosA.includes(c)) continue;
+        storeCounts[c] = (storeCounts[c] ?? 0) + 1;
+      }
+      let bestColor = null;
+      let bestCnt = 0;
+      for (const [c, cnt] of Object.entries(storeCounts)) {
+        if (cnt > bestCnt) {
+          bestCnt = cnt;
+          bestColor = c;
+        }
+      }
+      if (bestColor && bestCnt >= 3) knownNegA = bestColor;
+    }
+  }
+
   const initNegCounts = initCounts.map((cnt, pit) => {
     if (!knownNegA || cnt === 0) return 0;
     return (state.pits[pit]?.stones ?? []).filter((s) => s.color === knownNegA)
@@ -1885,6 +1908,26 @@ export function Ashura(
     return { counts: nc, negCounts: ng, lastPit: cur };
   }
 
+  // === Priority 1: ぐるぐる最優先（neg石のみのpitを除外してランダム選択）===
+  // neg石のみのpitは選ばない。一つでもプラスがあれば賽壇に置けるので。
+  // ランダム選択で相手への攪乱になる。
+  {
+    const guruEligible = validPits.filter((p) => {
+      const n = initCounts[p];
+      if (n === 0) return false;
+      if ((p + n) % 12 !== aiStore) return false;
+      if (knownNegA) {
+        const stones = state.pits[p]?.stones ?? [];
+        if (stones.length > 0 && stones.every((s) => s.color === knownNegA))
+          return false;
+      }
+      return true;
+    });
+    if (guruEligible.length > 0) {
+      return guruEligible[Math.floor(Math.random() * guruEligible.length)];
+    }
+  }
+
   // ちらちら強制（neg確定済みの場合はスキップしてぐるぐる優先）
   if (peeksDoneAI < 3 && !knownNegA) {
     const oppGuruPits = Array.from(
@@ -1915,31 +1958,25 @@ export function Ashura(
     }
   }
 
-  // neg石ダンプ: ぐるぐる機会がない場合のみ緊急実行（通常はDFSに任せる）
+  // === Priority 2: ぐるぐる不可時のneg廃棄（neg多い順にちらちらで相手賽壇へ）===
   if (knownNegA) {
-    const guruExists = validPits.some((p) => {
+    const minusDumpCandidates = validPits.filter((p) => {
       const n = initCounts[p];
-      return n > 0 && (p + n) % 12 === aiStore;
+      if (n === 0) return false;
+      if ((p + n) % 12 !== playerStore) return false;
+      return (state.pits[p]?.stones ?? []).some((s) => s.color === knownNegA);
     });
-    if (!guruExists) {
-      const minusDumpCandidates = validPits.filter((p) => {
-        const n = initCounts[p];
-        if (n === 0) return false;
-        if ((p + n) % 12 !== playerStore) return false;
-        return (state.pits[p]?.stones ?? []).some((s) => s.color === knownNegA);
+    if (minusDumpCandidates.length > 0) {
+      minusDumpCandidates.sort((a, b) => {
+        const aN = (state.pits[a]?.stones ?? []).filter(
+          (s) => s.color === knownNegA,
+        ).length;
+        const bN = (state.pits[b]?.stones ?? []).filter(
+          (s) => s.color === knownNegA,
+        ).length;
+        return bN - aN;
       });
-      if (minusDumpCandidates.length > 0) {
-        minusDumpCandidates.sort((a, b) => {
-          const aN = (state.pits[a]?.stones ?? []).filter(
-            (s) => s.color === knownNegA,
-          ).length;
-          const bN = (state.pits[b]?.stones ?? []).filter(
-            (s) => s.color === knownNegA,
-          ).length;
-          return bN - aN;
-        });
-        return minusDumpCandidates[0];
-      }
+      return minusDumpCandidates[0];
     }
   }
 

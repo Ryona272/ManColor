@@ -2206,6 +2206,22 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // 阿修羅: neg石を取らないためストア優位なら即くたくた発動
+    if (
+      this.aiDifficulty === "ashura" &&
+      this.gameState.canActivateKutakuta("opp")
+    ) {
+      const ownStore = state.pits[11].stones.length;
+      const oppStore = state.pits[5].stones.length;
+      if (ownStore > oppStore) {
+        this._announceTechnique("くたくた！", 0xcc2200, "ゲーム終了！");
+        this.time.delayedCall(450, () =>
+          this.scene.get("UIScene").showResult(),
+        );
+        return;
+      }
+    }
+
     const chosen = this._aiPickPit(validPits, state);
     this._aiStartSowing(chosen);
   }
