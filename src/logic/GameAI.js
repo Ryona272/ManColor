@@ -149,8 +149,31 @@ export function Kugutsu(
     return { counts: nc, negCounts: ng, lastPit: cur };
   }
 
-  // === Neg dump pre-check (force chirachira dump when neg known, no guru) ===
+  // === Neg dump pre-check ===
   if (knownNegK) {
+    // Priority 1: 2+ neg stones in a chirachira pit → always dump (even if guru available)
+    const highNegDump = validPits.filter((p) => {
+      const n = initCounts[p];
+      if (n === 0) return false;
+      if ((p + n) % 12 !== 5) return false;
+      return (
+        (state.pits[p]?.stones ?? []).filter((s) => s.color === knownNegK)
+          .length >= 2
+      );
+    });
+    if (highNegDump.length > 0) {
+      highNegDump.sort((a, b) => {
+        const aN = (state.pits[a]?.stones ?? []).filter(
+          (s) => s.color === knownNegK,
+        ).length;
+        const bN = (state.pits[b]?.stones ?? []).filter(
+          (s) => s.color === knownNegK,
+        ).length;
+        return bN - aN;
+      });
+      return highNegDump[0];
+    }
+    // Priority 2: No guru available → dump any neg via chirachira
     const guruExists = validPits.some((p) => {
       const n = initCounts[p];
       return n > 0 && (p + n) % 12 === 11;
@@ -207,7 +230,7 @@ export function Kugutsu(
         const safeStones = Math.max(0, n - negInPit);
         score += 55 + safeStones * 2 - negInPit * 28;
       } else {
-        score += 8;
+        score += 13; // player guru — higher to make kugutsu block more actively
       }
     } else if (lastPit === oppStoreIndex) {
       // chirachira
@@ -218,7 +241,7 @@ export function Kugutsu(
         } else {
           // Neg dump: send neg stones to opponent
           const negInPit = negCounts[pit] ?? 0;
-          score += negInPit > 0 ? 6 + negInPit * 9 : 2;
+          score += negInPit > 0 ? 10 + negInPit * 12 : 2;
         }
       } else {
         score += 5;
@@ -237,8 +260,8 @@ export function Kugutsu(
           // Bonus for blocking opponent's guru or chirachira path
           const mirrorFinal = (mirror + counts[mirror]) % 12;
           if (mirrorFinal === oppStoreIndex)
-            zakuScore += 18; // block opp guru
-          else if (mirrorFinal === storeIndex) zakuScore += 10; // block opp chirachira
+            zakuScore += 25; // block opp guru
+          else if (mirrorFinal === storeIndex) zakuScore += 15; // block opp chirachira
         }
         score += zakuScore;
       }
