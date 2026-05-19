@@ -1965,7 +1965,7 @@ export function Ashura(
           else if (cls === "pos")
             score += 4; // 中央+1石（意図的に混ぜる）
           else if (cls === "neg")
-            score -= 25; // 自賽壇にneg石を入れない
+            score -= 10; // neg石は軽くペナルティ（ぐるぐる優先のため低く設定）
           else score += 1; // 中立石（混ぜることで予測困難化）
         }
       }
@@ -1976,10 +1976,7 @@ export function Ashura(
       if (!isAI) score -= 6;
       if (isAI) {
         if (peeks < 3 && !knownNegA) score += 28; // neg色未特定 → ちらちら優先
-        if (knownNegA) {
-          const expectedNeg = negCounts[pit] ?? 0;
-          if (expectedNeg > 0) score += 6 + expectedNeg * 9; // neg送出（ぐるぐる基本55より低く抑える）
-        }
+        // neg判明済みでもぐるぐる連鎖を優先するため、neg送出ボーナスは与えない
       }
     }
 
@@ -2065,7 +2062,7 @@ export function Ashura(
         aiScore -
         playerScore +
         guruChainCount * guruChainBonus -
-        expectedMinusInStore * 35;
+        expectedMinusInStore * 8;
       if (net > bestNet) {
         bestNet = net;
         bestFirstPit = firstPit;
