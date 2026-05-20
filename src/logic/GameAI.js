@@ -1919,13 +1919,15 @@ export function Ashura(
   }
 
   // ぐるぐる可能かを事前確認（ちらちら強制 / Priority 2 の発動条件に使用）
-  const hasGuruNow = validPits.some((p) => {
+  const guruPits = validPits.filter((p) => {
     const n = initCounts[p];
     return n > 0 && (p + n) % 12 === aiStore;
   });
+  const hasGuruNow = guruPits.length > 0;
 
+  // ぐるぐる最優先ハード保証: ぐるぐる可能な場合はちらちら強制を全スキップ
   // ちらちら強制（neg確定済みの場合はスキップしてぐるぐる優先）
-  if (peeksDoneAI < 3 && !knownNegA) {
+  if (peeksDoneAI < 3 && !knownNegA && !hasGuruNow) {
     const oppGuruPits = Array.from(
       { length: plLaneMax - plLaneMin + 1 },
       (_, i) => plLaneMin + i,
@@ -2116,7 +2118,15 @@ export function Ashura(
     const storeIdx = isAI ? aiStore : playerStore;
     const peeks = isAI ? aiPeeks : playerPeeks;
     const topMoves = isFirstMove
-      ? getTopMovesV2(counts, negCounts, true, peeks, 6, validPits, true)
+      ? getTopMovesV2(
+          counts,
+          negCounts,
+          true,
+          peeks,
+          6,
+          guruPits.length > 0 ? guruPits : validPits,
+          true,
+        )
       : getTopMovesV2(counts, negCounts, isAI, peeks, 3, null, false);
 
     if (topMoves.length === 0) {
@@ -2199,7 +2209,7 @@ export function Ashura(
     peeksDonePlayer,
     0,
     0,
-    validPits[0],
+    guruPits.length > 0 ? guruPits[0] : validPits[0],
     0,
   );
 

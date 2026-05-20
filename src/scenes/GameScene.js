@@ -201,6 +201,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   _returnToHome() {
+    // ゲームBGMをフェードアウト（LobbySceneのplayBgmが後続でロビーBGMを開始する）
+    soundManager.stopBgmFade(600);
+
     // ルーム接続を切断
     if (this.roomUnsubscribe) {
       this.roomUnsubscribe();
@@ -281,7 +284,7 @@ export class GameScene extends Phaser.Scene {
     this._setupInput();
     this.scene.launch("UIScene", { gameScene: this });
     soundManager.playBgm(
-      this._isOnlineRoomMode() ? "game" : "game_" + this.aiDifficulty,
+      this._isOnlineRoomMode() ? "game_kooni" : "game_" + this.aiDifficulty,
     );
 
     if (!this._isOnlineRoomMode()) {

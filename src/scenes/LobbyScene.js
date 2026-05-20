@@ -525,6 +525,8 @@ export class LobbyScene extends Phaser.Scene {
       .setOrigin(0.5);
     objs.push(titleT);
 
+    const debugBtns = [];
+
     // ─── 進行管理 ───────────────────────────────────────────
     // soloProgressMode: "progression" | "free"  (初期値: "progression")
     // soloUnlocked: 倒した難易度の配列
@@ -1674,8 +1676,7 @@ export class LobbyScene extends Phaser.Scene {
                   duration: 140,
                   yoyo: true,
                   onComplete: () => {
-                    // Step7: 阿修羅フェードイン + 出現BGM再生
-                    soundManager.playBgm("魔王魂_阿修羅出現");
+                    // Step7: 阿修羅フェードイン
                     this.tweens.add({
                       targets: ashuraList,
                       alpha: 1,
@@ -1828,6 +1829,8 @@ export class LobbyScene extends Phaser.Scene {
 
       // ── Phase A: 鬼神カード (T+400ms) ─ 背景を阿修羅色に + 赤枠トレース ──
       this.time.delayedCall(400, () => {
+        // 鬼神が暗くなり始めるタイミングでBGM開始
+        soundManager.playBgm("魔王魂_阿修羅出現");
         const kisinOverlay = this.add.graphics();
         objs.push(kisinOverlay);
         const koa = { a: 0 };
@@ -1914,8 +1917,37 @@ export class LobbyScene extends Phaser.Scene {
       cleanup();
       this._showDifficultyPanel();
     });
-    resetT.setVisible(false);
     objs.push(resetT);
+    debugBtns.push(resetT);
+
+    const preAshuraT = this.add
+      .text(W / 2 + 200, 1510, "阿修羅直前", {
+        fontSize: "30px",
+        color: "#aa44cc",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    preAshuraT.on("pointerdown", () => {
+      try {
+        const beaten = {
+          kooni: {},
+          yasha: {},
+          rasetsu: {},
+          kisin: {},
+          kyubi: {},
+        };
+        ["kooni", "yasha", "rasetsu", "kisin", "kyubi"].forEach((d) => {
+          beaten[d] = { first: true, second: true };
+        });
+        localStorage.setItem("soloBeaten", JSON.stringify(beaten));
+        localStorage.removeItem("ashuraShown");
+      } catch (_e) {}
+      cleanup();
+      this._showDifficultyPanel();
+    });
+    objs.push(preAshuraT);
+    debugBtns.push(preAshuraT);
 
     const cancelT = this.add
       .text(W / 2, 1510, "キャンセル", {
