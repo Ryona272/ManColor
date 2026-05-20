@@ -131,6 +131,9 @@ export function Kugutsu(
       .length;
   });
 
+  // 推測プレイヤー占い色（+5pt石）: guru路選択のボーナスに使用
+  const inferredPlayerK = params?.inferredPlayerColor ?? null;
+
   // === Fast sow with proportional neg tracking ===
   function fastSowWithNeg(counts, negCounts, pitIndex) {
     const nc = counts.slice();
@@ -228,7 +231,13 @@ export function Kugutsu(
       if (isAI) {
         const negInPit = negCounts[pit] ?? 0;
         const safeStones = Math.max(0, n - negInPit);
-        score += 55 + safeStones * 2 - negInPit * 28;
+        // 推測プレイヤー占い色（+5pt石）を賽壇へ送るほど高評価
+        const inferredInPit = inferredPlayerK
+          ? (state.pits[pit]?.stones ?? []).filter(
+              (s) => s.color === inferredPlayerK,
+            ).length
+          : 0;
+        score += 55 + safeStones * 2 - negInPit * 28 + inferredInPit * 6;
       } else {
         score += 13; // player guru — higher to make kugutsu block more actively
       }
@@ -285,11 +294,25 @@ export function Kugutsu(
     return scored;
   }
 
-  function canKutakutaAI(counts) {
-    return counts[11] >= counts[5] - 6;
+  // くたくた判定: 実際のゲームルール（路の色種類数≤2）に基づく
+  // DFS内では石の色を追跡できないため、初期状態の実データを固定使用
+  const realAiKk = (() => {
+    const colors = new Set();
+    for (let p = 6; p <= 10; p++)
+      for (const s of state.pits[p]?.stones ?? []) colors.add(s.color);
+    return colors.size <= 2;
+  })();
+  const realPlayerKk = (() => {
+    const colors = new Set();
+    for (let p = 0; p <= 4; p++)
+      for (const s of state.pits[p]?.stones ?? []) colors.add(s.color);
+    return colors.size <= 2;
+  })();
+  function canKutakutaAI(_counts) {
+    return realAiKk;
   }
-  function canKutakutaPlayer(counts) {
-    return counts[5] >= counts[11];
+  function canKutakutaPlayer(_counts) {
+    return realPlayerKk;
   }
 
   // === DFS ===
@@ -1853,28 +1876,53 @@ export function Ashura(
       nc[cur]++;
       ng[cur] += negFrac;
     }
+
+    // AI ざくざく: AI路の空き路に着地 → 相手対面路を捕獲してAI路に分配
+    // pitIndexがAI路かつ着地先が空だった場合のみ発動
+    if (
+      pitIndex >= aiLaneMin &&
+      pitIndex <= aiLaneMax &&
+      cur >= aiLaneMin &&
+      cur <= aiLaneMax &&
+      counts[cur] === 0
+    ) {
+      const mirror = isOppRole ? cur - 6 : cur + 6;
+      const captured = nc[mirror];
+      if (captured > 0) {
+        const capturedNegFrac = ng[mirror] / captured;
+        nc[mirror] = 0;
+        ng[mirror] = 0;
+        // ぐるぐる目標数を上限にpit10→9→8→7→6の順に配置
+        const aiPlacePits = isOppRole ? [10, 9, 8, 7, 6] : [4, 3, 2, 1, 0];
+        let remaining = captured;
+        for (const pp of aiPlacePits) {
+          if (remaining <= 0) break;
+          const guruTarget = (aiStore - pp + 12) % 12;
+          const room = Math.max(0, guruTarget - nc[pp]);
+          const toPlace = room > 0 ? Math.min(remaining, room) : 0;
+          if (toPlace > 0) {
+            nc[pp] += toPlace;
+            ng[pp] += capturedNegFrac * toPlace;
+            remaining -= toPlace;
+          }
+        }
+        // 目標数超えはpit10にオーバーフロー
+        if (remaining > 0) {
+          const overflowPit = aiPlacePits[0];
+          nc[overflowPit] += remaining;
+          ng[overflowPit] += capturedNegFrac * remaining;
+        }
+      }
+    }
+
     return { counts: nc, negCounts: ng, lastPit: cur };
   }
 
-  // === Priority 1: ぐるぐる最優先（neg石のみのpitを除外してランダム選択）===
-  // neg石のみのpitは選ばない。一つでもプラスがあれば賽壇に置けるので。
-  // ランダム選択で相手への攪乱になる。
-  {
-    const guruEligible = validPits.filter((p) => {
-      const n = initCounts[p];
-      if (n === 0) return false;
-      if ((p + n) % 12 !== aiStore) return false;
-      if (knownNegA) {
-        const stones = state.pits[p]?.stones ?? [];
-        if (stones.length > 0 && stones.every((s) => s.color === knownNegA))
-          return false;
-      }
-      return true;
-    });
-    if (guruEligible.length > 0) {
-      return guruEligible[Math.floor(Math.random() * guruEligible.length)];
-    }
-  }
+  // ぐるぐる可能かを事前確認（ちらちら強制 / Priority 2 の発動条件に使用）
+  const hasGuruNow = validPits.some((p) => {
+    const n = initCounts[p];
+    return n > 0 && (p + n) % 12 === aiStore;
+  });
 
   // ちらちら強制（neg確定済みの場合はスキップしてぐるぐる優先）
   if (peeksDoneAI < 3 && !knownNegA) {
@@ -1898,8 +1946,10 @@ export function Ashura(
         ).some((pp) => nc[pp] > 0 && (pp + nc[pp]) % 12 === aiStore);
       });
       if (blockAndChira !== undefined) return blockAndChira;
-      if (peeksDoneAI === 0) return candidates[0];
-      if (!oppHasGuruNow) {
+      // ぐるぐる可能なときは1回目ちらちらを強制しない（DFSで比較させる）
+      if (peeksDoneAI === 0 && !hasGuruNow) return candidates[0];
+      // 2・3回目: 相手guru なし または 自分guru なし → ちらちら実行
+      if (!oppHasGuruNow || !hasGuruNow) {
         const s = candidates[0];
         if (s !== undefined) return s;
       }
@@ -1907,7 +1957,7 @@ export function Ashura(
   }
 
   // === Priority 2: ぐるぐる不可時のneg廃棄（neg多い順にちらちらで相手賽壇へ）===
-  if (knownNegA) {
+  if (knownNegA && !hasGuruNow) {
     const minusDumpCandidates = validPits.filter((p) => {
       const n = initCounts[p];
       if (n === 0) return false;
@@ -1960,8 +2010,13 @@ export function Ashura(
     if (lastPit === oppStoreIndex) {
       if (!isAI) score -= 6;
       if (isAI) {
-        if (peeks < 3 && !knownNegA) score += 28; // neg色未特定 → ちらちら優先
-        // neg判明済みでもぐるぐる連鎖を優先するため、neg送出ボーナスは与えない
+        if (peeks < 3 && !knownNegA) {
+          score += 28; // neg色未特定 → ちらちら優先
+        } else if (knownNegA) {
+          // neg判明済み: neg石を相手賽壇へ送る価値をDFSに反映
+          const negInPit = negCounts[pit] ?? 0;
+          if (negInPit > 0) score += 5 + negInPit * 8; // 1本→13, 3本→29
+        }
       }
     }
 
@@ -1977,7 +2032,9 @@ export function Ashura(
       if (counts[mirror] > 0) {
         const expectedNegMirror = negCounts[mirror] ?? 0;
         if (isAI) {
-          score += 7 + counts[mirror] - expectedNegMirror * 20;
+          // fastSowWithNegでボード状態変化（捕獲石のAI路配置）を反映済みのため
+          // +counts[mirror] は削除し、neg石の多い捕獲への抑制のみ残す
+          score += 8 - expectedNegMirror * 10;
         } else {
           score += 10 + Math.min(counts[mirror], 4) - expectedNegMirror * 14;
         }
@@ -2025,7 +2082,7 @@ export function Ashura(
 
   let bestFirstPit = validPits[0];
   let bestNet = -Infinity;
-  const guruChainBonus = 0;
+  const guruChainBonus = 3; // ぐるぐる連鎖数 × 3 をリーフスコアに反映（タイブレーカー）
 
   function dfs(
     depth,

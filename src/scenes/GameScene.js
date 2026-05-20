@@ -2168,7 +2168,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  _aiTurn() {
+  _aiTurn(isExtraTurn = false) {
     if (this._isOnlineRoomMode()) return;
     if (this.mode === "final-phase") return;
 
@@ -2190,8 +2190,10 @@ export class GameScene extends Phaser.Scene {
     // 全難易度: ターン開始時に相手の意図を更新（ぽいぽい石選択に使う）
     this._aiUpdateMemo(state);
 
+    // ぐるぐる継続ターン中はくたくたを発動しない（ぐるぐるはくたくたより優先）
     // 傀儡: ストア優位時はくたくた発動（早期ゲーム終了戦略）
     if (
+      !isExtraTurn &&
       this.aiDifficulty === "kugutsu" &&
       this.gameState.canActivateKutakuta("opp")
     ) {
@@ -2208,6 +2210,7 @@ export class GameScene extends Phaser.Scene {
 
     // 阿修羅: neg石を取らないためストア優位なら即くたくた発動
     if (
+      !isExtraTurn &&
       this.aiDifficulty === "ashura" &&
       this.gameState.canActivateKutakuta("opp")
     ) {
@@ -2667,9 +2670,8 @@ export class GameScene extends Phaser.Scene {
   _aiOptimizeSowOrderKisin(stones, targets) {
     if (stones.length <= 1) return stones;
 
-    // 小鬼・夜叉・傀儡は石順ランダム（撒き順最適化なし）
-    if (["kooni", "yasha", "kugutsu"].includes(this.aiDifficulty))
-      return stones;
+    // 小鬼・夜叉は石順ランダム（撒き順最適化なし）
+    if (["kooni", "yasha"].includes(this.aiDifficulty)) return stones;
 
     const state = this.gameState.getState();
     const fortune = {
@@ -3422,7 +3424,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this._announceTechnique("ぐるぐる！", 0xe87070, "もう一度相手のターン！");
-      this.time.delayedCall(1100, () => this._aiTurn());
+      this.time.delayedCall(1100, () => this._aiTurn(true));
       return;
     }
 

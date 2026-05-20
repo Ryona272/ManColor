@@ -527,6 +527,13 @@ function finalPoipoi(gs, role, times, oppFortuneColor) {
 // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 // 1隧ｦ蜷医・繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ
 // 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+// くたくた発動閾値: AI種別ごとのルールに従う
+function kkThreshForAI(aiName) {
+  // kisin/ashura/ashuraki: 発動可能なら常に発動（閾値=0 → own>=0 常にtrue）
+  if (["kisin", "ashura", "ashuraki"].includes(aiName)) return 0;
+  // kugutsu/kooni/yasha/rasetsu/kyubi: 標準（AI賽壇 ≥ 相手賽壇）
+  return 1.0;
+}
 function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ai1Role: 'opp'=pit6-10, 'self'=pit0-4
   const ai2Role = ai1Role === "opp" ? "self" : "opp";
@@ -543,7 +550,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   }
 
   // 繧ｲ繝ｼ繝繝ｫ繝ｼ繝礼畑縺ｮ螟画焚
-  let currentRole = ai1Role === "opp" ? "opp" : "self"; // opp蛛ｴ縺悟・謇九↓縺吶ｋ・亥・謇・蠕梧焔縺ｯ蜻ｼ縺ｳ蜈・′豎ｺ螳夲ｼ・
+  let currentRole = "opp"; // opp(pit6-10)が常に先手: ai1Role='opp'→ai1が先手, ai1Role='self'→ai2が先手
   // NOTE: ai1Role='opp' 竊・ai1縺悟・謇・opp), ai2縺悟ｾ梧焔(self)
   //        ai1Role='self' 竊・ai1縺悟ｾ梧焔(self), ai2縺悟・謇・opp)
 
@@ -555,7 +562,14 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
   // ashura 逕ｨ: 逶ｸ謇区焔逡ｪ縺ｧ pit11 縺ｫ逹蝨ｰ縺励◆遏ｳ縺ｮ濶ｲ螻･豁ｴ
   // ai1Role==='opp' 縺ｪ繧・ashura 縺ｯ opp 竊・逶ｸ謇九・ self 竊・oppStore 縺ｯ pit11 for self
   // ai1Role==='self' 縺ｪ繧・ashura 縺ｯ self 竊・逶ｸ謇九・ opp  竊・oppStore 縺ｯ pit5  for opp (pit11 繧定ｿｽ霍｡荳崎ｦ・
-  const ashuraIsOpp = ai1Role === "opp";
+  // ashura用: 実際のashuraのロールを特定
+  const ashuraAiName =
+    [ai1, ai2].find((a) => a === "ashura" || a === "ashuraki") ?? null;
+  const ashuraRole = ashuraAiName
+    ? ashuraAiName === ai1
+      ? ai1Role
+      : ai2Role
+    : null;
   const ashuraParams = { opponentSentColors: [] };
   // kugutsu用: opponentSentColorsを追跡
   const kugutsuAiName = [ai1, ai2].find((a) => a === "kugutsu") ?? null;
@@ -583,10 +597,10 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
       const oppStoreIdx = currentRole === "opp" ? 5 : 11;
       const own = state.pits[ownStoreIdx].stones.length;
       const opp = state.pits[oppStoreIdx].stones.length;
-      // kugutsu: trigger kutakuta when ahead (own >= opp) — strategic game end
-      const isKugutsuTurn = kugutsuRole !== null && currentRole === kugutsuRole;
-      const effectiveThresh = isKugutsuTurn ? 1.0 : kkThresh;
-      if (effectiveThresh !== Infinity && gs.canActivateKutakuta(currentRole) && own >= opp * effectiveThresh) {
+      // くたくた: AI種別ごとの閾値を適用
+      const currentAiName = currentRole === ai1Role ? ai1 : ai2;
+      const effectiveThresh = kkThreshForAI(currentAiName);
+      if (gs.canActivateKutakuta(currentRole) && own >= opp * effectiveThresh) {
         kutakutaRole = currentRole;
         break;
       }
@@ -625,7 +639,7 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     const pickParams =
       kugutsuParams && aiName === "kugutsu"
         ? kugutsuParams
-        : aiName === (ashuraIsOpp ? ai1 : ai2)
+        : ashuraAiName && aiName === ashuraAiName
           ? ashuraParams
           : null;
     const chosenPit = pickPitForRole(
@@ -667,9 +681,11 @@ function runOneGame(ai1, ai2, ai1Role, kkThresh) {
     const oppStore = currentRole === "opp" ? 5 : 11;
 
     // 笏笏笏 ashura 蜷代￠: 逶ｸ謇・self)縺ｮ謦偵″縺ｧ pit11 縺ｫ蜈･縺｣縺溽浹縺ｮ濶ｲ繧定ｨ倬鹸 笏笏笏笏
-    if (ashuraIsOpp && currentRole === "self") {
+    // ashura用: 相手がashuraストアに石を送った色を記録
+    if (ashuraRole !== null && currentRole !== ashuraRole) {
+      const ashuraStore = ashuraRole === "opp" ? 11 : 5;
       for (let i = 0; i < targets.length; i++) {
-        if (targets[i] === 11) {
+        if (targets[i] === ashuraStore) {
           ashuraParams.opponentSentColors.push(orderedStones[i].color);
         }
       }
