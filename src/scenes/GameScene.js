@@ -23,6 +23,13 @@ import {
 } from "../data/GameParams.js";
 import { fetchKugutsuLevel } from "../net/battleLogger.js";
 import { soundManager } from "../audio/SoundManager.js";
+import {
+  getSelectedSkinSet,
+  stoneSkinTextureKey,
+  drawStoneGraphic,
+  pickRandomFreeSkinSetId,
+  pickDisplaySkinSetId,
+} from "../data/stoneSkins.js";
 
 const CENTER_VIEW_NAMES = ["左", "真ん中", "右"];
 
@@ -110,6 +117,8 @@ export class GameScene extends Phaser.Scene {
     };
     // 傀儡の DFS 深さ（戦績に応じて成長: 3〜5）
     this._kugutsuMaxDepth = 3;
+    // 相手の石デザイン（ソロ: ランダムな無料デザイン / オンライン: 相手の装備を同期）
+    this._opponentSkinSetId = "normal";
   }
 
   init(data) {
@@ -129,6 +138,12 @@ export class GameScene extends Phaser.Scene {
     this.personalFortunesRevealedSticky = false;
     this.aiDifficulty = data?.aiDifficulty ?? "yasha";
     this.playerFirst = data?.playerFirst ?? true;
+    this.tutorialMode = data?.tutorialMode ?? false;
+    this.tutorialAllowedPits = null;
+    this._tutorialTurnCallback = null;
+    this._tutorialOppTurnCallback = null;
+    this._tutorialKutakutaReadyCallback = null;
+    this._tutorialKutakutaSelectedCallback = null;
     this._initialConnectionEstablished = false;
     this._connectionErrorCount = 0;
     // 強いAI用: プレイヤー行動の観察メモ
@@ -212,6 +227,7 @@ export class GameScene extends Phaser.Scene {
     roomClient.disconnect();
 
     // シーンをクリーンアップしてホームに戻る
+    this.scene.stop("TutorialScene");
     this.scene.stop("UIScene");
     this.scene.start("LobbyScene");
   }
@@ -239,6 +255,10 @@ export class GameScene extends Phaser.Scene {
       opp: { guru: 0, zaku: 0, chira: 0 },
     };
     this._kugutsuMaxDepth = 3;
+    // 石デザイン: 自分は装備中のもの、相手はソロならランダム、オンラインなら同期で決まる
+    this._opponentSkinSetId = this._isOnlineRoomMode()
+      ? "normal"
+      : pickRandomFreeSkinSetId();
     // 傀儡は戦績に応じて DFS 深さが成長する（非同期で取得）
     if (!this._isOnlineRoomMode() && this.aiDifficulty === "kugutsu") {
       fetchKugutsuLevel()
@@ -283,11 +303,14 @@ export class GameScene extends Phaser.Scene {
     this._renderStones();
     this._setupInput();
     this.scene.launch("UIScene", { gameScene: this });
+    if (this.tutorialMode) {
+      this.scene.launch("TutorialScene", { gameScene: this });
+    }
     soundManager.playBgm(
       this._isOnlineRoomMode() ? "game_kooni" : "game_" + this.aiDifficulty,
     );
 
-    if (!this._isOnlineRoomMode()) {
+    if (!this._isOnlineRoomMode() && !this.tutorialMode) {
       // ソロ対戦: AI難易度バナーを表示
       const diffLabels = {
         kooni: "小鬼",
@@ -328,6 +351,8 @@ export class GameScene extends Phaser.Scene {
           if (this.mode === "turn" && !this.playerTurn) this._aiTurn();
         });
       }
+    } else if (!this._isOnlineRoomMode() && this.tutorialMode) {
+      // チュートリアルモード: AIターンを起動しない
     }
 
     if (this._isOnlineRoomMode()) {
@@ -701,32 +726,33 @@ export class GameScene extends Phaser.Scene {
         pos.y + oy + shadowOffset.y,
         STONE_R + 1,
       );
-      g.fillStyle(hexColor, 1);
-      g.fillCircle(pos.x + ox, pos.y + oy, STONE_R);
-      g.lineStyle(3, isUpperSide ? 0xf5f5f8 : 0x3a332a, 0.9);
-      g.strokeCircle(pos.x + ox, pos.y + oy, STONE_R);
       this.stoneSprites.push(g);
 
-      if (this.mode === "poipoi-stone" && this.poipoiStoreIndex === pitIndex) {
-        const zone = this.add
-          .zone(pos.x + ox, pos.y + oy, STONE_R * 2 + 8, STONE_R * 2 + 8)
-          .setInteractive();
-        zone.on("pointerdown", () => this._handlePoipoiStoneClick(pitIndex, j));
-        this.stoneSprites.push(zone);
-
-        const ring = this.add.graphics();
-        ring.lineStyle(4, 0x7cc8ff, 0.98);
-        ring.strokeCircle(pos.x + ox, pos.y + oy, STONE_R + 6);
-        const ringTween = this.tweens.add({
-          targets: ring,
-          alpha: 0.22,
-          duration: 360,
-          yoyo: true,
-          repeat: -1,
-        });
-        this.highlightTweens.push(ringTween);
-        this.stoneSprites.push(ring);
+      const skinSetId = pickDisplaySkinSetId(
+        this._isOwnStone(stone, pitIndex),
+        getSelectedSkinSet(),
+        this._opponentSkinSetId,
+      );
+      const texKey = stoneSkinTextureKey(skinSetId, stone.color);
+      if (texKey && this.textures.exists(texKey)) {
+        const img = this.add.image(pos.x + ox, pos.y + oy, texKey);
+        const scale = (STONE_R * 2) / Math.max(img.width, img.height);
+        img.setScale(scale);
+        this.stoneSprites.push(img);
+      } else {
+        drawStoneGraphic(
+          g,
+          skinSetId,
+          hexColor,
+          pos.x + ox,
+          pos.y + oy,
+          STONE_R,
+        );
+        g.lineStyle(3, isUpperSide ? 0xf5f5f8 : 0x3a332a, 0.9);
+        g.strokeCircle(pos.x + ox, pos.y + oy, STONE_R);
       }
+
+      // ぽいぽい石選択は中央の拡大パネル（_drawPoipoiStoneZoom）で行う
     }
   }
 
@@ -920,6 +946,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   _drawTrayUi() {
+    if (this.mode !== "poipoi-stone") {
+      this.scene.get("UIScene")?.hidePoipoiStoneZoom?.();
+    }
+
     if (this.mode === "poipoi-store") {
       this._drawPlacementHighlight(5);
       this._drawPlacementHighlight(11);
@@ -929,6 +959,7 @@ export class GameScene extends Phaser.Scene {
     if (this.mode === "poipoi-stone") {
       if (this.poipoiStoreIndex != null) {
         this._drawPlacementHighlight(this.poipoiStoreIndex);
+        this.scene.get("UIScene")?.showPoipoiStoneZoom?.(this.poipoiStoreIndex);
       }
       return;
     }
@@ -1025,8 +1056,26 @@ export class GameScene extends Phaser.Scene {
       const isSelected = index === this.selectedPlacementStoneIndex;
 
       const token = this.add.graphics();
-      token.fillStyle(COLORS[stone.color]?.hex ?? 0xffffff, 1);
-      token.fillCircle(x, y, 26);
+      const skinSetId = pickDisplaySkinSetId(
+        this._isOwnStone(stone),
+        getSelectedSkinSet(),
+        this._opponentSkinSetId,
+      );
+      const texKey = stoneSkinTextureKey(skinSetId, stone.color);
+      if (texKey && this.textures.exists(texKey)) {
+        const img = this.add.image(x, y, texKey);
+        img.setScale((26 * 2) / Math.max(img.width, img.height));
+        this.stoneSprites.push(img);
+      } else {
+        drawStoneGraphic(
+          token,
+          skinSetId,
+          COLORS[stone.color]?.hex ?? 0xffffff,
+          x,
+          y,
+          26,
+        );
+      }
       token.lineStyle(isSelected ? 5 : 2, isSelected ? 0xffffff : 0x0f2030, 1);
       token.strokeCircle(x, y, 26);
       this.stoneSprites.push(token);
@@ -1080,6 +1129,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** ぽいぽい: 石選択をやめて賽壇選択に戻る */
+  _cancelPoipoiStoneSelection() {
+    if (this.mode !== "poipoi-stone") return;
+    this.mode = "poipoi-store";
+    this.poipoiStoreIndex = null;
+    this._renderStones();
+    this.scene.get("UIScene")?.showPoipoiStorePrompt();
+  }
+
   _drawPlacementHighlight(pitIndex) {
     const pos = this._getViewPos(pitIndex);
     if (!pos) return;
@@ -1113,6 +1171,22 @@ export class GameScene extends Phaser.Scene {
       return this.onlineSide === "opp" ? [6, 7, 8, 9, 10] : [0, 1, 2, 3, 4];
     }
     return [0, 1, 2, 3, 4];
+  }
+
+  /** pitIndex が自分の陣地（路・賽壇含む）かどうか。オンラインでは onlineSide に応じて反転する */
+  _isLocalPit(pitIndex) {
+    const canonicalSelf = pitIndex <= 5;
+    if (this._isOnlineRoomMode()) {
+      return this.onlineSide === "opp" ? !canonicalSelf : canonicalSelf;
+    }
+    return canonicalSelf;
+  }
+
+  /** 石が自分のものか（元の持ち主基準。路を移動しても変わらない） */
+  _isOwnStone(stone, pitIndex) {
+    if (stone?.owner) return stone.owner === this.onlineSide;
+    if (pitIndex == null) return true;
+    return this._isLocalPit(pitIndex);
   }
 
   _getOppLaneIndexes() {
@@ -1212,6 +1286,7 @@ export class GameScene extends Phaser.Scene {
     this._clearTurnLaneGuidance();
     if (!isPlayerTurn) return;
     if (this.mode === "final-phase") return;
+    if (this.tutorialMode) return; // チュートリアル中はTutorialSceneが管理
 
     const laneIndexes = this._getLocalLaneIndexes();
     const state = this.gameState.getState();
@@ -1541,12 +1616,26 @@ export class GameScene extends Phaser.Scene {
 
     if (this.mode === "placing") {
       if (!this.playerTurn) return;
+      // チュートリアル: 配置先ピットも制限
+      if (this.tutorialMode && this.tutorialAllowedPits !== null) {
+        if (!this.tutorialAllowedPits.includes(pitIndex)) return;
+      }
       this._handlePlacementClick(pitIndex);
       return;
     }
 
     if (!this.playerTurn) return;
     if (pitIndex < 0 || pitIndex > 4) return;
+
+    // チュートリアル: 許可されたピットのみ操作可能
+    if (this.tutorialMode && this.tutorialAllowedPits !== null) {
+      if (!this.tutorialAllowedPits.includes(pitIndex)) return;
+    }
+
+    // チュートリアル: タップ確定時にハイライトを消す
+    if (this.tutorialMode) {
+      this.scene.get("TutorialScene")?._clearHighlights?.();
+    }
 
     const state = this.gameState.getState();
     if (state.pits[pitIndex].stones.length === 0) return;
@@ -1559,8 +1648,8 @@ export class GameScene extends Phaser.Scene {
     const stones = [...state.pits[pitIndex].stones];
     if (stones.length === 0) return;
 
-    // ソロモードのみ操作ログを送信
-    if (!this._isOnlineRoomMode()) {
+    // ソロモードのみ操作ログを送信（チュートリアル除く）
+    if (!this._isOnlineRoomMode() && !this.tutorialMode) {
       logSoloAction("move", {
         pit: pitIndex,
         turn: state.turn,
@@ -1828,6 +1917,7 @@ export class GameScene extends Phaser.Scene {
       this.mode = "kutakuta-choice";
       this.pendingExtraTurnAfterChoice = extraTurn;
       this.scene.get("UIScene").showKutakutaChoice();
+      if (this.tutorialMode) this._tutorialKutakutaReadyCallback?.();
       return;
     }
 
@@ -1849,8 +1939,17 @@ export class GameScene extends Phaser.Scene {
       const ui = this.scene.get("UIScene");
       ui.clearCenterBanner();
       ui.updateTurnDisplay(this.playerTurn);
+      if (this.tutorialMode) {
+        this.time.delayedCall(600, () => this._tutorialTurnCallback?.(false));
+        return;
+      }
       this.time.delayedCall(1200, () => this._aiTurn());
       return;
+    }
+
+    // ぐるぐる発動時もチュートリアルへ通知
+    if (this.tutorialMode) {
+      this._tutorialTurnCallback?.(true);
     }
 
     // 自分の路に石があるときだけぐるぐる。なければAIへ手番を渡す
@@ -1858,6 +1957,10 @@ export class GameScene extends Phaser.Scene {
       (i) => this.gameState.getState().pits[i].stones.length > 0,
     );
     if (!playerHasMoves) {
+      if (this.tutorialMode) {
+        this.time.delayedCall(600, () => this._tutorialTurnCallback?.(false));
+        return;
+      }
       this.playerTurn = false;
       const ui = this.scene.get("UIScene");
       ui.clearCenterBanner();
@@ -1908,6 +2011,7 @@ export class GameScene extends Phaser.Scene {
 
     if (action === "kutakuta") {
       this._announceTechnique("くたくた！", 0x6ab4e8, "ゲーム終了！");
+      if (this.tutorialMode) this._tutorialKutakutaSelectedCallback?.();
       this.time.delayedCall(450, () => this.scene.get("UIScene").showResult());
       return;
     }
@@ -2792,6 +2896,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // チュートリアルモード: tutorialOppPlacement 未指定なら配置スキップ
+    if (this.tutorialMode && !this.tutorialOppPlacement) {
+      this._aiFinishTurn(false);
+      return;
+    }
+
     this.mode = "placing";
     this.gameState.startPlacement(stones);
     this.selectedPlacementStoneIndex = 0;
@@ -2814,6 +2924,7 @@ export class GameScene extends Phaser.Scene {
       this.selectedPlacementStoneIndex = null;
       this.scene.get("UIScene")?.clearCenterBanner();
       this._renderStones();
+      this.tutorialOppPlacement = null;
       this._aiFinishTurn(false);
       return;
     }
@@ -2824,7 +2935,11 @@ export class GameScene extends Phaser.Scene {
       let pitIndex;
       let stoneIndex = 0; // デフォルト: 最初の石を配置
 
-      if (this.aiDifficulty === "testKyubi") {
+      // チュートリアルモード: 指定通りの配置先を使用
+      if (this.tutorialMode && Array.isArray(this.tutorialOppPlacement)) {
+        const placed = this.tutorialOppPlacement.length - pending.length;
+        pitIndex = this.tutorialOppPlacement[placed] ?? oppLanes[0];
+      } else if (this.aiDifficulty === "testKyubi") {
         // testKyubi: ちらちらセットアップ → ぐるぐるセットアップ → 石多い路 → Kisin
         const st = this.gameState.getState();
         // 優先1: ちらちらセットアップ (q+nc)%12===5 (gote→pit5着地)
@@ -3435,6 +3550,11 @@ export class GameScene extends Phaser.Scene {
     const ui = this.scene.get("UIScene");
     ui?.clearCenterBanner();
     ui.updateTurnDisplay(this.playerTurn);
+    if (this.tutorialMode) {
+      const cb = this._tutorialOppTurnCallback;
+      this._tutorialOppTurnCallback = null;
+      cb?.();
+    }
   }
 
   _handleOnlinePitClick(pitIndex) {
@@ -3588,6 +3708,10 @@ export class GameScene extends Phaser.Scene {
       this.waitingForInitialSync = true;
       this.onlineInputLockUntil = this.time.now + 2500;
       this._requestRoomSync();
+      roomClient.send({
+        type: "set_skin",
+        skinSetId: getSelectedSkinSet(),
+      });
       const ui = this.scene.get("UIScene");
       if (isReconnect) {
         // 再接続成功 — バーを「再接続完了」色に切り替え（同期完了で消える）
@@ -3597,6 +3721,12 @@ export class GameScene extends Phaser.Scene {
         ui?.clearDisconnectBar?.();
         ui?.setStatusMessage("同期中…", "#d7e8ff");
       }
+      return;
+    }
+
+    if (message.type === "opponent_skin") {
+      this._opponentSkinSetId = message.skinSetId || "normal";
+      this._renderStones();
       return;
     }
 

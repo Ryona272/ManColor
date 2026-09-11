@@ -58,12 +58,12 @@ export const STONE_COLORS = {
   purple: { label: "紫", value: 1, hex: 0xa050c0 },
 };
 
-/** 各プレイヤーの全石（各色3個 = 15個） */
-export function createPlayerStones() {
+/** 各プレイヤーの全石（各色3個 = 15個）。owner("self"|"opp")は路を移動しても変わらず、石デザインの持ち主判定に使う */
+export function createPlayerStones(owner) {
   const stones = [];
   for (const [color] of Object.entries(STONE_COLORS)) {
     for (let i = 0; i < 3; i++) {
-      stones.push({ color, face: "front" });
+      stones.push({ color, face: "front", owner });
     }
   }
   return stones;

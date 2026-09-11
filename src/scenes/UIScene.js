@@ -3,6 +3,17 @@ import { getPlayerName } from "../net/firebaseAuth.js";
 import { logSoloAction } from "../net/actionLogger.js";
 import { logBattleResult, analyzeLossReason } from "../net/battleLogger.js";
 import { soundManager } from "../audio/SoundManager.js";
+import {
+  checkKugutsuStoneUnlock,
+  getSelectedSkinSet,
+  stoneSkinTextureKey,
+  drawStoneGraphic,
+  pickDisplaySkinSetId,
+  getStoneDesignMode,
+  setStoneDesignMode,
+  STONE_DISPLAY_MODES,
+  STONE_DISPLAY_MODE_LABELS,
+} from "../data/stoneSkins.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -29,6 +40,8 @@ export class UIScene extends Phaser.Scene {
     this.onlineFinalIntroPlayed = false;
     this.onlineRevealPlayed = false;
     this.disconnectBar = null;
+    this._poipoiZoomSprites = [];
+    this._poipoiZoomTweens = [];
   }
 
   init(data) {
@@ -112,7 +125,7 @@ export class UIScene extends Phaser.Scene {
 
     // バージョン表示（右下）
     this.add
-      .text(W - 16, 1920 - 16, "Ver 0.1.0", {
+      .text(W - 16, 1920 - 16, "Ver 1.0.17", {
         fontSize: "18px",
         color: "#4a5368",
         fontFamily: UI_FONT,
@@ -139,7 +152,7 @@ export class UIScene extends Phaser.Scene {
 
     // ルールボタン（左下・長押しでポップアップ）
     this.rulesButton = this.add
-      .text(120, 1920 - 16, "？ルール", {
+      .text(120, 1920 - 16, "ルール", {
         fontSize: "28px",
         color: "#c8d8f0",
         backgroundColor: "#1a2540",
@@ -226,6 +239,7 @@ export class UIScene extends Phaser.Scene {
   _showVolumePanel() {
     const W = 1080;
     const objs = [];
+    let contentObjs = [];
 
     const overlay = this.add.rectangle(W / 2, 960, W, 1920, 0x000000, 0.72);
     overlay.setInteractive();
@@ -233,14 +247,15 @@ export class UIScene extends Phaser.Scene {
     objs.push(overlay);
 
     const close = () => {
+      contentObjs.forEach((o) => o.destroy());
       objs.forEach((o) => o.destroy());
     };
     overlay.on("pointerdown", close);
 
     const pw = 700,
-      ph = 480,
+      ph = 560,
       px = W / 2 - pw / 2,
-      py = 700;
+      py = 660;
     const panelG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
     panelG.fillStyle(0x080d18, 1);
     panelG.fillRoundedRect(px, py, pw, ph, 24);
@@ -249,8 +264,8 @@ export class UIScene extends Phaser.Scene {
     objs.push(panelG);
 
     const titleTx = this.add
-      .text(W / 2, py + 52, "音量設定", {
-        fontSize: "46px",
+      .text(W / 2, py + 44, "設定", {
+        fontSize: "42px",
         color: "#f4deb1",
         fontFamily: DISPLAY_FONT,
         stroke: "#000",
@@ -261,7 +276,7 @@ export class UIScene extends Phaser.Scene {
     objs.push(titleTx);
 
     const closeBtn = this.add
-      .text(px + pw - 28, py + 28, "✕", {
+      .text(px + pw - 28, py + 26, "✕", {
         fontSize: "38px",
         color: "#c0a888",
       })
@@ -271,103 +286,262 @@ export class UIScene extends Phaser.Scene {
     closeBtn.on("pointerdown", close);
     objs.push(closeBtn);
 
-    const trackW = 520,
-      trackH = 12,
-      thumbR = 26;
-    const sliderX = W / 2 - trackW / 2;
+    // タブバー（音量 / ゲーム / その他）
+    const tabs = [
+      { key: "volume", label: "音量" },
+      { key: "game", label: "ゲーム" },
+      { key: "other", label: "その他" },
+    ];
+    const tabW = pw / tabs.length;
+    const tabY = py + 92;
+    let activeTab = "volume";
+    const tabEntries = [];
 
-    const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
-      const lbl = this.add
-        .text(sliderX, rowY - 36, labelText, {
-          fontSize: "32px",
+    const drawTab = (entry) => {
+      const active = entry.key === activeTab;
+      entry.g.clear();
+      entry.g.fillStyle(active ? 0x2a4060 : 0x141824, active ? 0.9 : 0.6);
+      entry.g.fillRoundedRect(
+        entry.x - tabW / 2 + 6,
+        tabY - 28,
+        tabW - 12,
+        56,
+        12,
+      );
+      entry.g.lineStyle(1.5, active ? 0xf0d39a : 0xe5d5b1, active ? 0.7 : 0.2);
+      entry.g.strokeRoundedRect(
+        entry.x - tabW / 2 + 6,
+        tabY - 28,
+        tabW - 12,
+        56,
+        12,
+      );
+      entry.text.setColor(active ? "#f4deb1" : "#8a92a5");
+    };
+
+    tabs.forEach((tab, i) => {
+      const x = px + tabW * i + tabW / 2;
+      const g = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
+      const text = this.add
+        .text(x, tabY, tab.label, {
+          fontSize: "28px",
+          color: "#e6decf",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5)
+        .setDepth(DEPTH_BANNER_TOP + 12);
+      const zone = this.add
+        .zone(x, tabY, tabW, 56)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(DEPTH_BANNER_TOP + 12);
+      zone.on("pointerdown", () => {
+        soundManager.se_button();
+        activeTab = tab.key;
+        tabEntries.forEach((e) => drawTab(e));
+        renderTabContent();
+      });
+      const entry = { key: tab.key, x, g, text };
+      tabEntries.push(entry);
+      drawTab(entry);
+      objs.push(g, text, zone);
+    });
+
+    const contentTop = py + 150;
+
+    const renderVolumeTab = () => {
+      const trackW = 480,
+        trackH = 12,
+        thumbR = 24;
+      const sliderX = W / 2 - trackW / 2;
+
+      const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
+        const lbl = this.add
+          .text(sliderX, rowY - 36, labelText, {
+            fontSize: "30px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0, 0.5)
+          .setDepth(DEPTH_BANNER_TOP + 11);
+        contentObjs.push(lbl);
+
+        const trackG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
+        const redraw = (ratio) => {
+          trackG.clear();
+          trackG.fillStyle(0x2a2e40, 1);
+          trackG.fillRoundedRect(
+            sliderX,
+            rowY - trackH / 2,
+            trackW,
+            trackH,
+            trackH / 2,
+          );
+          trackG.fillStyle(0xf0d39a, 1);
+          trackG.fillRoundedRect(
+            sliderX,
+            rowY - trackH / 2,
+            trackW * ratio,
+            trackH,
+            trackH / 2,
+          );
+          trackG.fillStyle(0xfff8e6, 1);
+          trackG.fillCircle(sliderX + trackW * ratio, rowY, thumbR);
+          trackG.lineStyle(2, 0xc8a860, 1);
+          trackG.strokeCircle(sliderX + trackW * ratio, rowY, thumbR);
+        };
+
+        let ratio = getValue();
+        redraw(ratio);
+        contentObjs.push(trackG);
+
+        const valTx = this.add
+          .text(sliderX + trackW + 28, rowY, `${Math.round(ratio * 100)}%`, {
+            fontSize: "28px",
+            color: "#f4deb1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0, 0.5)
+          .setDepth(DEPTH_BANNER_TOP + 11);
+        contentObjs.push(valTx);
+
+        const zone = this.add
+          .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
+          .setInteractive()
+          .setDepth(DEPTH_BANNER_TOP + 11);
+        const update = (ptr) => {
+          const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
+          ratio = rx / trackW;
+          redraw(ratio);
+          valTx.setText(`${Math.round(ratio * 100)}%`);
+          onChangeValue(ratio);
+        };
+        zone.on("pointerdown", update);
+        zone.on("pointermove", (ptr) => {
+          if (ptr.isDown) update(ptr);
+        });
+        contentObjs.push(zone);
+      };
+
+      makeSlider(
+        "BGM",
+        contentTop + 70,
+        () => soundManager._bgmVolume,
+        (v) => soundManager.setBgmVolume(v),
+      );
+
+      makeSlider(
+        "効果音",
+        contentTop + 220,
+        () => soundManager._seVolume,
+        (v) => soundManager.setSeVolume(v),
+      );
+
+      const credit = this.add
+        .text(W / 2, py + ph - 30, "BGM：魔王魂", {
+          fontSize: "22px",
+          color: "#7a8899",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5)
+        .setDepth(DEPTH_BANNER_TOP + 11);
+      contentObjs.push(credit);
+    };
+
+    const renderGameTab = () => {
+      const rowY = contentTop + 60;
+      const label = this.add
+        .text(px + 40, rowY, "石の見た目", {
+          fontSize: "30px",
           color: "#d7e2f1",
           fontFamily: UI_FONT,
         })
         .setOrigin(0, 0.5)
         .setDepth(DEPTH_BANNER_TOP + 11);
-      objs.push(lbl);
+      contentObjs.push(label);
 
-      const trackG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
-      const redraw = (ratio) => {
-        trackG.clear();
-        trackG.fillStyle(0x2a2e40, 1);
-        trackG.fillRoundedRect(
-          sliderX,
-          rowY - trackH / 2,
-          trackW,
-          trackH,
-          trackH / 2,
-        );
-        trackG.fillStyle(0xf0d39a, 1);
-        trackG.fillRoundedRect(
-          sliderX,
-          rowY - trackH / 2,
-          trackW * ratio,
-          trackH,
-          trackH / 2,
-        );
-        trackG.fillStyle(0xfff8e6, 1);
-        trackG.fillCircle(sliderX + trackW * ratio, rowY, thumbR);
-        trackG.lineStyle(2, 0xc8a860, 1);
-        trackG.strokeCircle(sliderX + trackW * ratio, rowY, thumbR);
-      };
-
-      let ratio = getValue();
-      redraw(ratio);
-      objs.push(trackG);
-
-      const valTx = this.add
-        .text(sliderX + trackW + 30, rowY, `${Math.round(ratio * 100)}%`, {
-          fontSize: "30px",
+      const btnW = 220,
+        btnH = 60;
+      const btnX = px + pw - 40 - btnW / 2;
+      const btnG = this.add.graphics().setDepth(DEPTH_BANNER_TOP + 11);
+      const btnText = this.add
+        .text(btnX, rowY, "", {
+          fontSize: "26px",
           color: "#f4deb1",
           fontFamily: UI_FONT,
         })
-        .setOrigin(0, 0.5)
-        .setDepth(DEPTH_BANNER_TOP + 11);
-      objs.push(valTx);
+        .setOrigin(0.5)
+        .setDepth(DEPTH_BANNER_TOP + 12);
+
+      const drawBtn = () => {
+        btnG.clear();
+        btnG.fillStyle(0x2a4060, 0.95);
+        btnG.fillRoundedRect(btnX - btnW / 2, rowY - btnH / 2, btnW, btnH, 12);
+        btnG.lineStyle(1.5, 0xf0d39a, 0.6);
+        btnG.strokeRoundedRect(
+          btnX - btnW / 2,
+          rowY - btnH / 2,
+          btnW,
+          btnH,
+          12,
+        );
+        btnText.setText(STONE_DISPLAY_MODE_LABELS[getStoneDesignMode()]);
+      };
+      drawBtn();
 
       const zone = this.add
-        .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
-        .setInteractive()
-        .setDepth(DEPTH_BANNER_TOP + 11);
-      const update = (ptr) => {
-        const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
-        ratio = rx / trackW;
-        redraw(ratio);
-        valTx.setText(`${Math.round(ratio * 100)}%`);
-        onChangeValue(ratio);
-      };
-      zone.on("pointerdown", update);
-      zone.on("pointermove", (ptr) => {
-        if (ptr.isDown) update(ptr);
+        .zone(btnX, rowY, btnW, btnH)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(DEPTH_BANNER_TOP + 12);
+      zone.on("pointerdown", () => {
+        soundManager.se_button();
+        const idx = STONE_DISPLAY_MODES.indexOf(getStoneDesignMode());
+        const next =
+          STONE_DISPLAY_MODES[(idx + 1) % STONE_DISPLAY_MODES.length];
+        setStoneDesignMode(next);
+        drawBtn();
+        this.refreshFortuneAndDiscard();
+        this.gameScene?._renderStones?.();
       });
-      objs.push(zone);
+
+      const hint = this.add
+        .text(
+          px + 40,
+          rowY + 60,
+          "混合: 石ごとの持ち主基準 / 自分のみ・相手のみ: 全て統一表示",
+          {
+            fontSize: "20px",
+            color: "#8a92a5",
+            fontFamily: UI_FONT,
+            wordWrap: { width: pw - 80 },
+          },
+        )
+        .setOrigin(0, 0)
+        .setDepth(DEPTH_BANNER_TOP + 11);
+
+      contentObjs.push(btnG, btnText, zone, hint);
     };
 
-    makeSlider(
-      "BGM",
-      py + 180,
-      () => soundManager._bgmVolume,
-      (v) => soundManager.setBgmVolume(v),
-    );
+    const renderOtherTab = () => {
+      const text = this.add
+        .text(W / 2, contentTop + 100, "今後の設定項目はここに追加予定です", {
+          fontSize: "26px",
+          color: "#8a92a5",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5)
+        .setDepth(DEPTH_BANNER_TOP + 11);
+      contentObjs.push(text);
+    };
 
-    makeSlider(
-      "効果音",
-      py + 350,
-      () => soundManager._seVolume,
-      (v) => soundManager.setSeVolume(v),
-    );
+    const renderTabContent = () => {
+      contentObjs.forEach((o) => o.destroy());
+      contentObjs = [];
+      if (activeTab === "volume") renderVolumeTab();
+      else if (activeTab === "game") renderGameTab();
+      else renderOtherTab();
+    };
 
-    // クレジット
-    const credit = this.add
-      .text(W / 2, py + ph - 36, "BGM：魔王魂", {
-        fontSize: "24px",
-        color: "#7a8899",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setDepth(DEPTH_BANNER_TOP + 11);
-    objs.push(credit);
+    renderTabContent();
   }
 
   _showRulesPopup() {
@@ -763,14 +937,25 @@ export class UIScene extends Phaser.Scene {
 
     // 自分の占い石（手前・常に見える）
     const ownHex = STONE_COLORS[ownFortune.color]?.hex ?? 0xffffff;
+    const ownSkinSetId = pickDisplaySkinSetId(
+      true,
+      getSelectedSkinSet(),
+      gs._opponentSkinSetId ?? "normal",
+    );
+    const ownTexKey = stoneSkinTextureKey(ownSkinSetId, ownFortune.color);
     const ownStone = this.add.graphics();
     ownStone.fillStyle(0x000000, 0.14);
     ownStone.fillCircle(W / 2 + 2, ownFortuneY + 3, 38);
-    ownStone.fillStyle(ownHex, 0.96);
-    ownStone.fillCircle(W / 2, ownFortuneY, 36);
-    ownStone.lineStyle(4, 0x4b3e28, 0.95);
-    ownStone.strokeCircle(W / 2, ownFortuneY, 36);
     this.fortuneSprites.push(ownStone);
+    if (ownTexKey && this.textures.exists(ownTexKey)) {
+      const ownImg = this.add.image(W / 2, ownFortuneY, ownTexKey);
+      ownImg.setScale((36 * 2) / Math.max(ownImg.width, ownImg.height));
+      this.fortuneSprites.push(ownImg);
+    } else {
+      drawStoneGraphic(ownStone, ownSkinSetId, ownHex, W / 2, ownFortuneY, 36);
+      ownStone.lineStyle(4, 0x4b3e28, 0.95);
+      ownStone.strokeCircle(W / 2, ownFortuneY, 36);
+    }
 
     const ownSelfScore = 3;
     const ownOppScore = 5;
@@ -797,14 +982,39 @@ export class UIScene extends Phaser.Scene {
     const theirHex = theirRevealed
       ? (STONE_COLORS[theirFortune.color]?.hex ?? 0xffffff)
       : 0x2f3542;
+    const theirSkinSetId = pickDisplaySkinSetId(
+      false,
+      getSelectedSkinSet(),
+      gs._opponentSkinSetId ?? "normal",
+    );
+    const theirTexKey = theirRevealed
+      ? stoneSkinTextureKey(theirSkinSetId, theirFortune.color)
+      : null;
     const theirStone = this.add.graphics();
     theirStone.fillStyle(0x000000, 0.18);
     theirStone.fillCircle(W / 2 + 2, theirFortuneY + 3, 38);
-    theirStone.fillStyle(theirHex, 0.96);
-    theirStone.fillCircle(W / 2, theirFortuneY, 36);
-    theirStone.lineStyle(4, theirRevealed ? 0xe8e8f0 : 0xd0d7e2, 0.9);
-    theirStone.strokeCircle(W / 2, theirFortuneY, 36);
     this.fortuneSprites.push(theirStone);
+    if (theirTexKey && this.textures.exists(theirTexKey)) {
+      const theirImg = this.add.image(W / 2, theirFortuneY, theirTexKey);
+      theirImg.setScale((36 * 2) / Math.max(theirImg.width, theirImg.height));
+      this.fortuneSprites.push(theirImg);
+    } else if (theirRevealed) {
+      drawStoneGraphic(
+        theirStone,
+        theirSkinSetId,
+        theirHex,
+        W / 2,
+        theirFortuneY,
+        36,
+      );
+      theirStone.lineStyle(4, 0xe8e8f0, 0.9);
+      theirStone.strokeCircle(W / 2, theirFortuneY, 36);
+    } else {
+      theirStone.fillStyle(theirHex, 0.96);
+      theirStone.fillCircle(W / 2, theirFortuneY, 36);
+      theirStone.lineStyle(4, 0xd0d7e2, 0.9);
+      theirStone.strokeCircle(W / 2, theirFortuneY, 36);
+    }
 
     const theirSelfScore = 5;
     const theirOppScore = 3;
@@ -878,6 +1088,159 @@ export class UIScene extends Phaser.Scene {
         sprite.setDepth(DEPTH_FORTUNE);
       }
     });
+  }
+
+  /**
+   * ぽいぽい: 選択した賽壇そのものを画面中央に拡大表示する。
+   * GameScene側の描画より手前(UISceneはGameSceneより上のレイヤー)に出るのと、
+   * カメラ回転の影響を受けないのが狙い。
+   */
+  showPoipoiStoneZoom(pitIndex) {
+    this.hidePoipoiStoneZoom();
+
+    const gs = this.gameScene;
+    if (!gs?.gameState) return;
+    const stones = gs.gameState.getState().pits[pitIndex].stones;
+
+    const W = 1080;
+    const H = 1920;
+    const cx = W / 2;
+    const cy = H * 0.5;
+    const isSelfSide = pitIndex === 5;
+    const size = 760;
+    const depth = DEPTH_MESSAGE + 500;
+
+    const sprites = [];
+    const push = (obj) => {
+      obj.setDepth(depth);
+      sprites.push(obj);
+    };
+
+    const diamondPts = (w, h) => [
+      new Phaser.Geom.Point(cx, cy - h / 2),
+      new Phaser.Geom.Point(cx + w / 2, cy),
+      new Phaser.Geom.Point(cx, cy + h / 2),
+      new Phaser.Geom.Point(cx - w / 2, cy),
+    ];
+
+    const backdrop = this.add
+      .rectangle(cx, cy, W, H, 0x000000, 0.68)
+      .setInteractive();
+    push(backdrop);
+
+    const fillColor = isSelfSide ? 0xfdfaf1 : 0x101015;
+    const strokeColor = isSelfSide ? 0xb48a45 : 0xe9d7a5;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.35);
+    g.fillPoints(diamondPts(size + 18, size + 18), true);
+    g.fillStyle(fillColor, 1);
+    g.fillPoints(diamondPts(size, size), true);
+    g.lineStyle(8, strokeColor, 1);
+    g.strokePoints(diamondPts(size, size), true);
+    g.lineStyle(2, isSelfSide ? 0xb2a891 : 0x555563, 0.7);
+    g.strokePoints(diamondPts(size - 34, size - 34), true);
+    g.fillStyle(isSelfSide ? 0xd9c084 : 0x3b3140, 0.18);
+    g.fillPoints(diamondPts(size - 94, size - 94), true);
+    push(g);
+
+    const radius = 46;
+    const cols = stones.length <= 4 ? 2 : stones.length <= 9 ? 3 : 4;
+    const rows = Math.max(1, Math.ceil(stones.length / cols));
+    const gapX = radius * 2 + 22;
+    const gapY = radius * 2 + 26;
+    const startY = cy - ((rows - 1) * gapY) / 2;
+
+    const tweens = [];
+    stones.forEach((stone, j) => {
+      const row = Math.floor(j / cols);
+      const col = j % cols;
+      const stonesInThisRow =
+        row === rows - 1 ? stones.length - row * cols : cols;
+      const sx = cx + (col - (stonesInThisRow - 1) / 2) * gapX;
+      const sy = startY + row * gapY;
+
+      const stoneG = this.add.graphics();
+      stoneG.fillStyle(0x000000, 0.2);
+      stoneG.fillCircle(sx + 3, sy + 4, radius + 1);
+      push(stoneG);
+
+      const skinSetId = pickDisplaySkinSetId(
+        gs._isOwnStone(stone, pitIndex),
+        getSelectedSkinSet(),
+        gs._opponentSkinSetId,
+      );
+      const texKey = stoneSkinTextureKey(skinSetId, stone.color);
+      if (texKey && this.textures.exists(texKey)) {
+        const img = this.add.image(sx, sy, texKey);
+        img.setScale((radius * 2) / Math.max(img.width, img.height));
+        push(img);
+      } else {
+        drawStoneGraphic(
+          stoneG,
+          skinSetId,
+          STONE_COLORS[stone.color]?.hex ?? 0xffffff,
+          sx,
+          sy,
+          radius,
+        );
+        stoneG.lineStyle(3, 0xf5f5f8, 0.9);
+        stoneG.strokeCircle(sx, sy, radius);
+      }
+
+      const zone = this.add
+        .zone(sx, sy, radius * 2 + 16, radius * 2 + 16)
+        .setInteractive({ useHandCursor: true });
+      zone.on("pointerdown", () => gs._handlePoipoiStoneClick(pitIndex, j));
+      push(zone);
+
+      const ring = this.add.graphics();
+      ring.lineStyle(4, 0x7cc8ff, 0.98);
+      ring.strokeCircle(sx, sy, radius + 8);
+      push(ring);
+      tweens.push(
+        this.tweens.add({
+          targets: ring,
+          alpha: 0.22,
+          duration: 360,
+          yoyo: true,
+          repeat: -1,
+        }),
+      );
+    });
+
+    // 戻るボタン（拡大した賽壇の下）
+    const backY = cy + size / 2 + 70;
+    const backG = this.add.graphics();
+    backG.fillStyle(0x2a2030, 0.95);
+    backG.fillRoundedRect(cx - 110, backY - 32, 220, 64, 14);
+    backG.lineStyle(1.5, 0xe5d5b1, 0.5);
+    backG.strokeRoundedRect(cx - 110, backY - 32, 220, 64, 14);
+    push(backG);
+
+    const backText = this.add
+      .text(cx, backY, "← 戻る", {
+        fontSize: "30px",
+        color: "#f4deb1",
+        fontFamily: "sans-serif",
+      })
+      .setOrigin(0.5);
+    push(backText);
+
+    const backHit = this.add
+      .zone(cx, backY, 220, 64)
+      .setInteractive({ useHandCursor: true });
+    backHit.on("pointerdown", () => gs._cancelPoipoiStoneSelection());
+    push(backHit);
+
+    this._poipoiZoomSprites = sprites;
+    this._poipoiZoomTweens = tweens;
+  }
+
+  hidePoipoiStoneZoom() {
+    this._poipoiZoomTweens.forEach((t) => t.remove());
+    this._poipoiZoomTweens = [];
+    this._poipoiZoomSprites.forEach((o) => o.destroy());
+    this._poipoiZoomSprites = [];
   }
 
   _drawFortuneScoreText(
@@ -1689,6 +2052,14 @@ export class UIScene extends Phaser.Scene {
     });
     container.add(poipoiButton);
 
+    // チュートリアルで片方を強制する場合、反対ボタンを無効化・グレーアウト
+    const forced = this.gameScene?.tutorialForceSpecial;
+    if (forced === "chirachira") {
+      poipoiButton.disableInteractive().setAlpha(0.25);
+    } else if (forced === "poipoi") {
+      chirachiraButton.disableInteractive().setAlpha(0.25);
+    }
+
     this.specialOverlay = container;
   }
 
@@ -1760,6 +2131,11 @@ export class UIScene extends Phaser.Scene {
       this.gameScene.chooseKutakutaAction("madamada");
     });
     container.add(continueBtn);
+
+    // チュートリアル中は「まだまだ」を無効化（くたくたを必ず選ばせる）
+    if (this.gameScene?.tutorialMode) {
+      continueBtn.disableInteractive().setAlpha(0.25);
+    }
 
     this.specialOverlay = container;
   }
@@ -1974,6 +2350,11 @@ export class UIScene extends Phaser.Scene {
   }
 
   _startFinalPredictionPhase(options = {}) {
+    if (this.gameScene?.tutorialMode) {
+      this.gameScene.scene.get("TutorialScene")?._onPredictPhaseStart?.();
+    }
+    this.turnText?.setText("予測フェーズ");
+    this.turnText?.setColor("#ffe0a8");
     this._clearResultOverlay();
     this.predictionPreset = null;
 
@@ -2068,9 +2449,20 @@ export class UIScene extends Phaser.Scene {
       const zone = this.add.zone(x, btnY, 100, 100).setInteractive();
       zone.on("pointerdown", () => {
         soundManager.se_button();
+        if (this.gameScene?.tutorialMode) {
+          this.gameScene.scene.get("TutorialScene")?._updateKutakutaPanel(5);
+        }
         this._resolvePredictionPhase(option.key);
       });
       container.add(zone);
+
+      // チュートリアル中は青以外をグレーアウト・タップ不可
+      if (this.gameScene?.tutorialMode && option.key !== "blue") {
+        zone.disableInteractive();
+        circle.setAlpha(0.25);
+        lbl.setAlpha(0.25);
+        sub.setAlpha(0.25);
+      }
     });
 
     const hint = this.add
@@ -2112,33 +2504,41 @@ export class UIScene extends Phaser.Scene {
       selfPrediction = allColors[Math.floor(Math.random() * allColors.length)];
     }
     if (!oppPrediction) {
-      // 強いAI/鬼: ゲーム中に蓄積した推測色を使う
-      const gs = this.gameScene;
-      const isSmartAi =
-        gs.matchMode === "solo" &&
-        (gs.aiDifficulty === "rasetsu" ||
-          gs.aiDifficulty === "yasha" ||
-          gs.aiDifficulty === "kugutsu" ||
-          gs.aiDifficulty === "kyubi" ||
-          gs.aiDifficulty === "kisin" ||
-          gs.aiDifficulty === "ashura");
-      if (isSmartAi) {
-        // 1. ゲーム中の観察から推測した色を優先
-        if (gs._aiMemo?.inferredPlayerColor) {
-          oppPrediction = gs._aiMemo.inferredPlayerColor;
-        } else {
-          // 2. fallback: プレイヤー賽壇(pit5)で最も多い色
-          const storeFreq = {};
-          for (const s of gs.gameState.getState().pits[5].stones) {
-            storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
+      // チュートリアルでは外れ確定の緑に固定
+      if (this.gameScene?.tutorialMode) {
+        oppPrediction = "green";
+      } else {
+        // 強いAI/鬼: ゲーム中に蓄積した推測色を使う
+        const gs = this.gameScene;
+        const isSmartAi =
+          gs.matchMode === "solo" &&
+          (gs.aiDifficulty === "rasetsu" ||
+            gs.aiDifficulty === "yasha" ||
+            gs.aiDifficulty === "kugutsu" ||
+            gs.aiDifficulty === "kyubi" ||
+            gs.aiDifficulty === "kisin" ||
+            gs.aiDifficulty === "ashura");
+        if (isSmartAi) {
+          // 1. ゲーム中の観察から推測した色を優先
+          if (gs._aiMemo?.inferredPlayerColor) {
+            oppPrediction = gs._aiMemo.inferredPlayerColor;
+          } else {
+            // 2. fallback: プレイヤー賽壇(pit5)で最も多い色
+            const storeFreq = {};
+            for (const s of gs.gameState.getState().pits[5].stones) {
+              storeFreq[s.color] = (storeFreq[s.color] ?? 0) + 1;
+            }
+            const sorted = Object.entries(storeFreq).sort(
+              (a, b) => b[1] - a[1],
+            );
+            oppPrediction =
+              sorted[0]?.[0] ??
+              allColors[Math.floor(Math.random() * allColors.length)];
           }
-          const sorted = Object.entries(storeFreq).sort((a, b) => b[1] - a[1]);
+        } else {
           oppPrediction =
-            sorted[0]?.[0] ??
             allColors[Math.floor(Math.random() * allColors.length)];
         }
-      } else {
-        oppPrediction = allColors[Math.floor(Math.random() * allColors.length)];
       }
     }
 
@@ -2403,10 +2803,24 @@ export class UIScene extends Phaser.Scene {
       const cy = BOX_TOP + PAD_Y + STONE_R + row * SPACING;
 
       const hex = STONE_COLORS[stone.color]?.hex ?? 0xffffff;
+      const gs = this.gameScene;
+      const isOwnStone = stone.owner ? stone.owner === gs?.onlineSide : false;
+      const skinSetId = pickDisplaySkinSetId(
+        isOwnStone,
+        getSelectedSkinSet(),
+        gs?._opponentSkinSetId ?? "normal",
+      );
+      const texKey = stoneSkinTextureKey(skinSetId, stone.color);
+      if (texKey && this.textures.exists(texKey)) {
+        const img = this.add.image(cx, cy, texKey);
+        img.setDepth(DEPTH_MESSAGE);
+        img.setScale((STONE_R * 2) / Math.max(img.width, img.height));
+        this.oppHandStonesGfx.push(img);
+        return;
+      }
       const g = this.add.graphics();
       g.setDepth(DEPTH_MESSAGE);
-      g.fillStyle(hex, 0.92);
-      g.fillCircle(cx, cy, STONE_R);
+      drawStoneGraphic(g, skinSetId, hex, cx, cy, STONE_R, 0.92);
       g.lineStyle(2, 0xffffff, 0.45);
       g.strokeCircle(cx, cy, STONE_R);
       this.oppHandStonesGfx.push(g);
@@ -2465,6 +2879,11 @@ export class UIScene extends Phaser.Scene {
           if (!beatenData[diff]) beatenData[diff] = {};
           beatenData[diff][side] = true;
           localStorage.setItem("soloBeaten", JSON.stringify(beatenData));
+          if (checkKugutsuStoneUnlock(beatenData)) {
+            this._showNotice?.(
+              "「宝玉」デザインを獲得しました！ショップから装備できます",
+            );
+          }
         } catch (_e) {}
       }
     }
@@ -2473,6 +2892,9 @@ export class UIScene extends Phaser.Scene {
   }
 
   _showStaticFinalResult(selfScore, oppScore) {
+    if (this.gameScene?.tutorialMode) {
+      this.gameScene.scene.get("TutorialScene")?._onFinalScoreShown?.();
+    }
     this._clearResultOverlay();
     this.clearCenterBanner();
 
@@ -2503,7 +2925,7 @@ export class UIScene extends Phaser.Scene {
       const gs = this.gameScene;
       const result =
         ownScore > rivalScore ? "win" : ownScore < rivalScore ? "lose" : "draw";
-      if (gs && !gs._isOnlineRoomMode?.()) {
+      if (gs && !gs._isOnlineRoomMode?.() && !gs.tutorialMode) {
         const lossReason =
           result === "lose"
             ? analyzeLossReason(gs, ownScore, rivalScore)

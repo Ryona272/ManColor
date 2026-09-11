@@ -1,6 +1,6 @@
 {
   "name": "mancolor",
-  "version": "1.0.14",
+  "version": "1.0.17",
   "private": true,
   "description": "ManColor - Mancala-style board game",
   "scripts": {
@@ -22,6 +22,7 @@
     "release:apk": "npm run build && npx cap sync && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^7.2.0",
     "@capacitor-firebase/authentication": "^7.0.0",
     "firebase": "^11.2.0",
     "phaser": "^3.87.0",

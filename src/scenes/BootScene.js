@@ -2,6 +2,8 @@
  * BootScene - アセット読み込みと初期設定
  */
 import { restoreSession } from "../net/firebaseAuth.js";
+import { HOUGYOKU_SOURCES, stoneSkinTextureKey } from "../data/stoneSkins.js";
+import { initAds } from "../net/ads.js";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -193,9 +195,15 @@ export class BootScene extends Phaser.Scene {
     this.load.image("pattern-opp-musubi", "/img/self_musubi.png");
     this.load.image("pattern-opp-magatama", "/img/self_magatama.png");
     this.load.image("pattern-opp-take", "/img/self_take.png");
+
+    // 石デザイン（ショップで解放するプレミアムスキン「宝玉」セット）
+    for (const [color, src] of Object.entries(HOUGYOKU_SOURCES)) {
+      this.load.image(stoneSkinTextureKey("hougyoku", color), src);
+    }
   }
 
   create() {
     // 遷移はpreload完了後の演出待ちで行う。
+    initAds();
   }
 }

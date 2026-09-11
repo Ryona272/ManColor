@@ -264,12 +264,12 @@ function createEmptyPits() {
   return Array.from({ length: 12 }, () => ({ stones: [] }));
 }
 
-function createPlayerStones() {
+function createPlayerStones(owner) {
   const colors = ["red", "blue", "green", "yellow", "purple"];
   const stones = [];
   colors.forEach((color) => {
     for (let i = 0; i < 3; i += 1) {
-      stones.push({ color, face: "front" });
+      stones.push({ color, face: "front", owner });
     }
   });
   return stones;
@@ -304,8 +304,8 @@ function createFortune() {
 
 function createInitialMatchState() {
   const pits = createEmptyPits();
-  const selfStones = shuffle(createPlayerStones());
-  const oppStones = shuffle(createPlayerStones());
+  const selfStones = shuffle(createPlayerStones("self"));
+  const oppStones = shuffle(createPlayerStones("opp"));
 
   for (let i = 0; i < 5; i += 1) {
     pits[i].stones = selfStones.splice(0, 3);
@@ -324,25 +324,25 @@ function applyDebugNearKutakutaState(state) {
   // Debug-only setup: one move later, kutakuta choice becomes available.
   state.pits = createEmptyPits();
 
-  state.pits[0].stones = [{ color: "red", face: "front" }];
-  state.pits[1].stones = [{ color: "blue", face: "front" }];
-  state.pits[2].stones = [{ color: "red", face: "front" }];
-  state.pits[3].stones = [{ color: "blue", face: "front" }];
-  state.pits[4].stones = [{ color: "red", face: "front" }];
+  state.pits[0].stones = [{ color: "red", face: "front", owner: "self" }];
+  state.pits[1].stones = [{ color: "blue", face: "front", owner: "self" }];
+  state.pits[2].stones = [{ color: "red", face: "front", owner: "self" }];
+  state.pits[3].stones = [{ color: "blue", face: "front", owner: "self" }];
+  state.pits[4].stones = [{ color: "red", face: "front", owner: "self" }];
 
-  state.pits[6].stones = [{ color: "green", face: "front" }];
-  state.pits[7].stones = [{ color: "yellow", face: "front" }];
-  state.pits[8].stones = [{ color: "purple", face: "front" }];
-  state.pits[9].stones = [{ color: "green", face: "front" }];
-  state.pits[10].stones = [{ color: "yellow", face: "front" }];
+  state.pits[6].stones = [{ color: "green", face: "front", owner: "opp" }];
+  state.pits[7].stones = [{ color: "yellow", face: "front", owner: "opp" }];
+  state.pits[8].stones = [{ color: "purple", face: "front", owner: "opp" }];
+  state.pits[9].stones = [{ color: "green", face: "front", owner: "opp" }];
+  state.pits[10].stones = [{ color: "yellow", face: "front", owner: "opp" }];
 
   state.pits[5].stones = [
-    { color: "red", face: "front" },
-    { color: "blue", face: "front" },
+    { color: "red", face: "front", owner: "self" },
+    { color: "blue", face: "front", owner: "self" },
   ];
   state.pits[11].stones = [
-    { color: "green", face: "front" },
-    { color: "yellow", face: "front" },
+    { color: "green", face: "front", owner: "opp" },
+    { color: "yellow", face: "front", owner: "opp" },
   ];
 
   state.fortune = {
@@ -1576,6 +1576,37 @@ function requestMove(clientId, pitIndex) {
   broadcastMatchState(room.code);
 }
 
+function setSkin(clientId, skinSetId) {
+  const client = clients.get(clientId);
+  if (!client || !client.roomCode) return;
+
+  const room = rooms.get(client.roomCode);
+  if (!room) return;
+
+  const safeSkinSetId =
+    typeof skinSetId === "string" ? skinSetId.slice(0, 32) : "normal";
+  client.skinSetId = safeSkinSetId;
+
+  const opponentMember = room.members.find(
+    (member) => member.clientId !== clientId,
+  );
+  if (!opponentMember) return;
+  const opponentClient = clients.get(opponentMember.clientId);
+  if (!opponentClient) return;
+
+  safeSend(opponentClient.ws, {
+    type: "opponent_skin",
+    skinSetId: safeSkinSetId,
+  });
+  // 相手が既に自分のスキンを送信済みなら、こちらにも即座に返す
+  if (opponentClient.skinSetId) {
+    safeSend(client.ws, {
+      type: "opponent_skin",
+      skinSetId: opponentClient.skinSetId,
+    });
+  }
+}
+
 function requestSurrender(clientId) {
   const client = clients.get(clientId);
   if (!client || !client.roomCode) return;
@@ -1782,6 +1813,11 @@ wss.on("connection", (ws, request) => {
 
     if (messageType === "request_poipoi_store") {
       requestPoipoiStore(client.clientId, message.storeIndex);
+      return;
+    }
+
+    if (messageType === "set_skin") {
+      setSkin(client.clientId, message.skinSetId);
       return;
     }
 

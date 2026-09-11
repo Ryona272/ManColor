@@ -83,8 +83,8 @@ export class GameState {
 
   /** 初期配置: 自分の路5マスに3個ずつランダム配置 → 全部表にする */
   _initBoard() {
-    const selfStones = shuffle(createPlayerStones());
-    const oppStones = shuffle(createPlayerStones());
+    const selfStones = shuffle(createPlayerStones("self"));
+    const oppStones = shuffle(createPlayerStones("opp"));
 
     // 自分（pit 0-4）に各3個
     for (let i = 0; i < 5; i++) {

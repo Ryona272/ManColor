@@ -22,12 +22,13 @@ class SoundManager {
     this._bgmGainResetTimer = null; // guards against gain restore racing new BGM
     this._bgmActive = false;
     this._currentBgm = null;
-    this._bgmVolume = 0.3;
-    this._seVolume = 0.62;
+    this._bgmVolume = 0.2;
+    this._seVolume = 0.3;
     this._bgmPitch = 0.5; // global BGM transpose (0.5 = 1 octave down)
     this._scoreStep = 0;
     this._sowStep = 0;
-    this._htmlAudio = null; // for MP3-backed BGM keys
+    this._htmlAudio = null; // for MP3-backed BGM keys (legacy fallback only)
+    this._bufferSource = null; // AudioBufferSourceNode for seamless MP3 looping
     this._htmlFadeTimer = null; // setInterval ID for fade-in / fade-out
     this._pendingBgm = null; // key waiting for first user gesture (autoplay policy)
     this._loadVolumes();
@@ -614,39 +615,7 @@ class SoundManager {
     this._currentBgm = resolvedKey;
     this._bgmActive = true;
     if (SoundManager.MP3_KEYS.has(resolvedKey)) {
-      this._ctx(); // ensure AudioContext is running
-      const audio = new Audio(`./audio/${resolvedKey}.mp3`);
-      const isOneShot = SoundManager.ONESHOT_KEYS.has(resolvedKey);
-      audio.loop = !isOneShot;
-      audio.volume = 0;
-      audio.play().catch(() => {
-        // Autoplay blocked — retry on first user gesture
-        this._pendingBgm = resolvedKey;
-        const retry = () => {
-          if (this._pendingBgm) {
-            const k = this._pendingBgm;
-            this._pendingBgm = null;
-            this.playBgm(k);
-          }
-        };
-        document.addEventListener("pointerdown", retry, { once: true });
-        document.addEventListener("keydown", retry, { once: true });
-      });
-      this._startHtmlFadeIn(audio);
-      if (isOneShot) {
-        const nextKey = SoundManager.ONESHOT_NEXT[resolvedKey];
-        if (nextKey) {
-          audio.addEventListener(
-            "ended",
-            () => {
-              // Only transition if this track is still current
-              if (this._currentBgm === resolvedKey) this.playBgm(nextKey);
-            },
-            { once: true },
-          );
-        }
-      }
-      this._htmlAudio = audio;
+      this._playMp3Bgm(resolvedKey);
     } else {
       this._loopBgm(resolvedKey, 0);
     }
@@ -665,6 +634,12 @@ class SoundManager {
       this._htmlAudio.pause();
       this._htmlAudio.src = "";
       this._htmlAudio = null;
+    }
+    if (this._bufferSource) {
+      try {
+        this._bufferSource.stop();
+      } catch (_) {}
+      this._bufferSource = null;
     }
     if (this._bgmLoopTimer !== null) {
       clearTimeout(this._bgmLoopTimer);
@@ -736,12 +711,14 @@ class SoundManager {
       this._htmlFadeTimer = null;
     }
     const audio = this._htmlAudio;
-    if (!audio) {
+    const bufSrc = this._bufferSource;
+    if (!audio && !bufSrc) {
       // No HTML audio active — just do an immediate stop
       this.stopBgm();
       return;
     }
     // Logically mark BGM as stopped so no auto-transitions fire
+    const self = this;
     this._bgmActive = false;
     this._currentBgm = null;
     if (this._bgmLoopTimer !== null) {
@@ -763,43 +740,167 @@ class SoundManager {
         now + durationMs / 1000,
       );
     }
-    // Fade out HTML audio volume, then clean up
-    const startVol = audio.volume;
-    const STEPS = 24;
-    const STEP_MS = Math.round(durationMs / STEPS);
-    let step = 0;
-    const id = setInterval(() => {
-      step++;
-      audio.volume = Math.max(0, startVol * (1 - step / STEPS));
-      if (step >= STEPS) {
-        clearInterval(id);
-        if (this._htmlFadeTimer === id) this._htmlFadeTimer = null;
-        audio.pause();
-        audio.src = "";
-        if (this._htmlAudio === audio) this._htmlAudio = null;
-        // Rebuild clean WebAudio bus for the next BGM
-        if (ctx && this._bgmBus) {
+    if (audio) {
+      // HTMLAudioElement path: fade volume then clean up
+      this._htmlAudio = null;
+      const startVol = audio.volume;
+      const STEPS = 24;
+      const STEP_MS = Math.round(durationMs / STEPS);
+      let step = 0;
+      const id = setInterval(() => {
+        step++;
+        audio.volume = Math.max(0, startVol * (1 - step / STEPS));
+        if (step >= STEPS) {
+          clearInterval(id);
+          if (this._htmlFadeTimer === id) this._htmlFadeTimer = null;
+          audio.pause();
+          audio.src = "";
+          _rebuildBus();
+        }
+      }, STEP_MS);
+      this._htmlFadeTimer = id;
+    } else {
+      // AudioBufferSourceNode path: bgmBus gain ramp already handles silence
+      this._bufferSource = null;
+      setTimeout(() => {
+        try {
+          bufSrc.stop();
+        } catch (_) {}
+        _rebuildBus();
+      }, durationMs + 50);
+    }
+
+    function _rebuildBus() {
+      if (ctx && self._bgmBus) {
+        try {
+          self._bgmBus.disconnect();
+        } catch (_) {}
+        if (self._bgmConvReturn) {
           try {
-            this._bgmBus.disconnect();
+            self._bgmConvReturn.disconnect();
           } catch (_) {}
-          if (this._bgmConvReturn) {
-            try {
-              this._bgmConvReturn.disconnect();
-            } catch (_) {}
-          }
-          this._bgmBus = ctx.createGain();
-          this._bgmBus.gain.value = 0.0001;
-          this._bgmBus.connect(this._masterGain);
-          if (this._bgmConv && this._bgmConvReturn) {
-            this._bgmConvReturn.connect(this._bgmBus);
-          }
+        }
+        self._bgmBus = ctx.createGain();
+        self._bgmBus.gain.value = 0.0001;
+        self._bgmBus.connect(self._masterGain);
+        if (self._bgmConv && self._bgmConvReturn) {
+          self._bgmConvReturn.connect(self._bgmBus);
         }
       }
-    }, STEP_MS);
-    this._htmlFadeTimer = id;
+    }
   }
 
-  _loopBgm(key, iteration) {
+  // Strip encoder silence and crossfade loop boundary for gapless looping
+  _trimMp3Buffer(ctx, buf) {
+    const SR = buf.sampleRate;
+    // -50 dB threshold catches LAME synthesis-filter residue that -60 dB misses
+    const THRESHOLD = 0.003;
+    // 30 ms crossfade blends loop boundary so any remaining discontinuity is inaudible
+    const XFADE = Math.round(0.03 * SR);
+
+    const ch0 = buf.getChannelData(0);
+    let s = 0;
+    while (s < ch0.length && Math.abs(ch0[s]) < THRESHOLD) s++;
+    let e = ch0.length;
+    while (e > s && Math.abs(ch0[e - 1]) < THRESHOLD) e--;
+
+    const contentLen = e - s;
+    if (contentLen <= XFADE * 3) {
+      // Too short to crossfade — return trimmed copy only
+      const plain = ctx.createBuffer(buf.numberOfChannels, contentLen, SR);
+      for (let c = 0; c < buf.numberOfChannels; c++)
+        plain.getChannelData(c).set(buf.getChannelData(c).subarray(s, e));
+      return plain;
+    }
+
+    // Blend the tail (last XFADE samples) into the head (first XFADE samples).
+    // Output is (contentLen - XFADE) long; the tail is baked into the head.
+    const outLen = contentLen - XFADE;
+    const out = ctx.createBuffer(buf.numberOfChannels, outLen, SR);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const src = buf.getChannelData(c);
+      const dst = out.getChannelData(c);
+      for (let i = 0; i < XFADE; i++) {
+        const t = i / XFADE;
+        dst[i] = src[s + i] * t + src[e - XFADE + i] * (1 - t);
+      }
+      dst.set(src.subarray(s + XFADE, e - XFADE), XFADE);
+    }
+    return out;
+  }
+
+  // Use AudioBufferSourceNode for sample-accurate seamless looping
+  async _playMp3Bgm(resolvedKey) {
+    const ctx = this._ctx();
+    if (!ctx) return;
+    const isOneShot = SoundManager.ONESHOT_KEYS.has(resolvedKey);
+
+    let arrayBuffer;
+    try {
+      const res = await fetch(`./audio/${resolvedKey}.mp3`);
+      arrayBuffer = await res.arrayBuffer();
+    } catch (_) {
+      // Network error: fall back to HTMLAudioElement
+      if (this._currentBgm !== resolvedKey) return;
+      const audio = new Audio(`./audio/${resolvedKey}.mp3`);
+      audio.loop = !isOneShot;
+      audio.volume = 0;
+      audio.play().catch(() => {
+        this._pendingBgm = resolvedKey;
+        const retry = () => {
+          if (this._pendingBgm) {
+            const k = this._pendingBgm;
+            this._pendingBgm = null;
+            this.playBgm(k);
+          }
+        };
+        document.addEventListener("pointerdown", retry, { once: true });
+        document.addEventListener("keydown", retry, { once: true });
+      });
+      this._startHtmlFadeIn(audio);
+      this._htmlAudio = audio;
+      return;
+    }
+
+    if (this._currentBgm !== resolvedKey) return;
+
+    let audioBuffer;
+    try {
+      audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    } catch (_) {
+      return;
+    }
+
+    if (this._currentBgm !== resolvedKey) return;
+
+    // Trim encoder silence so loopEnd aligns exactly with musical content
+    audioBuffer = this._trimMp3Buffer(ctx, audioBuffer);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.loop = !isOneShot;
+    source.connect(this._bgmBus);
+
+    // Fade in via bgmBus (same as procedural BGM iteration=0)
+    const now = ctx.currentTime;
+    this._bgmBus.gain.cancelScheduledValues(now);
+    this._bgmBus.gain.setValueAtTime(0.0001, now);
+    this._bgmBus.gain.linearRampToValueAtTime(this._bgmVolume, now + 1.5);
+
+    source.start(now);
+    this._bufferSource = source;
+
+    if (isOneShot) {
+      const nextKey = SoundManager.ONESHOT_NEXT[resolvedKey];
+      if (nextKey) {
+        source.onended = () => {
+          if (this._currentBgm === resolvedKey) this.playBgm(nextKey);
+        };
+      }
+    }
+  }
+
+  _loopBgm(key, iteration, scheduledStart = null) {
     if (!this._bgmActive || this._currentBgm !== key) return;
     const ctx = this._ctx();
     if (!ctx) return;
@@ -815,7 +916,9 @@ class SoundManager {
     }
 
     const { notes, duration } = this._getBgmSequence(key);
-    const t0 = ctx.currentTime;
+    // Use the pinned start time to avoid drift; fall back to now on first call
+    const t0 = scheduledStart ?? ctx.currentTime;
+    const nextStart = t0 + duration;
 
     notes.forEach(
       ({
@@ -878,9 +981,14 @@ class SoundManager {
       },
     );
 
+    // Fire ~350 ms before the loop ends so next notes are always pre-scheduled
+    const msUntilSchedule = Math.max(
+      0,
+      (nextStart - ctx.currentTime - 0.35) * 1000,
+    );
     this._bgmLoopTimer = setTimeout(
-      () => this._loopBgm(key, iteration + 1),
-      (duration + 0.35) * 1000,
+      () => this._loopBgm(key, iteration + 1, nextStart),
+      msUntilSchedule,
     );
   }
 

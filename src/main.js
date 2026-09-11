@@ -5,6 +5,8 @@ import { FriendLobbyScene } from "./scenes/FriendLobbyScene.js";
 import { RandomLobbyScene } from "./scenes/RandomLobbyScene.js";
 import { GameScene } from "./scenes/GameScene.js";
 import { UIScene } from "./scenes/UIScene.js";
+import { TutorialScene } from "./scenes/TutorialScene.js";
+import { ShopScene } from "./scenes/ShopScene.js";
 
 const config = {
   type: Phaser.AUTO,
@@ -23,6 +25,8 @@ const config = {
     RandomLobbyScene,
     GameScene,
     UIScene,
+    TutorialScene,
+    ShopScene,
   ],
 };
 

@@ -7,6 +7,12 @@
 } from "../net/firebaseAuth.js";
 import { fetchBattleStats } from "../net/battleLogger.js";
 import { soundManager } from "../audio/SoundManager.js";
+import {
+  getStoneDesignMode,
+  setStoneDesignMode,
+  STONE_DISPLAY_MODES,
+  STONE_DISPLAY_MODE_LABELS,
+} from "../data/stoneSkins.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -110,6 +116,7 @@ export class LobbyScene extends Phaser.Scene {
 
     this._createPlayerPanel(W, H);
     this._createSoundButton(W);
+    this._createShopButton();
 
     // 阿修羅解放チェック: 条件が揃っていてまだ演出未表示なら自動でパネルを開く
     this.time.delayedCall(300, () => {
@@ -124,6 +131,42 @@ export class LobbyScene extends Phaser.Scene {
           }
         }
       } catch (_) {}
+    });
+
+    // 初回起動: メニューを自動で開く（音量調整 + チュートリアル案内）
+    try {
+      const tutorialSeen = localStorage.getItem("tutorialSeen") === "1";
+      if (!tutorialSeen) {
+        localStorage.setItem("tutorialSeen", "1");
+        this.time.delayedCall(500, () => this._showVolumePanel(true));
+      }
+    } catch (_) {}
+  }
+
+  _createShopButton() {
+    // 🛒 ボタン（左上コーナー、設定ボタンと対称）
+    const bx = 80,
+      by = 80,
+      br = 44;
+    const g = this.add.graphics();
+    g.fillStyle(0x1a1e2e, 0.85);
+    g.fillCircle(bx, by, br);
+    g.lineStyle(1.5, 0xe5d5b1, 0.4);
+    g.strokeCircle(bx, by, br);
+
+    const icon = this.add
+      .text(bx, by, "🛒", {
+        fontSize: "40px",
+        color: "#d4c89a",
+      })
+      .setOrigin(0.5);
+
+    const hit = this.add.zone(bx, by, br * 2, br * 2).setInteractive();
+    hit.on("pointerover", () => icon.setAlpha(0.7));
+    hit.on("pointerout", () => icon.setAlpha(1.0));
+    hit.on("pointerdown", () => {
+      soundManager.se_button();
+      this.scene.start("ShopScene");
     });
   }
 
@@ -154,24 +197,28 @@ export class LobbyScene extends Phaser.Scene {
     });
   }
 
-  _showVolumePanel() {
+  _showVolumePanel(firstLaunch = false) {
     const W = 1080;
     const objs = [];
+    let contentObjs = [];
 
     const overlay = this.add.rectangle(W / 2, 960, W, 1920, 0x000000, 0.72);
     overlay.setInteractive();
     objs.push(overlay);
 
+    let currentHintObjs = [];
     const close = () => {
+      currentHintObjs.forEach((o) => o.destroy());
+      currentHintObjs = [];
+      contentObjs.forEach((o) => o.destroy());
       objs.forEach((o) => o.destroy());
     };
-    overlay.on("pointerdown", close);
 
     // パネル本体
     const pw = 700,
-      ph = 480,
+      ph = 560,
       px = W / 2 - pw / 2,
-      py = 700;
+      py = 640;
     const panelG = this.add.graphics();
     panelG.fillStyle(0x080d18, 1);
     panelG.fillRoundedRect(px, py, pw, ph, 24);
@@ -180,8 +227,8 @@ export class LobbyScene extends Phaser.Scene {
     objs.push(panelG);
 
     const title = this.add
-      .text(W / 2, py + 52, "音量設定", {
-        fontSize: "46px",
+      .text(W / 2, py + 48, "メニュー", {
+        fontSize: "42px",
         color: "#f4deb1",
         fontFamily: DISPLAY_FONT,
         stroke: "#000",
@@ -201,107 +248,427 @@ export class LobbyScene extends Phaser.Scene {
     closeBtn.on("pointerdown", close);
     objs.push(closeBtn);
 
-    // スライダー共通設定
-    const trackW = 520,
-      trackH = 12,
-      thumbR = 26;
-    const sliderX = W / 2 - trackW / 2;
+    // ─── タブバー（音量 / ゲーム / その他） ───
+    const tabs = [
+      { key: "volume", label: "音量" },
+      { key: "game", label: "ゲーム" },
+      { key: "other", label: "その他" },
+    ];
+    const tabW = pw / tabs.length;
+    const tabY = py + 96;
+    let activeTab = "volume";
+    const tabEntries = [];
 
-    const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
+    const drawTab = (entry) => {
+      const active = entry.key === activeTab;
+      entry.g.clear();
+      entry.g.fillStyle(active ? 0x2a4060 : 0x141824, active ? 0.9 : 0.6);
+      entry.g.fillRoundedRect(
+        entry.x - tabW / 2 + 6,
+        tabY - 28,
+        tabW - 12,
+        56,
+        12,
+      );
+      entry.g.lineStyle(1.5, active ? 0xf0d39a : 0xe5d5b1, active ? 0.7 : 0.2);
+      entry.g.strokeRoundedRect(
+        entry.x - tabW / 2 + 6,
+        tabY - 28,
+        tabW - 12,
+        56,
+        12,
+      );
+      entry.text.setColor(active ? "#f4deb1" : "#8a92a5");
+    };
+
+    const switchTab = (key) => {
+      activeTab = key;
+      tabEntries.forEach((e) => drawTab(e));
+      renderTabContent();
+    };
+
+    tabs.forEach((tab, i) => {
+      const x = px + tabW * i + tabW / 2;
+      const g = this.add.graphics();
+      const text = this.add
+        .text(x, tabY, tab.label, {
+          fontSize: "28px",
+          color: "#e6decf",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5);
+      const zone = this.add
+        .zone(x, tabY, tabW, 56)
+        .setInteractive({ useHandCursor: true });
+      zone.on("pointerdown", () => {
+        soundManager.se_button();
+        switchTab(tab.key);
+      });
+      const entry = { key: tab.key, x, g, text };
+      tabEntries.push(entry);
+      drawTab(entry);
+      objs.push(g, text, zone);
+    });
+
+    const contentTop = py + 154;
+
+    // アクティブなヒントを消すためのコールバック
+    let dismissCurrentHint = null;
+
+    const renderVolumeTab = () => {
+      const trackW = 520,
+        trackH = 12,
+        thumbR = 26;
+      const sliderX = W / 2 - trackW / 2;
+
+      const makeSlider = (labelText, rowY, getValue, onChangeValue) => {
+        let ratio = getValue();
+
+        const label = this.add
+          .text(sliderX, rowY - 46, labelText, {
+            fontSize: "30px",
+            color: "#d7e2f1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(0, 0.5);
+        contentObjs.push(label);
+
+        const valText = this.add
+          .text(sliderX + trackW, rowY - 46, `${Math.round(ratio * 100)}%`, {
+            fontSize: "28px",
+            color: "#f4deb1",
+            fontFamily: UI_FONT,
+          })
+          .setOrigin(1, 0.5);
+        contentObjs.push(valText);
+
+        const trackG = this.add.graphics();
+        const redrawTrack = (r) => {
+          trackG.clear();
+          trackG.fillStyle(0x2a2e40, 1);
+          trackG.fillRoundedRect(
+            sliderX,
+            rowY - trackH / 2,
+            trackW,
+            trackH,
+            trackH / 2,
+          );
+          trackG.fillStyle(0xf0d39a, 1);
+          trackG.fillRoundedRect(
+            sliderX,
+            rowY - trackH / 2,
+            trackW * r,
+            trackH,
+            trackH / 2,
+          );
+          trackG.fillStyle(0xfff8e6, 1);
+          trackG.fillCircle(sliderX + trackW * r, rowY, thumbR);
+          trackG.lineStyle(2, 0xc8a860, 1);
+          trackG.strokeCircle(sliderX + trackW * r, rowY, thumbR);
+        };
+        redrawTrack(ratio);
+        contentObjs.push(trackG);
+
+        const zone = this.add
+          .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
+          .setInteractive();
+
+        const updateFromPointer = (ptr) => {
+          const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
+          ratio = rx / trackW;
+          redrawTrack(ratio);
+          valText.setText(`${Math.round(ratio * 100)}%`);
+          onChangeValue(ratio);
+        };
+
+        zone.on("pointerdown", updateFromPointer);
+        zone.on("pointermove", (ptr) => {
+          if (ptr.isDown) updateFromPointer(ptr);
+        });
+        contentObjs.push(zone);
+      };
+
+      makeSlider(
+        "BGM",
+        contentTop + 64,
+        () => soundManager._bgmVolume,
+        (v) => soundManager.setBgmVolume(v),
+      );
+
+      makeSlider(
+        "効果音",
+        contentTop + 196,
+        () => soundManager._seVolume,
+        (v) => soundManager.setSeVolume(v),
+      );
+
+      const credit = this.add
+        .text(W / 2, py + ph - 28, "BGM：魔王魂", {
+          fontSize: "22px",
+          color: "#7a8899",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5);
+      contentObjs.push(credit);
+    };
+
+    const renderGameTab = () => {
+      const rowY = contentTop + 56;
       const label = this.add
-        .text(W / 2 - trackW / 2, rowY - 36, labelText, {
-          fontSize: "32px",
+        .text(px + 40, rowY, "石の見た目", {
+          fontSize: "30px",
           color: "#d7e2f1",
           fontFamily: UI_FONT,
         })
         .setOrigin(0, 0.5);
-      objs.push(label);
+      contentObjs.push(label);
 
-      const trackG = this.add.graphics();
-      const redrawTrack = (ratio) => {
-        trackG.clear();
-        // トラック背景
-        trackG.fillStyle(0x2a2e40, 1);
-        trackG.fillRoundedRect(
-          sliderX,
-          rowY - trackH / 2,
-          trackW,
-          trackH,
-          trackH / 2,
-        );
-        // 塗り済み部分
-        trackG.fillStyle(0xf0d39a, 1);
-        trackG.fillRoundedRect(
-          sliderX,
-          rowY - trackH / 2,
-          trackW * ratio,
-          trackH,
-          trackH / 2,
-        );
-        // サム
-        trackG.fillStyle(0xfff8e6, 1);
-        trackG.fillCircle(sliderX + trackW * ratio, rowY, thumbR);
-        trackG.lineStyle(2, 0xc8a860, 1);
-        trackG.strokeCircle(sliderX + trackW * ratio, rowY, thumbR);
-      };
-
-      let ratio = getValue();
-      redrawTrack(ratio);
-      objs.push(trackG);
-
-      // パーセント表示
-      const valText = this.add
-        .text(sliderX + trackW + 30, rowY, `${Math.round(ratio * 100)}%`, {
-          fontSize: "30px",
+      const btnW = 220,
+        btnH = 60;
+      const btnX = px + pw - 40 - btnW / 2;
+      const btnG = this.add.graphics();
+      const btnText = this.add
+        .text(btnX, rowY, "", {
+          fontSize: "26px",
           color: "#f4deb1",
           fontFamily: UI_FONT,
         })
-        .setOrigin(0, 0.5);
-      objs.push(valText);
+        .setOrigin(0.5);
 
-      // インタラクティブ領域（トラック全体＋サム分余白）
-      const zone = this.add
-        .zone(W / 2, rowY, trackW + thumbR * 2, thumbR * 2 + 10)
-        .setInteractive();
-
-      const updateFromPointer = (ptr) => {
-        const rx = Phaser.Math.Clamp(ptr.x - sliderX, 0, trackW);
-        ratio = rx / trackW;
-        redrawTrack(ratio);
-        valText.setText(`${Math.round(ratio * 100)}%`);
-        onChangeValue(ratio);
+      const drawBtn = () => {
+        btnG.clear();
+        btnG.fillStyle(0x2a4060, 0.95);
+        btnG.fillRoundedRect(btnX - btnW / 2, rowY - btnH / 2, btnW, btnH, 12);
+        btnG.lineStyle(1.5, 0xf0d39a, 0.6);
+        btnG.strokeRoundedRect(
+          btnX - btnW / 2,
+          rowY - btnH / 2,
+          btnW,
+          btnH,
+          12,
+        );
+        btnText.setText(STONE_DISPLAY_MODE_LABELS[getStoneDesignMode()]);
       };
+      drawBtn();
 
-      zone.on("pointerdown", updateFromPointer);
-      zone.on("pointermove", (ptr) => {
-        if (ptr.isDown) updateFromPointer(ptr);
+      const zone = this.add
+        .zone(btnX, rowY, btnW, btnH)
+        .setInteractive({ useHandCursor: true });
+      zone.on("pointerdown", () => {
+        soundManager.se_button();
+        const idx = STONE_DISPLAY_MODES.indexOf(getStoneDesignMode());
+        const next =
+          STONE_DISPLAY_MODES[(idx + 1) % STONE_DISPLAY_MODES.length];
+        setStoneDesignMode(next);
+        drawBtn();
       });
-      objs.push(zone);
+
+      const hint = this.add
+        .text(
+          px + 40,
+          rowY + 60,
+          "混合: 石ごとの持ち主基準 / 自分のみ・相手のみ: 全て統一表示",
+          {
+            fontSize: "20px",
+            color: "#8a92a5",
+            fontFamily: UI_FONT,
+            wordWrap: { width: pw - 80 },
+          },
+        )
+        .setOrigin(0, 0);
+
+      contentObjs.push(btnG, btnText, zone, hint);
     };
 
-    makeSlider(
-      "BGM",
-      py + 180,
-      () => soundManager._bgmVolume,
-      (v) => soundManager.setBgmVolume(v),
-    );
+    const renderOtherTab = () => {
+      const tutBtn = this.add
+        .text(W / 2, contentTop + 70, "チュートリアルを見る", {
+          fontSize: "34px",
+          color: "#ffe0a8",
+          backgroundColor: "#1a2a1a",
+          padding: { x: 30, y: 18 },
+          fontFamily: UI_FONT,
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setInteractive();
 
-    makeSlider(
-      "効果音",
-      py + 350,
-      () => soundManager._seVolume,
-      (v) => soundManager.setSeVolume(v),
-    );
+      tutBtn.on("pointerdown", () => {
+        soundManager.se_button();
+        close();
+        this.scene.start("GameScene", {
+          aiDifficulty: "kooni",
+          playerFirst: true,
+          tutorialMode: true,
+        });
+      });
+      tutBtn.on("pointerover", () => tutBtn.setAlpha(0.8));
+      tutBtn.on("pointerout", () => tutBtn.setAlpha(1));
+      contentObjs.push(tutBtn);
+    };
 
-    // クレジット
-    const credit = this.add
-      .text(W / 2, py + ph - 36, "BGM：魔王魂", {
-        fontSize: "24px",
-        color: "#7a8899",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5);
-    objs.push(credit);
+    const renderTabContent = () => {
+      contentObjs.forEach((o) => o.destroy());
+      contentObjs = [];
+      if (activeTab === "volume") renderVolumeTab();
+      else if (activeTab === "game") renderGameTab();
+      else renderOtherTab();
+    };
+
+    if (firstLaunch) {
+      // 音量を極小(1%)にしておき、気づいて調整してもらう
+      soundManager.setBgmVolume(0.01);
+      soundManager.setSeVolume(0.01);
+    }
+
+    renderTabContent();
+
+    // ─── 初回限定: 2段階ヒント ───
+    if (firstLaunch) {
+      const hintW = pw - 40;
+      const hintX = W / 2 - hintW / 2;
+
+      // ─── ヒント共通描画ヘルパー ───
+      const makeHint = (
+        message,
+        arrowDir,
+        anchorY,
+        color,
+        onDismiss,
+        persistent = false,
+        showOkButton = false,
+      ) => {
+        const hintObjs = [];
+        const hintH = 110;
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x0a0f1a, 0.97);
+        bg.lineStyle(2, color, 0.9);
+        bg.fillRoundedRect(hintX, anchorY, hintW, hintH, 14);
+        bg.strokeRoundedRect(hintX, anchorY, hintW, hintH, 14);
+
+        // 矢印
+        bg.fillStyle(color, 0.9);
+        if (arrowDir === "up") {
+          bg.fillTriangle(
+            W / 2 - 18,
+            anchorY,
+            W / 2 + 18,
+            anchorY,
+            W / 2,
+            anchorY - 22,
+          );
+        } else {
+          bg.fillTriangle(
+            W / 2 - 18,
+            anchorY + hintH,
+            W / 2 + 18,
+            anchorY + hintH,
+            W / 2,
+            anchorY + hintH + 22,
+          );
+        }
+        hintObjs.push(bg);
+
+        // テキスト中央寄せ（OKボタン表示時は左寄りに詰める）
+        const txt = this.add
+          .text(
+            showOkButton ? W / 2 - 50 : W / 2,
+            anchorY + hintH / 2,
+            message,
+            {
+              fontSize: "28px",
+              color: "#ffffff",
+              fontFamily: UI_FONT,
+              stroke: "#000000",
+              strokeThickness: 3,
+              align: "center",
+              wordWrap: { width: showOkButton ? hintW - 160 : hintW - 40 },
+            },
+          )
+          .setOrigin(0.5, 0.5);
+        hintObjs.push(txt);
+
+        // 現在表示中のヒントとして登録（close()で必ず破棄されるよう）
+        currentHintObjs = hintObjs;
+
+        if (!persistent) {
+          // OKボタン・スライダー操作いずれでも消せるよう登録
+          dismissCurrentHint = () => {
+            currentHintObjs.forEach((o) => o.destroy());
+            currentHintObjs = [];
+            dismissCurrentHint = null;
+            onDismiss?.();
+          };
+
+          if (showOkButton) {
+            const okX = hintX + hintW - 68;
+            const okY = anchorY + hintH / 2;
+            const okG = this.add.graphics();
+            okG.fillStyle(0x2a4060, 0.95);
+            okG.fillRoundedRect(okX - 48, okY - 32, 96, 64, 12);
+            okG.lineStyle(1.5, 0xf0d39a, 0.7);
+            okG.strokeRoundedRect(okX - 48, okY - 32, 96, 64, 12);
+            hintObjs.push(okG);
+
+            const okText = this.add
+              .text(okX, okY, "OK", {
+                fontSize: "30px",
+                color: "#f4deb1",
+                fontFamily: UI_FONT,
+              })
+              .setOrigin(0.5);
+            hintObjs.push(okText);
+
+            const okZone = this.add
+              .zone(okX, okY, 96, 64)
+              .setInteractive({ useHandCursor: true });
+            okZone.on("pointerdown", () => {
+              soundManager.se_button();
+              if (dismissCurrentHint) dismissCurrentHint();
+            });
+            hintObjs.push(okZone);
+          } else {
+            // パネル全体をタップで消える透明ゾーン
+            const zone = this.add
+              .zone(W / 2, anchorY + hintH / 2, hintW, hintH)
+              .setInteractive();
+            zone.on("pointerdown", () => {
+              if (dismissCurrentHint) dismissCurrentHint();
+            });
+            hintObjs.push(zone);
+          }
+        }
+
+        return hintObjs;
+      };
+
+      // ① まずは音量調整！（音量タブ・スライダーの下・上向き矢印）
+      const hint1Y = contentTop + 260;
+
+      makeHint(
+        "まずは音量を調整してみよう",
+        "up",
+        hint1Y,
+        0x4a9fe8,
+        () => {
+          // ② その他タブに切り替えてチュートリアルボタンを案内
+          switchTab("other");
+          const hint2Y = contentTop + 130;
+          makeHint(
+            "チュートリアルをやってみよう！",
+            "up",
+            hint2Y,
+            0x44cc66,
+            null,
+            true,
+          );
+        },
+        false,
+        true,
+      );
+    }
   }
 
   _drawBackground(W, H) {
@@ -1899,55 +2266,6 @@ export class LobbyScene extends Phaser.Scene {
         });
       });
     } // if (ashuraUnlocked && !ashuraShown) end
-
-    const resetT = this.add
-      .text(W / 2 - 200, 1510, "リセット", {
-        fontSize: "30px",
-        color: "#cc7744",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    resetT.on("pointerdown", () => {
-      try {
-        const testData = {};
-        localStorage.setItem("soloBeaten", JSON.stringify(testData));
-        localStorage.removeItem("ashuraShown");
-      } catch (_e) {}
-      cleanup();
-      this._showDifficultyPanel();
-    });
-    objs.push(resetT);
-    debugBtns.push(resetT);
-
-    const preAshuraT = this.add
-      .text(W / 2 + 200, 1510, "阿修羅直前", {
-        fontSize: "30px",
-        color: "#aa44cc",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    preAshuraT.on("pointerdown", () => {
-      try {
-        const beaten = {
-          kooni: {},
-          yasha: {},
-          rasetsu: {},
-          kisin: {},
-          kyubi: {},
-        };
-        ["kooni", "yasha", "rasetsu", "kisin", "kyubi"].forEach((d) => {
-          beaten[d] = { first: true, second: true };
-        });
-        localStorage.setItem("soloBeaten", JSON.stringify(beaten));
-        localStorage.removeItem("ashuraShown");
-      } catch (_e) {}
-      cleanup();
-      this._showDifficultyPanel();
-    });
-    objs.push(preAshuraT);
-    debugBtns.push(preAshuraT);
 
     const cancelT = this.add
       .text(W / 2, 1510, "キャンセル", {
