@@ -3,6 +3,7 @@ import { getPlayerName } from "../net/firebaseAuth.js";
 import { logSoloAction } from "../net/actionLogger.js";
 import { logBattleResult, analyzeLossReason } from "../net/battleLogger.js";
 import { soundManager } from "../audio/SoundManager.js";
+import { recordCompletedMatch } from "../data/dailyMissions.mjs";
 import {
   checkKugutsuStoneUnlock,
   getSelectedSkinSet,
@@ -48,6 +49,7 @@ export class UIScene extends Phaser.Scene {
     this.gameScene = data.gameScene;
     this.onlineFinalIntroPlayed = false;
     this.onlineRevealPlayed = false;
+    this.dailyMissionResultRecorded = false;
   }
 
   create() {
@@ -125,7 +127,7 @@ export class UIScene extends Phaser.Scene {
 
     // バージョン表示（右下）
     this.add
-      .text(W - 16, 1920 - 16, "Ver 1.0.17", {
+      .text(W - 16, 1920 - 16, "Ver 1.0.19", {
         fontSize: "18px",
         color: "#4a5368",
         fontFamily: UI_FONT,
@@ -170,25 +172,12 @@ export class UIScene extends Phaser.Scene {
     this.rulesButton.on("pointerout", () => this._hideRulesPopup());
     this.rulesOverlay = null;
 
-    // ⚙ 音量ボタン（ルールボタンの真右）
-    // 直径 = ルールボタンの高さ (fontSize28 + paddingY*2=24) = 52px → 半径26
+    // 設定ボタン（ルールボタンの真右・ホームと同じアイコン）
     const gearBR = 31;
     const gearX = 250,
-      gearY = 1920 - 16 - gearBR; // ルールボタン下端 1904 から中心を合わせる
-    const gearG = this.add.graphics();
-    gearG.fillStyle(0x1a1e2e, 0.85);
-    gearG.fillCircle(gearX, gearY, gearBR);
-    gearG.lineStyle(1.5, 0xe5d5b1, 0.4);
-    gearG.strokeCircle(gearX, gearY, gearBR);
-    gearG.setDepth(DEPTH_MESSAGE);
-
-    const gearIcon = this.add
-      .text(gearX, gearY, "⚙", {
-        fontSize: "34px",
-        color: "#d4c89a",
-      })
-      .setOrigin(0.5)
-      .setDepth(DEPTH_MESSAGE);
+      gearY = 1920 - 16 - gearBR;
+    const gearIcon = this.add.image(gearX, gearY, "mancolor-settings-icon").setDepth(DEPTH_MESSAGE);
+    gearIcon.setScale((gearBR * 2) / gearIcon.width);
 
     const gearHit = this.add
       .zone(gearX, gearY, gearBR * 2, gearBR * 2)
@@ -201,13 +190,12 @@ export class UIScene extends Phaser.Scene {
       this._showVolumePanel();
     });
 
-    // オンライン対戦時のプレイヤー名ラベル
-    const isOnline = this.gameScene._isOnlineRoomMode?.() ?? false;
+    // 対戦相手・自分の名前ラベル（オンライン対戦と、ランダム対戦からのAI代替で表示）
     const selfName = this.gameScene.selfPlayerName;
     const oppName = this.gameScene.oppPlayerName;
 
     this.oppNameLabel = this.add
-      .text(W / 2, 198, oppName ? `相手: ${oppName}` : "", {
+      .text(W / 2, 198, oppName || "", {
         fontSize: "26px",
         color: "#ff9f9f",
         fontFamily: UI_FONT,
@@ -215,11 +203,11 @@ export class UIScene extends Phaser.Scene {
         strokeThickness: 3,
       })
       .setOrigin(0.5, 0)
-      .setVisible(isOnline && !!oppName)
+      .setVisible(!!oppName)
       .setDepth(DEPTH_MESSAGE);
 
     this.selfNameLabel = this.add
-      .text(W / 2, 1838, selfName ? `あなた: ${selfName}` : "", {
+      .text(W / 2, 1838, selfName || "", {
         fontSize: "26px",
         color: "#9fd6ff",
         fontFamily: UI_FONT,
@@ -227,7 +215,7 @@ export class UIScene extends Phaser.Scene {
         strokeThickness: 3,
       })
       .setOrigin(0.5, 1)
-      .setVisible(isOnline && !!selfName)
+      .setVisible(!!selfName)
       .setDepth(DEPTH_MESSAGE);
 
     this.refreshFortuneAndDiscard();
@@ -2905,6 +2893,33 @@ export class UIScene extends Phaser.Scene {
       this.gameScene?.onlineSide === "opp";
     const ownScore = isOppView ? oppScore : selfScore;
     const rivalScore = isOppView ? selfScore : oppScore;
+    const gs = this.gameScene;
+    if (gs && !gs.tutorialMode && !this.dailyMissionResultRecorded) {
+      this.dailyMissionResultRecorded = true;
+      try {
+        recordCompletedMatch({
+          mode: gs._isOnlineRoomMode?.() ? "online" : "solo",
+          result:
+            ownScore > rivalScore
+              ? "win"
+              : ownScore < rivalScore
+                ? "lose"
+                : "draw",
+        });
+      } catch (error) {
+        console.error("[daily-missions] 対局結果の記録に失敗しました", error);
+        const notice = this.add
+          .text(540, 1510, "ミッションの進捗を保存できませんでした", {
+            fontSize: "26px",
+            color: "#ffd28a",
+            backgroundColor: "#1a1e2e",
+            padding: { x: 18, y: 10 },
+          })
+          .setOrigin(0.5)
+          .setDepth(DEPTH_MESSAGE + 1);
+        this.time.delayedCall(3500, () => notice.destroy());
+      }
+    }
     const winner =
       ownScore > rivalScore
         ? "あなたの勝ち！"

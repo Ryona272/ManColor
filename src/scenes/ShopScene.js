@@ -9,7 +9,12 @@ import {
   unlockSkinSet,
 } from "../data/stoneSkins.js";
 import { soundManager } from "../audio/SoundManager.js";
-import { showRewardedAd } from "../net/ads.js";
+import { drawMenuBackground, uiImage } from "../ui/theme.js";
+import { getDailyMissionState, redeemSkinWithPoints } from "../data/dailyMissions.mjs";
+import {
+  isRewardedAdAvailable,
+  showRewardedAd,
+} from "../net/ads.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -26,6 +31,7 @@ export class ShopScene extends Phaser.Scene {
     this._listContainer = null;
     this._expandedSetId = null;
     this._expandedObjs = [];
+    this.page = 0;
   }
 
   create() {
@@ -54,29 +60,27 @@ export class ShopScene extends Phaser.Scene {
     this._createBackButton(W);
     this._createTabs(W);
     this._listContainer = this.add.container(0, 0);
+    this.add.image(313, 370, "mancolor-point-gem").setDisplaySize(48, 48);
+    this.pointText = this.add.text(570, 370, "", {
+      fontSize: "30px", color: "#f0d39a", fontFamily: UI_FONT,
+    }).setOrigin(0.5);
+    this.notice = this.add.text(540, 1850, "", {
+      fontSize: "26px", color: "#ffd28a", fontFamily: UI_FONT,
+      align: "center", wordWrap: { width: 940 },
+    }).setOrigin(0.5);
     this._renderList(W);
+    this.events.once("shutdown", () => this._collapseColorPreview(true));
   }
 
   _drawBackground(W, H) {
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x080d18, 0x0c1022, 0x160b1a, 0x10060f, 1);
-    g.fillRect(0, 0, W, H);
-    g.lineStyle(1.5, 0xe5d5b1, 0.35);
-    g.strokeRoundedRect(30, 30, W - 60, H - 60, 28);
+    drawMenuBackground(this, W, H);
   }
 
   _createBackButton(W) {
     const bx = 80,
       by = 80,
       br = 44;
-    const g = this.add.graphics();
-    g.fillStyle(0x1a1e2e, 0.85);
-    g.fillCircle(bx, by, br);
-    g.lineStyle(1.5, 0xe5d5b1, 0.4);
-    g.strokeCircle(bx, by, br);
-    const icon = this.add
-      .text(bx, by, "←", { fontSize: "44px", color: "#d4c89a" })
-      .setOrigin(0.5);
+    const icon = uiImage(this, "back", bx, by, br * 2, br * 2);
     const hit = this.add.zone(bx, by, br * 2, br * 2).setInteractive();
     hit.on("pointerover", () => icon.setAlpha(0.7));
     hit.on("pointerout", () => icon.setAlpha(1.0));
@@ -98,7 +102,7 @@ export class ShopScene extends Phaser.Scene {
 
     this._tabButtons = tabs.map((tab, i) => {
       const x = startX + i * (tabW + 20) + tabW / 2;
-      const g = this.add.graphics();
+      const g = uiImage(this, "tab-idle", x, y, tabW, 78);
       const text = this.add
         .text(x, y, tab.label, {
           fontSize: "32px",
@@ -112,6 +116,8 @@ export class ShopScene extends Phaser.Scene {
       hit.on("pointerdown", () => {
         soundManager.se_button?.();
         this.activeTab = tab.key;
+        this.page = 0;
+        this.notice.setText("");
         this._renderList(W);
       });
       const entry = { key: tab.key, x, y, w: tabW, g, text };
@@ -122,23 +128,7 @@ export class ShopScene extends Phaser.Scene {
 
   _drawTab(entry) {
     const active = entry.key === this.activeTab;
-    entry.g.clear();
-    entry.g.fillStyle(active ? 0x2a4060 : 0x141824, active ? 0.9 : 0.6);
-    entry.g.fillRoundedRect(
-      entry.x - entry.w / 2,
-      entry.y - 35,
-      entry.w,
-      70,
-      14,
-    );
-    entry.g.lineStyle(1.5, active ? 0xf0d39a : 0xe5d5b1, active ? 0.7 : 0.2);
-    entry.g.strokeRoundedRect(
-      entry.x - entry.w / 2,
-      entry.y - 35,
-      entry.w,
-      70,
-      14,
-    );
+    entry.g.setFrame(active ? "tab-active" : "tab-idle").setDisplaySize(entry.w, 78);
     entry.text.setColor(active ? "#f4deb1" : "#8a92a5");
   }
 
@@ -146,6 +136,7 @@ export class ShopScene extends Phaser.Scene {
     this._collapseColorPreview(true);
     this._tabButtons.forEach((t) => this._drawTab(t));
     this._listContainer.removeAll(true);
+    this.pointText.setText(`所持ポイント: ${getDailyMissionState().points} pt`);
 
     if (this.activeTab === "background") {
       const t = this.add
@@ -164,10 +155,30 @@ export class ShopScene extends Phaser.Scene {
     const gap = 30;
     const startY = 420;
 
-    SKIN_SETS.forEach((set, i) => {
+    const perPage = 5;
+    const pageCount = Math.ceil(SKIN_SETS.length / perPage);
+    this.page = Phaser.Math.Clamp(this.page, 0, pageCount - 1);
+    SKIN_SETS.slice(this.page * perPage, (this.page + 1) * perPage).forEach((set, i) => {
       const y = startY + i * (cardH + gap);
       this._listContainer.add(this._createSkinSetCard(W, y, cardW, cardH, set));
     });
+    this._listContainer.add(this.add.text(W / 2, 1750, `${this.page + 1} / ${pageCount}`, {
+      fontSize: "30px", color: "#e6decf", fontFamily: UI_FONT,
+    }).setOrigin(0.5));
+    for (const step of [-1, 1]) {
+      const enabled = this.page + step >= 0 && this.page + step < pageCount;
+      const x = W / 2 + step * 270;
+      this._listContainer.add(uiImage(this, enabled ? "equip" : "disabled", x, 1750, 220, 70));
+      this._listContainer.add(this.add.text(x, 1750, step < 0 ? "前へ" : "次へ", {
+        fontSize: "28px", color: enabled ? "#e6decf" : "#7f899b", fontFamily: UI_FONT,
+      }).setOrigin(0.5));
+      if (enabled) this._listContainer.add(this.add.zone(x, 1750, 220, 70)
+        .setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+          this.page += step;
+          this.notice.setText("");
+          this._renderList(W);
+        }));
+    }
   }
 
   _createSkinSetCard(W, y, cardW, cardH, set) {
@@ -178,16 +189,18 @@ export class ShopScene extends Phaser.Scene {
     const previewColor = "red";
     const radius = 55;
 
-    const g = this.add.graphics();
-    g.fillStyle(0x0e131f, 0.92);
-    g.fillRoundedRect(x, y, cardW, cardH, 18);
-    g.lineStyle(1.5, 0xe5d5b1, 0.25);
-    g.strokeRoundedRect(x, y, cardW, cardH, 18);
+    const g = uiImage(this, selected ? "card-active" : owned ? "card" : "card-locked",
+      W / 2, y + cardH / 2, cardW, cardH);
     container.add(g);
+    if (selected) {
+      g.setTint(0xffdf99);
+    }
 
     // プレビュー（代表として赤石のみ表示。装備は5色セットで反映される）
     const previewY = y + cardH / 2;
     const previewX = x + 130;
+    container.add(uiImage(this, selected ? "shop-pedestal-active" : owned ? "shop-pedestal" : "pedestal-locked",
+      previewX, previewY, 160, 164));
     const preview = this._drawStonePreview(
       set.id,
       previewColor,
@@ -197,18 +210,6 @@ export class ShopScene extends Phaser.Scene {
       !owned,
     );
     container.add(preview);
-    if (selected) {
-      const sel = this.add.graphics();
-      sel.lineStyle(4, 0xf0d39a, 0.9);
-      sel.strokeCircle(previewX, previewY, radius + 7);
-      container.add(sel);
-    }
-    if (!owned) {
-      const lock = this.add
-        .text(previewX, previewY, "🔒", { fontSize: "34px" })
-        .setOrigin(0.5);
-      container.add(lock);
-    }
 
     // タップで他4色が奥からスライドして出てくる演出
     const previewHit = this.add
@@ -237,7 +238,8 @@ export class ShopScene extends Phaser.Scene {
         .text(
           textX,
           y + 96,
-          owned ? "入手済み" : (getSkinUnlockLabel(set.id) ?? "未実装"),
+          owned ? "入手済み" : set.pointCost
+            ? `${set.pointCost} ptで交換` : (getSkinUnlockLabel(set.id) ?? "未実装"),
           {
             fontSize: "26px",
             color: owned ? "#88ccaa" : "#9aa4b8",
@@ -247,40 +249,30 @@ export class ShopScene extends Phaser.Scene {
         .setOrigin(0, 0.5),
     );
 
-    // 装備ボタン（カード右下）。動画視聴で入手できるデザインは未入手時に「動画を見る」ボタンにする
     const btnW = 220,
       btnH = 60;
     const btnX = x + cardW - btnW / 2 - 30;
     const btnY = y + cardH - btnH / 2 - 20;
     const isAdUnlock = set.unlockInfo?.type === "ad";
+    const pointCost = set.pointCost;
+    const affordable = Boolean(pointCost && getDailyMissionState().points >= pointCost);
+    const canWatchAd = isRewardedAdAvailable();
     let adWatching = false;
-    const btnG = this.add.graphics();
-    const drawBtn = (isSelected) => {
-      btnG.clear();
-      const activeLook = isSelected || (!owned && isAdUnlock);
-      btnG.fillStyle(
-        activeLook ? 0x2a4060 : 0x1c2230,
-        owned || isAdUnlock ? 0.95 : 0.4,
-      );
-      btnG.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 12);
-      btnG.lineStyle(
-        1.5,
-        activeLook ? 0xf0d39a : 0xe5d5b1,
-        owned || isAdUnlock ? 0.6 : 0.15,
-      );
-      btnG.strokeRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 12);
-    };
-    drawBtn(selected);
+    const frame = selected ? "shop-equipped" : owned ? "shop-equip"
+      : affordable || (isAdUnlock && canWatchAd) ? "claim" : "disabled";
+    const btnG = uiImage(this, frame, btnX, btnY, btnW, btnH);
     container.add(btnG);
     const btnLabel = () => {
       if (owned) return selected ? "装備中" : "装備する";
-      if (isAdUnlock) return adWatching ? "視聴中…" : "▶ 動画を見る";
+      if (pointCost) return affordable ? `${pointCost} ptで交換` : `あと ${pointCost - getDailyMissionState().points} pt`;
+      if (isAdUnlock) return canWatchAd ? "動画で入手" : "Android版限定";
       return "未入手";
     };
     const btnText = this.add
-      .text(btnX, btnY, btnLabel(), {
-        fontSize: "28px",
-        color: owned || isAdUnlock ? "#e6decf" : "#5a6272",
+      .text(btnX + (selected ? 16 : 0), btnY, btnLabel(), {
+        fontSize: "25px",
+        color:
+          selected ? "#30200a" : owned || affordable || (isAdUnlock && canWatchAd) ? "#e6decf" : "#7f899b",
         fontFamily: UI_FONT,
       })
       .setOrigin(0.5);
@@ -296,24 +288,41 @@ export class ShopScene extends Phaser.Scene {
         this._renderList(1080);
       });
       container.add(hit);
-    } else if (!owned && isAdUnlock) {
+    } else if (!owned && pointCost && affordable) {
+      const hit = this.add.zone(btnX, btnY, btnW, btnH)
+        .setInteractive({ useHandCursor: true });
+      hit.on("pointerdown", () => this._redeemSkin(set));
+      container.add(hit);
+    }
+
+    if (!owned && isAdUnlock && canWatchAd) {
       const hit = this.add
         .zone(btnX, btnY, btnW, btnH)
         .setInteractive({ useHandCursor: true });
-      hit.on("pointerdown", () => {
+      hit.on("pointerdown", async () => {
         if (adWatching) return;
         soundManager.se_button?.();
         adWatching = true;
-        btnText.setText(btnLabel());
-        showRewardedAd().then((rewarded) => {
+        btnText.setText("視聴中…");
+        try {
+          const rewarded = await showRewardedAd();
           if (rewarded) {
             unlockSkinSet(set.id);
-            this._renderList(1080);
-          } else {
-            adWatching = false;
-            btnText.setText(btnLabel());
           }
-        });
+          if (this.scene.isActive()) {
+            this.notice.setText(rewarded ? `${set.label}を入手しました。装備できます。`
+              : "動画の視聴完了を確認できませんでした。もう一度お試しください。");
+            this._renderList(1080);
+          }
+        } catch (error) {
+          console.error("[shop] 動画報酬の入手に失敗しました", error);
+          if (this.scene.isActive()) {
+            this.notice.setText("動画報酬の入手に失敗しました。端末の空き容量・通信状態をご確認ください。");
+            this._renderList(1080);
+          }
+        } finally {
+          adWatching = false;
+        }
       });
       container.add(hit);
     }
@@ -321,6 +330,17 @@ export class ShopScene extends Phaser.Scene {
     return container;
   }
 
+  _redeemSkin(set) {
+    try {
+      const result = redeemSkinWithPoints(set.id);
+      this.notice.setText(result.redeemed ? `${set.label}を入手しました。装備できます。`
+        : result.reason === "owned" ? "入手済みのデザインです。" : "ポイントが足りません。");
+      this._renderList(1080);
+    } catch (error) {
+      console.error("[shop] ポイント交換を保存できませんでした", error);
+      this.notice.setText("交換を保存できませんでした。端末の空き容量をご確認ください。");
+    }
+  }
   /** 石の色・デザインを描画（画像デザインならImage、それ以外はGraphics） */
   _drawStonePreview(setId, color, x, y, radius, dim = false) {
     const def = STONE_COLORS[color];
@@ -329,7 +349,7 @@ export class ShopScene extends Phaser.Scene {
       const img = this.add.image(x, y, texKey);
       const scale = (radius * 2) / Math.max(img.width, img.height);
       img.setScale(scale);
-      if (dim) img.setAlpha(0.35).setTint(0x333333);
+      if (dim) img.setAlpha(0.35);
       return img;
     }
     const g = this.add.graphics();

@@ -1,5 +1,10 @@
 import { roomClient } from "../net/roomClient.js";
 import { getPlayerName } from "../net/firebaseAuth.js";
+import { drawMenuBackground, uiImage } from "../ui/theme.js";
+import {
+  getRandomMatchFallbackOpponent,
+  RANDOM_MATCH_FALLBACK_DELAY_MS,
+} from "../data/randomMatchFallback.mjs";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
@@ -17,6 +22,10 @@ export class RandomLobbyScene extends Phaser.Scene {
     this.spinGraphics = null;
     this.spinTween = null;
     this.spinColor = 0xff3333;
+    this.fallbackTimer = null;
+    this.fallbackTransitionTimer = null;
+    this.fallbackOverlay = null;
+    this.fallbackStarted = false;
   }
 
   create() {
@@ -104,15 +113,8 @@ export class RandomLobbyScene extends Phaser.Scene {
   }
 
   _drawBackground(W, H) {
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x14121e, 0x14121e, 0x1e1428, 0x1e1428, 1);
-    g.fillRect(0, 0, W, H);
-    g.fillStyle(0xd09af0, 0.07);
-    g.fillCircle(W * 0.75, H * 0.18, 240);
-    g.fillStyle(0x8a6fe0, 0.07);
-    g.fillCircle(W * 0.22, H * 0.82, 270);
-    g.lineStyle(2, 0xd9ccff, 0.18);
-    g.strokeRoundedRect(34, 34, W - 68, H - 68, 26);
+    drawMenuBackground(this, W, H);
+    uiImage(this, "mission", W / 2, H / 2 + 60, 900, 750);
   }
 
   _drawSpinner(W, H) {
@@ -198,11 +200,11 @@ export class RandomLobbyScene extends Phaser.Scene {
   }
 
   _createCancelButton(W, H) {
+    uiImage(this, "equip", W / 2, H - 260, 400, 90);
     const btn = this.add
       .text(W / 2, H - 260, "キャンセル", {
         fontSize: "40px",
         color: "#f8fbff",
-        backgroundColor: "#4a3060",
         padding: { x: 40, y: 16 },
         fontFamily: UI_FONT,
       })
@@ -234,8 +236,10 @@ export class RandomLobbyScene extends Phaser.Scene {
     if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "client_connecting") {
+      this._clearFallbackTimer();
       this._setConnectionState("connecting");
       this.matchmaking = false;
+      this.hintText?.setText("");
       this._refreshStatusText();
       return;
     }
@@ -252,31 +256,47 @@ export class RandomLobbyScene extends Phaser.Scene {
     }
 
     if (msg.type === "client_close") {
+      this._clearFallbackTimer();
       this._setConnectionState("reconnecting");
       this.matchmaking = false;
+      this.hintText?.setText("");
       this._refreshStatusText();
       return;
     }
 
     if (msg.type === "client_error") {
+      this._clearFallbackTimer();
       this._setConnectionState("error");
       this.matchmaking = false;
+      this.hintText?.setText("");
       this._refreshStatusText();
       return;
     }
 
     if (msg.type === "matchmaking_waiting") {
       this.matchmaking = true;
+      this.hintText?.setText(
+        "1分以内に相手が見つからない場合、ランダムAI戦に切り替わります",
+      );
+      this._startFallbackTimer();
       this._refreshStatusText();
       return;
     }
 
     if (msg.type === "matchmaking_left") {
+      this._clearFallbackTimer();
       this.matchmaking = false;
       return;
     }
 
     if (msg.type === "match_start") {
+      this._clearFallbackTimer();
+      this._clearFallbackTransitionTimer();
+      this.fallbackStarted = false;
+      this.fallbackOverlay?.destroy();
+      this.fallbackOverlay = null;
+      this.matchmaking = false;
+      this.hintText?.setText("");
       this._cleanup();
       this._showMatchFoundOverlay(msg);
       return;
@@ -290,12 +310,17 @@ export class RandomLobbyScene extends Phaser.Scene {
   }
 
   _cancel() {
+    this._clearFallbackTimer();
+    this._clearFallbackTransitionTimer();
+    this.matchmaking = false;
     roomClient.send({ type: "leave_matchmaking" });
     this._cleanup();
     this.scene.start("LobbyScene");
   }
 
   _cleanup() {
+    this._clearFallbackTimer();
+    this._clearFallbackTransitionTimer();
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -308,6 +333,101 @@ export class RandomLobbyScene extends Phaser.Scene {
       this.spinTween.stop();
       this.spinTween = null;
     }
+  }
+
+  _startFallbackTimer() {
+    this._clearFallbackTimer();
+    this.fallbackStarted = false;
+    this.fallbackTimer = this.time.delayedCall(
+      RANDOM_MATCH_FALLBACK_DELAY_MS,
+      () => this._startRandomAiFallback(),
+    );
+  }
+
+  _clearFallbackTimer() {
+    if (this.fallbackTimer) {
+      this.fallbackTimer.remove();
+      this.fallbackTimer = null;
+    }
+  }
+
+  _clearFallbackTransitionTimer() {
+    if (this.fallbackTransitionTimer) {
+      this.fallbackTransitionTimer.remove();
+      this.fallbackTransitionTimer = null;
+    }
+  }
+
+  _startRandomAiFallback() {
+    if (!this.matchmaking || this.fallbackStarted) return;
+    this.fallbackTimer = null;
+    this.fallbackStarted = true;
+    this.matchmaking = false;
+    roomClient.send({ type: "leave_matchmaking" });
+
+    let beatenData = {};
+    let ashuraShown = false;
+    try {
+      beatenData = JSON.parse(localStorage.getItem("soloBeaten") ?? "{}");
+      ashuraShown = localStorage.getItem("ashuraShown") === "1";
+    } catch (error) {
+      console.warn(
+        "[RandomLobbyScene] AI解放状況を読み込めません。初期AIを使用します。",
+        error,
+      );
+    }
+    const { aiDifficulty, aiLabel } = getRandomMatchFallbackOpponent(
+      beatenData,
+      Math.random,
+      { ashuraShown },
+    );
+    const playerFirst = Math.random() < 0.5;
+    const W = 1080;
+    const H = 1920;
+    const overlay = this.add.container(0, 0).setDepth(9999);
+    this.fallbackOverlay = overlay;
+    const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.88);
+    overlay.add(dim);
+    overlay.add(
+      this.add
+        .text(W / 2, H / 2 - 100, "1分以内に相手が見つからないため", {
+          fontSize: "38px",
+          color: "#ced9ea",
+          fontFamily: UI_FONT,
+          align: "center",
+        })
+        .setOrigin(0.5),
+    );
+    overlay.add(
+      this.add
+        .text(W / 2, H / 2, "ランダムAIと対戦します", {
+          fontSize: "48px",
+          color: "#f0c36a",
+          fontFamily: DISPLAY_FONT,
+          align: "center",
+        })
+        .setOrigin(0.5),
+    );
+    overlay.add(
+      this.add
+        .text(W / 2, H / 2 + 100, `${aiLabel}${playerFirst ? "（先手）" : "（後手）"}`, {
+          fontSize: "36px",
+          color: "#c8e8ff",
+          fontFamily: UI_FONT,
+          align: "center",
+        })
+        .setOrigin(0.5),
+    );
+    this.fallbackTransitionTimer = this.time.delayedCall(1800, () => {
+      this.fallbackTransitionTimer = null;
+      this.scene.start("GameScene", {
+        mode: "solo",
+        aiDifficulty,
+        playerFirst,
+        playerName: getPlayerName(),
+        oppPlayerName: aiLabel,
+      });
+    });
   }
 
   _showMatchFoundOverlay(data) {

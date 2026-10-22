@@ -1,9 +1,9 @@
 /**
  * BootScene - アセット読み込みと初期設定
  */
-import { restoreSession } from "../net/firebaseAuth.js";
-import { HOUGYOKU_SOURCES, stoneSkinTextureKey } from "../data/stoneSkins.js";
+import { getSkinImageSources } from "../data/stoneSkins.js";
 import { initAds } from "../net/ads.js";
+import { registerUiFrames } from "../ui/theme.js";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -22,6 +22,25 @@ export class BootScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     this.load.image("title-logo", "/img/logo.png");
+    this.load.image("mancolor-home-bg", "/img/mancolor_home_bg_1080.png");
+    this.load.image("mancolor-board-bg", "/img/mancolor_board_aligned.png");
+    this.load.image("mancolor-ui-secondary", "/img/mancolor_ui_sheet2.png");
+    this.load.image("mancolor-ui-equipped", "/img/mancolor_ui_equipped.png");
+    this.load.image("mancolor-ui-ai", "/img/mancolor_ui_ai_all_sheet.png");
+    this.load.image("mancolor-ui-ai-locked", "/img/mancolor_ui_ai_locked_sheet.png");
+    this.load.image("mancolor-icon-lock", "/img/icon_lock.png");
+    this.load.image("mancolor-button-green", "/img/mancolor_button_green.png");
+    this.load.image("mancolor-button-blue", "/img/mancolor_button_blue.png");
+    this.load.image("mancolor-button-red", "/img/mancolor_button_red.png");
+    this.load.image("mancolor-button-gold", "/img/mancolor_button_gold.png");
+    this.load.image("mancolor-profile-panel", "/img/mancolor_profile_panel.png");
+    this.load.image("mancolor-settings-icon", "/img/mancolor_settings_icon.png");
+    this.load.image("mancolor-shop-icon", "/img/icon_shop.png");
+    this.load.image("mancolor-point-icon", "/img/icon_point.png");
+    this.load.image("mancolor-point-gem", "/img/point_gem.png");
+    for (const pattern of ["sakura", "yotsuba", "musubi", "magatama", "take"]) {
+      this.load.image(`lane-motif-${pattern}`, `/img/mancolor_motif_${pattern}.png`);
+    }
 
     // 背景アトモスフィア
     const bgG = this.add.graphics();
@@ -172,37 +191,20 @@ export class BootScene extends Phaser.Scene {
         logo.setScale(0.085);
       }
       loadingText.setText("Loading... 100%");
-      // Firebase セッションを復元してからロビーへ遷移
-      restoreSession().finally(() => {
-        this.time.delayedCall(1800, () => this._startGameOnce());
-      });
+      this.time.delayedCall(1800, () => this._startGameOnce());
     });
-
-    // Fallback: if loading stalls for any reason, continue anyway.
-    this.time.delayedCall(4000, () => this._startGameOnce());
 
     // 将来のアセット読み込みはここに追加
     // this.load.image('stone_red', 'assets/images/stone_red.png')
     // this.load.audio('bgm', 'assets/audio/bgm.mp3')
-    this.load.image("pattern-self-sakura", "/img/opp_sakura.png");
-    this.load.image("pattern-self-yotsuba", "/img/opp_yotsuba.png");
-    this.load.image("pattern-self-musubi", "/img/opp_musubi.png");
-    this.load.image("pattern-self-magatama", "/img/opp_magatama.png");
-    this.load.image("pattern-self-take", "/img/opp_take.png");
-
-    this.load.image("pattern-opp-sakura", "/img/self_sakura.png");
-    this.load.image("pattern-opp-yotsuba", "/img/self_yotsuba.png");
-    this.load.image("pattern-opp-musubi", "/img/self_musubi.png");
-    this.load.image("pattern-opp-magatama", "/img/self_magatama.png");
-    this.load.image("pattern-opp-take", "/img/self_take.png");
-
     // 石デザイン（ショップで解放するプレミアムスキン「宝玉」セット）
-    for (const [color, src] of Object.entries(HOUGYOKU_SOURCES)) {
-      this.load.image(stoneSkinTextureKey("hougyoku", color), src);
+    for (const { key, src } of getSkinImageSources()) {
+      this.load.image(key, src);
     }
   }
 
   create() {
+    registerUiFrames(this);
     // 遷移はpreload完了後の演出待ちで行う。
     initAds();
   }

@@ -1,6 +1,6 @@
 {
   "name": "mancolor",
-  "version": "1.0.17",
+  "version": "1.0.19",
   "private": true,
   "description": "ManColor - Mancala-style board game",
   "scripts": {
@@ -14,6 +14,7 @@
     "bot": "node bot/botClient.mjs",
     "bot:2": "cross-env BOT_COUNT=2 node bot/botClient.mjs",
     "build": "vite build",
+    "test:missions": "node --test src/data/dailyMissions.test.mjs src/data/randomMatchFallback.test.mjs",
     "preview": "vite preview",
     "preview:lan": "vite preview --host 0.0.0.0 --port 3000 --strictPort",
     "cap:sync": "npx cap sync",
@@ -35,5 +36,8 @@
     "cross-env": "^10.1.0",
     "terser": "^5.46.1",
     "vite": "^6.2.6"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6"
   }
 }

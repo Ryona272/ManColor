@@ -9,58 +9,58 @@ const MAX_LOG_ENTRIES = 50000;
 
 // ─── 対戦記録 ────────────────────────────────────────────────────────────────
 const BATTLE_LOG_FILE = (process.env.BATTLE_LOG_FILE || "").trim();
-const MAX_BATTLE_RECORDS = 10000;
-const battleRecords = []; // { ts, mode, difficulty, result, playerScore, aiScore, turns, techCounts, lossReason }
+const {
+  createFirestoreStats,
+  emptyCounts,
+  applyIncrement,
+} = require("./firestoreStats.js");
 
-function _computeKugutsuLevel(records) {
-  const ks = records.filter((r) => r.difficulty === "kugutsu");
-  if (ks.length < 3) return 1;
-  const wins = ks.filter((r) => r.result === "win").length;
-  const winRate = wins / ks.length;
-  const base = Math.min(5, Math.floor(ks.length / 10) + 1);
+// 集計値（起動時に Firestore から読み込み、以降は記録ごとに加算する）
+let battleCounts = emptyCounts();
+// Firestore 読み込み完了までに来た記録。読み込み後の値へ足し直す（保存側も読み込み後まで保留）
+let recordsBeforeLoad = null;
+const statsStore = createFirestoreStats();
+if (statsStore.enabled) {
+  recordsBeforeLoad = [];
+  statsStore.load().then((counts) => {
+    battleCounts = counts;
+    for (const rec of recordsBeforeLoad) applyIncrement(battleCounts, rec);
+    recordsBeforeLoad = null;
+    console.log(`[battle-stats] Firestore から読み込み: ${battleCounts.total}戦`);
+  });
+} else {
+  console.log("[battle-stats] FIREBASE_SERVICE_ACCOUNT_JSON 未設定のため、統計はメモリ内のみ");
+}
+
+function _computeKugutsuLevel(ks) {
+  const total = ks?.total ?? 0;
+  if (total < 3) return 1;
+  const winRate = (ks.wins ?? 0) / total;
+  const base = Math.min(5, Math.floor(total / 10) + 1);
   return winRate < 0.25 && base > 1 ? base - 1 : base;
 }
 
-function _aggregateBattleRecords(records) {
-  const stats = {
-    total: records.length,
-    byDifficulty: {},
-    byMode: {},
-    source: "server",
-  };
-  for (const r of records) {
-    const diff = r.difficulty ?? "unknown";
-    if (!stats.byDifficulty[diff]) {
-      stats.byDifficulty[diff] = {
-        total: 0,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-        lossReasons: {},
-      };
-    }
-    const d = stats.byDifficulty[diff];
-    d.total++;
-    if (r.result === "win") d.wins++;
-    else if (r.result === "lose") {
-      d.losses++;
-      if (r.lossReason)
-        d.lossReasons[r.lossReason] = (d.lossReasons[r.lossReason] ?? 0) + 1;
-    } else d.draws++;
+function _recordBattle(rec) {
+  applyIncrement(battleCounts, rec);
+  recordsBeforeLoad?.push(rec);
+  statsStore.record(rec);
+}
 
-    const mode = r.mode ?? "unknown";
-    if (!stats.byMode[mode])
-      stats.byMode[mode] = { total: 0, wins: 0, losses: 0, draws: 0 };
-    const m = stats.byMode[mode];
-    m.total++;
-    if (r.result === "win") m.wins++;
-    else if (r.result === "lose") m.losses++;
-    else m.draws++;
+function _battleStatsPayload() {
+  const stats = JSON.parse(JSON.stringify(battleCounts));
+  for (const d of Object.values(stats.byDifficulty)) {
+    d.total = d.total ?? 0;
+    d.wins = d.wins ?? 0;
+    d.losses = d.losses ?? 0;
+    d.draws = d.draws ?? 0;
+    d.lossReasons = d.lossReasons ?? {};
   }
-  // 傀儡レベルを付加
   if (stats.byDifficulty.kugutsu) {
-    stats.byDifficulty.kugutsu.kugutsuLevel = _computeKugutsuLevel(records);
+    stats.byDifficulty.kugutsu.kugutsuLevel = _computeKugutsuLevel(
+      stats.byDifficulty.kugutsu,
+    );
   }
+  stats.source = statsStore.enabled ? "firestore" : "server";
   return stats;
 }
 
@@ -204,8 +204,7 @@ const httpServer = http.createServer((req, res) => {
               ? raw.lossReason.slice(0, 64)
               : null,
         };
-        battleRecords.push(safe);
-        if (battleRecords.length > MAX_BATTLE_RECORDS) battleRecords.shift();
+        _recordBattle(safe);
         if (BATTLE_LOG_FILE) {
           try {
             fs.appendFileSync(BATTLE_LOG_FILE, JSON.stringify(safe) + "\n");
@@ -223,7 +222,7 @@ const httpServer = http.createServer((req, res) => {
 
   // ─── 対戦統計: GET /battle-stats ─────────────────────────────────────────────
   if (url.pathname === "/battle-stats" && req.method === "GET") {
-    const stats = _aggregateBattleRecords(battleRecords);
+    const stats = _battleStatsPayload();
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",

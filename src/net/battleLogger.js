@@ -9,6 +9,8 @@
 
 const LOCAL_STATS_KEY = "mancolor_battle_stats";
 const MAX_LOCAL_RECORDS = 300;
+// 自分の傀儡戦績（端末内・件数上限なし）
+const KUGUTSU_SELF_KEY = "mancolor_kugutsu_self";
 
 /** roomServer と同じ URL 解決ロジック */
 function _resolveBase() {
@@ -66,7 +68,12 @@ export function logBattleResult(record) {
     lossReason: record.lossReason ?? null,
   };
 
+  // 今回分を端末記録へ入れる前に、自分の傀儡カウンターを（必要なら既存記録から）用意する
+  if (safe.mode === "solo" && safe.difficulty === "kugutsu") getKugutsuSelfStats();
   _saveLocal(safe);
+  if (safe.mode === "solo" && safe.difficulty === "kugutsu") {
+    _addKugutsuSelf(safe.result);
+  }
 
   const base = _resolveBase();
   if (!base) return;
@@ -152,6 +159,51 @@ export function analyzeLossReason(gameScene, playerScore, aiScore) {
   if (chiraGap >= 2) return "chirachira_miss"; // ちらちら活用不足
   if (scoreDiff >= 10) return "score_gap"; // 点差が大きい
   return "close_loss"; // 接戦の末の負け
+}
+
+/**
+ * 自分（この端末）の傀儡戦績を返す。
+ * 専用カウンターが未作成なら、既存の端末内記録から初期値を作る。
+ * @returns {{total:number,wins:number,losses:number,draws:number}}
+ */
+export function getKugutsuSelfStats() {
+  try {
+    const raw = localStorage.getItem(KUGUTSU_SELF_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      return {
+        total: Number(s.total) || 0,
+        wins: Number(s.wins) || 0,
+        losses: Number(s.losses) || 0,
+        draws: Number(s.draws) || 0,
+      };
+    }
+    const seeded = { total: 0, wins: 0, losses: 0, draws: 0 };
+    const records = JSON.parse(localStorage.getItem(LOCAL_STATS_KEY) ?? "{}")
+      .records ?? [];
+    for (const r of records) {
+      if (r.mode !== "solo" || r.difficulty !== "kugutsu") continue;
+      seeded.total++;
+      if (r.result === "win") seeded.wins++;
+      else if (r.result === "lose") seeded.losses++;
+      else seeded.draws++;
+    }
+    localStorage.setItem(KUGUTSU_SELF_KEY, JSON.stringify(seeded));
+    return seeded;
+  } catch (_e) {
+    return { total: 0, wins: 0, losses: 0, draws: 0 };
+  }
+}
+
+function _addKugutsuSelf(result) {
+  try {
+    const s = getKugutsuSelfStats();
+    s.total++;
+    if (result === "win") s.wins++;
+    else if (result === "lose") s.losses++;
+    else s.draws++;
+    localStorage.setItem(KUGUTSU_SELF_KEY, JSON.stringify(s));
+  } catch (_e) {}
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

@@ -43,6 +43,13 @@ const COLORS = STONE_COLORS;
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
 const ALL_PIT_INDEXES = Array.from({ length: 12 }, (_, index) => index);
+const LANE_MARKS = {
+  5: { name: "桜", pattern: "sakura" },
+  4: { name: "葉", pattern: "yotsuba" },
+  3: { name: "結", pattern: "musubi" },
+  2: { name: "玉", pattern: "magatama" },
+  1: { name: "竹", pattern: "take" },
+};
 
 const PIT_POSITIONS = {
   0: { x: W / 2 - 340, y: 1320 },
@@ -57,14 +64,6 @@ const PIT_POSITIONS = {
   9: { x: W / 2 - 170, y: 490 },
   10: { x: W / 2 - 340, y: 600 },
   11: { x: 150, y: H * 0.5 },
-};
-
-const PATTERN_TEXTURE_BY_DISTANCE = {
-  5: "sakura",
-  4: "yotsuba",
-  3: "musubi",
-  2: "magatama",
-  1: "take",
 };
 
 export class GameScene extends Phaser.Scene {
@@ -230,20 +229,6 @@ export class GameScene extends Phaser.Scene {
     this.scene.stop("TutorialScene");
     this.scene.stop("UIScene");
     this.scene.start("LobbyScene");
-  }
-
-  preload() {
-    this.load.image("pattern-self-sakura", "/img/opp_sakura.png");
-    this.load.image("pattern-self-yotsuba", "/img/opp_yotsuba.png");
-    this.load.image("pattern-self-musubi", "/img/opp_musubi.png");
-    this.load.image("pattern-self-magatama", "/img/opp_magatama.png");
-    this.load.image("pattern-self-take", "/img/opp_take.png");
-
-    this.load.image("pattern-opp-sakura", "/img/self_sakura.png");
-    this.load.image("pattern-opp-yotsuba", "/img/self_yotsuba.png");
-    this.load.image("pattern-opp-musubi", "/img/self_musubi.png");
-    this.load.image("pattern-opp-magatama", "/img/self_magatama.png");
-    this.load.image("pattern-opp-take", "/img/self_take.png");
   }
 
   create() {
@@ -506,103 +491,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   _drawBoard() {
-    const g = this.add.graphics();
     const isOppView = this._isOnlineRoomMode() && this.onlineSide === "opp";
+    this.add
+      .image(W / 2, H / 2, "mancolor-board-bg")
+      .setDisplaySize(W, H)
+      .setRotation(isOppView ? Math.PI : 0)
+      .setName("board-background");
 
-    // Top half / bottom half colors swap for opp view so each player
-    // always sees their own colour at the bottom of the screen.
-    if (isOppView) {
-      g.fillStyle(0xe9e4d6, 1);
-      g.fillRect(0, 0, W, H / 2);
-      g.fillStyle(0x17171c, 1);
-      g.fillRect(0, H / 2, W, H / 2);
-      g.fillStyle(0xffffff, 0.1);
-      g.fillRect(0, 0, W, 220);
-      g.fillStyle(0x000000, 0.22);
-      g.fillRect(0, H - 220, W, 220);
-    } else {
-      g.fillStyle(0x17171c, 1);
-      g.fillRect(0, 0, W, H / 2);
-      g.fillStyle(0xe9e4d6, 1);
-      g.fillRect(0, H / 2, W, H / 2);
-      g.fillStyle(0x000000, 0.22);
-      g.fillRect(0, 0, W, 220);
-      g.fillStyle(0xffffff, 0.1);
-      g.fillRect(0, H - 220, W, 220);
-    }
-
-    // Add subtle stage panels so the board feels set into a crafted surface.
-    g.fillStyle(0x2a2522, 0.12);
-    g.fillRoundedRect(28, 28, W - 56, H - 56, 32);
-    g.lineStyle(3, 0xc4b69b, 0.18);
-    g.strokeRoundedRect(28, 28, W - 56, H - 56, 32);
-
-    g.lineStyle(4, 0x8c8c8c, 0.35);
-    g.lineBetween(0, H / 2, W, H / 2);
+    const g = this.add.graphics();
 
     for (let i = 0; i < 12; i++) {
       const pos = this._getViewPos(i);
       if (!pos) continue;
 
       const isStore = i === 5 || i === 11;
-      const isSelfSide = i <= 5;
-      const color = isStore
-        ? isSelfSide
-          ? 0xfdfaf1
-          : 0x101015
-        : isSelfSide
-          ? 0xfdfaf1
-          : 0x101015;
-      const stroke = isStore
-        ? isSelfSide
-          ? 0xb48a45
-          : 0xe9d7a5
-        : isSelfSide
-          ? 0x4b3e28
-          : 0xe1e1e8;
-
       const width = isStore ? STORE_DIAMOND_SIZE : CELL_W;
       const height = isStore ? STORE_DIAMOND_SIZE : CELL_H;
-      const points = this._getDiamondPoints(pos.x, pos.y, width, height);
-
-      // Shadow to keep diamonds visible on both bright and dark halves
-      const shadowOffset = this._getShadowOffset();
-      const shadowPoints = this._getDiamondPoints(
-        pos.x + shadowOffset.x * 3,
-        pos.y + shadowOffset.y * 3,
-        width,
-        height,
-      );
-      g.fillStyle(0x000000, 0.22);
-      g.fillPoints(shadowPoints, true);
-
-      g.fillStyle(color, 0.95);
-      g.fillPoints(points, true);
-      g.lineStyle(isStore ? 6 : 5, stroke, 0.98);
-      g.strokePoints(points, true);
-
-      const innerPoints = this._getDiamondPoints(
-        pos.x,
-        pos.y,
-        width - 26,
-        height - 26,
-      );
-      g.lineStyle(2, isSelfSide ? 0xb2a891 : 0x555563, 0.7);
-      g.strokePoints(innerPoints, true);
-
-      if (isStore) {
-        const storeCore = this._getDiamondPoints(
-          pos.x,
-          pos.y,
-          width - 72,
-          height - 72,
-        );
-        g.fillStyle(isSelfSide ? 0xd9c084 : 0x3b3140, 0.16);
-        g.fillPoints(storeCore, true);
-      }
-
       if (!isStore) {
-        this._drawLanePatternImage(i, pos);
+        this._drawLaneLabels(i, pos);
       }
 
       const zoneWidth = width;
@@ -662,28 +568,75 @@ export class GameScene extends Phaser.Scene {
     ];
   }
 
-  _drawLanePatternImage(pitIndex, pos) {
+  _drawLaneLabels(pitIndex, pos) {
     const distance = this._getLaneDistanceLabel(pitIndex);
     if (distance == null) return;
+    const isOppView = this._isOnlineRoomMode() && this.onlineSide === "opp";
+    const isLight = (pos.y > H / 2) !== isOppView;
+    const direction = pos.y > H / 2 ? 1 : -1;
+    const mark = LANE_MARKS[distance];
+    this.add
+      .image(pos.x, pos.y, `lane-motif-${mark.pattern}`)
+      .setDisplaySize(168, 168)
+      .setRotation(-Math.PI / 4)
+      .setAlpha(isLight ? 0.3 : 0.5)
+      .setName(`lane-motif-${pitIndex}`);
+    const style = {
+      fontFamily: UI_FONT,
+      color: isLight ? "#322719" : "#fff4d8",
+      stroke: isLight ? "#f4eddc" : "#141225",
+      strokeThickness: 1,
+    };
+    this.add
+      .text(pos.x, pos.y + 86 * direction, mark.name, {
+        ...style,
+        fontSize: "22px",
+      })
+      .setOrigin(0.5)
+      .setAlpha(isLight ? 0.9 : 0.7)
+      .setName(`lane-name-${pitIndex}`);
+    this.add
+      .text(pos.x - 88 * direction, pos.y, `${distance + 6}`, {
+        ...style,
+        fontSize: "18px",
+      })
+      .setOrigin(0.5)
+      .setAlpha(isLight ? 0.85 : 0.6)
+      .setName(`lane-chira-${pitIndex}`);
+    this.add
+      .text(pos.x + 88 * direction, pos.y, `${distance}`, {
+        ...style,
+        fontSize: "18px",
+      })
+      .setOrigin(0.5)
+      .setAlpha(isLight ? 0.85 : 0.6)
+      .setName(`lane-guru-${pitIndex}`);
 
-    const isOppLane = pitIndex >= 6 && pitIndex <= 10;
-    const sideKey = isOppLane ? "opp" : "self";
-    const patternKey = PATTERN_TEXTURE_BY_DISTANCE[distance];
-    const textureKey = `pattern-${sideKey}-${patternKey}`;
-    if (!textureKey || !this.textures.exists(textureKey)) return;
-
-    const whiteRotation = Phaser.Math.DegToRad(315); // 現在値から両方+180°
-    const blackRotation = Phaser.Math.DegToRad(315); // 現在値から両方+180°
-    const viewRotation =
-      this._isOnlineRoomMode() && this.onlineSide === "opp" ? Math.PI : 0;
-    const image = this.add.image(pos.x, pos.y, textureKey);
-    image.setDisplaySize(CELL_W * 0.64, CELL_H * 0.64);
-    image.setAlpha(1);
-    image.setRotation(
-      (isOppLane ? blackRotation : whiteRotation) + viewRotation,
-    );
-    image.setFlipX(false);
-    image.setFlipY(false);
+    const arrows = this.add
+      .graphics()
+      .setPosition(pos.x, pos.y)
+      .setRotation(direction === 1 ? 0 : Math.PI)
+      .setName(`lane-arrows-${pitIndex}`);
+    arrows.lineStyle(1.5, isLight ? 0x322719 : 0xfff4d8, isLight ? 0.75 : 0.5);
+    for (const points of [
+      [[74, 0], [88, 14], [102, 0]],
+      [[-88, 14], [-74, 0], [-88, -14], [-102, 0]],
+    ]) {
+      arrows.beginPath();
+      arrows.moveTo(...points[0]);
+      for (const point of points.slice(1)) arrows.lineTo(...point);
+      const end = points[points.length - 1];
+      const previous = points[points.length - 2];
+      const angle = Math.atan2(end[1] - previous[1], end[0] - previous[0]);
+      for (const offset of [-Math.PI / 6, Math.PI / 6]) {
+        arrows.moveTo(...end);
+        arrows.lineTo(
+          end[0] - 7 * Math.cos(angle + offset),
+          end[1] - 7 * Math.sin(angle + offset),
+        );
+      }
+      arrows.strokePath();
+    }
   }
 
   _getStoneLayout(pitIndex, stoneCount) {

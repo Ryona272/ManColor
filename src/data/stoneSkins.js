@@ -5,9 +5,12 @@
  * 所持状況・選択状況は localStorage に保存する。
  */
 import { STONE_COLORS } from "./constants.js";
+import { hasRedeemedSkinWithPoints } from "./dailyMissions.mjs";
+import { POINT_SKINS, getSkinOwnershipIds, resolveSkinSetId } from "./pointSkins.mjs";
 
 const OWNED_KEY = "stoneSkinSetsOwned";
 const SELECTED_KEY = "stoneSkinSetSelected";
+const PLAYER_ICON_KEY = "stonePlayerIcon";
 
 /**
  * スキンセット定義（表示順）
@@ -49,6 +52,15 @@ export const SKIN_SETS = [
       label: "傀儡を撃破すると入手",
     },
   },
+  ...POINT_SKINS.map(({ id, label, pointCost, folder }) => ({
+    id,
+    label,
+    pointCost,
+    folder,
+    isDefault: false,
+    renderStyle: "image",
+    unlockInfo: { type: "points", label: `${pointCost} ptで交換` },
+  })),
 ];
 
 /** 「宝玉」セットの各色画像パス */
@@ -60,11 +72,21 @@ export const HOUGYOKU_SOURCES = {
   purple: "/img/stones/stone_purple.png",
 };
 
+export function getSkinImageSources() {
+  return SKIN_SETS.filter((set) => set.renderStyle === "image").flatMap((set) =>
+    Object.keys(STONE_COLORS).map((color) => ({
+      key: stoneSkinTextureKey(set.id, color),
+      src: set.id === "hougyoku" ? HOUGYOKU_SOURCES[color]
+        : `/img/${set.folder}/${set.id}_${color}.png`,
+    })),
+  );
+}
+
 /** セットID・色ごとのテクスチャキー（画像デザイン以外は Graphics 描画のためテクスチャなし） */
 export function stoneSkinTextureKey(setId, color) {
-  const def = SKIN_SETS.find((s) => s.id === setId);
+  const def = getSkinSetDef(setId);
   if (!def || def.renderStyle !== "image") return null;
-  return `${color}_${setId}`;
+  return `${color}_${def.id}`;
 }
 
 function readJson(key, fallback) {
@@ -76,11 +98,18 @@ function readJson(key, fallback) {
 }
 
 export function getOwnedSkinSets() {
-  return readJson(OWNED_KEY, {});
+  const owned = readJson(OWNED_KEY, {});
+  for (const set of SKIN_SETS) {
+    if (!set.isDefault && (getSkinOwnershipIds(set.id).some((id) => owned[id])
+      || hasRedeemedSkinWithPoints(set.id))) {
+      owned[set.id] = true;
+    }
+  }
+  return owned;
 }
 
 export function getSkinSetDef(setId) {
-  return SKIN_SETS.find((s) => s.id === setId) ?? null;
+  return SKIN_SETS.find((s) => s.id === resolveSkinSetId(setId)) ?? null;
 }
 
 /** Graphics に石の見た目を描画する（画像デザインは呼び出し側でImage表示すること） */
@@ -130,9 +159,9 @@ export function pickRandomFreeSkinSetId() {
 }
 
 export function isSkinSetOwned(setId) {
-  const def = SKIN_SETS.find((s) => s.id === setId);
+  const def = getSkinSetDef(setId);
   if (def?.isDefault) return true;
-  return !!getOwnedSkinSets()[setId];
+  return !!def && !!getOwnedSkinSets()[def.id];
 }
 
 export function unlockSkinSet(setId) {
@@ -146,14 +175,32 @@ export function unlockSkinSet(setId) {
 
 /** 現在選択中のスキンセットID（未所持なら "normal" にフォールバック） */
 export function getSelectedSkinSet() {
-  const selected = localStorage.getItem(SELECTED_KEY) ?? "normal";
+  const selected = resolveSkinSetId(localStorage.getItem(SELECTED_KEY) ?? "normal");
   return isSkinSetOwned(selected) ? selected : "normal";
 }
 
 export function selectSkinSet(setId) {
   if (!isSkinSetOwned(setId)) return false;
-  localStorage.setItem(SELECTED_KEY, setId);
+  localStorage.setItem(SELECTED_KEY, resolveSkinSetId(setId));
   return true;
+}
+
+export function getPlayerIcon() {
+  const raw = localStorage.getItem(PLAYER_ICON_KEY);
+  if (raw === null) return { setId: "normal", color: "red" };
+  const saved = JSON.parse(raw);
+  if (!saved || typeof saved.setId !== "string" || !Object.hasOwn(STONE_COLORS, saved.color)) {
+    throw new TypeError("プレイヤーアイコンの保存データが不正です");
+  }
+  const setId = resolveSkinSetId(saved.setId);
+  return { setId: isSkinSetOwned(setId) ? setId : "normal", color: saved.color };
+}
+
+export function setPlayerIcon(setId, color) {
+  if (!getSkinSetDef(setId) || !isSkinSetOwned(setId) || !Object.hasOwn(STONE_COLORS, color)) {
+    throw new TypeError("所持している石デザインと有効な色を選んでください");
+  }
+  localStorage.setItem(PLAYER_ICON_KEY, JSON.stringify({ setId: resolveSkinSetId(setId), color }));
 }
 
 /** 石の色から、現在装備中デザインのテクスチャキーを取得（ノーマルなら null＝塗りつぶし） */

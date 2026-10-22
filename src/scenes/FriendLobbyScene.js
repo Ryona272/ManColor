@@ -1,51 +1,50 @@
 import { roomClient } from "../net/roomClient.js";
 import { getPlayerName } from "../net/firebaseAuth.js";
+import { drawMenuBackground, uiImage } from "../ui/theme.js";
 
 const UI_FONT = '"Yu Gothic UI", "Hiragino Sans", sans-serif';
 const DISPLAY_FONT = '"Yu Mincho", "Hiragino Mincho ProN", serif';
 const JOIN_CODE_STORAGE_KEY = "mancolor-last-join-code";
+const W = 1080;
+const H = 1920;
+const DIGIT_W = 116;
+const DIGIT_GAP = 26;
+const DIGIT_Y = 770;
 
 export class FriendLobbyScene extends Phaser.Scene {
   constructor() {
     super({ key: "FriendLobbyScene" });
+  }
+
+  init() {
     this.unsubscribe = null;
-    this.clientId = null;
+    this.clientId = roomClient.clientId ?? null;
     this.currentRoomCode = null;
     this.isReady = false;
+    this.pending = null;
     this.noticeText = null;
-    this.connectionText = null;
-    this.connectionState = "connecting";
-    this.spinGraphics = null;
-    this._spinTrack = null;
-    this.spinTween = null;
-    this.spinAngle = 0;
-    this.connectionStatusText = null;
-    this._everConnected = false;
-    this._spinnerDone = false;
-    this.roomPanel = null;
-    this.roomStatusText = null;
-    this.memberCountText = null;
-    this.codeText = null;
+    this.statusText = null;
+    this.statusDots = 0;
+    this.statusTimer = null;
     this.joinCode = "";
-    this.joinCodeText = null;
+    this.digitTexts = [];
+    this.digitBoxes = null;
     this.codeInputEl = null;
     this.codeInputHandler = null;
-    this.readyButton = null;
-    this.leaveButton = null;
-    this.bg = null;
     this.inputActive = false;
     this.cursorTimer = null;
     this.cursorOn = false;
+    this.entryView = null;
+    this.roomView = null;
+    this.roomCodeText = null;
+    this.memberText = null;
   }
 
   create() {
-    const W = 1080;
-    const H = 1920;
-
-    this._drawBackground(W, H);
+    drawMenuBackground(this, W, H);
 
     this.add
-      .text(W / 2, 180, "友達と遊ぶ", {
+      .text(W / 2, 200, "友達と遊ぶ", {
         fontSize: "96px",
         color: "#f4deb1",
         fontFamily: DISPLAY_FONT,
@@ -54,398 +53,290 @@ export class FriendLobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.add
-      .text(W / 2, 252, "ルームコードで友達とオンライン対戦", {
-        fontSize: "30px",
-        color: "#ced9ea",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5);
-
-    this._drawRoomTools(W);
-
-    this.add
-      .text(W / 2, 1060, "ルーム作成 または コード参加で入室できます", {
+    this.statusText = this.add
+      .text(W / 2, 300, "", {
         fontSize: "28px",
-        color: "#c9d8ef",
+        color: "#ffcf88",
         fontFamily: UI_FONT,
       })
       .setOrigin(0.5);
 
-    this._drawConnectionSpinner(W);
-    this._setConnectionState("connecting", "");
+    uiImage(this, "mission", W / 2, 715, 820, 580);
+    this._buildEntryView();
+    this._buildRoomView();
+
+    this.noticeText = this.add
+      .text(W / 2, 1080, "", {
+        fontSize: "30px",
+        color: "#ffcc88",
+        fontFamily: UI_FONT,
+        align: "center",
+      })
+      .setOrigin(0.5);
+
+    this._createButton({
+      x: W / 2,
+      y: H - 200,
+      width: 360,
+      label: "ロビーへ戻る",
+      onClick: () => this._returnToLobby(),
+    });
 
     this._restoreJoinCode();
-
-    this._drawBottomActions(W, H);
     this._setupKeyboardInput();
+    this._refreshRoomUi();
 
     this.unsubscribe = roomClient.subscribe((message) => {
       this._handleRoomClientMessage(message);
     });
     roomClient.connect();
-
-    // すでに接続済みの場合は client_open が発火しないため即座に反映
-    if (roomClient.connected) {
-      this._setConnectionState("connected", "");
-    }
+    this._setConnectionState(roomClient.connected ? "connected" : "connecting");
 
     this.events.once("shutdown", () => {
-      if (this.unsubscribe) {
-        this.unsubscribe();
-        this.unsubscribe = null;
-      }
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      this.statusTimer?.remove();
       this._deactivateInput();
       this._disposeCodeInputElement();
     });
-
-    this.events.once("destroy", () => {
-      this._disposeCodeInputElement();
-    });
+    this.events.once("destroy", () => this._disposeCodeInputElement());
   }
 
-  _drawBackground(W, H) {
-    this.bg = this.add.graphics();
-    this._renderBackground(W, H, false);
-  }
+  _buildEntryView() {
+    const view = this.add.container(0, 0);
+    this.entryView = view;
 
-  _renderBackground(W, H, anyReady) {
-    const g = this.bg;
-    if (!g) return;
-    g.clear();
-    if (anyReady) {
-      g.fillGradientStyle(0x0d2a14, 0x0d2a14, 0x122a10, 0x122a10, 1);
-    } else {
-      g.fillGradientStyle(0x111f32, 0x111f32, 0x251820, 0x251820, 1);
-    }
-    g.fillRect(0, 0, W, H);
-    g.fillStyle(0x8fd3ff, 0.07);
-    g.fillCircle(W * 0.78, H * 0.2, 250);
-    g.fillStyle(0xffcb8a, 0.07);
-    g.fillCircle(W * 0.2, H * 0.82, 300);
-    g.lineStyle(2, 0xe6d7b7, 0.2);
-    g.strokeRoundedRect(30, 30, W - 60, H - 60, 24);
-  }
-
-  _drawRoomTools(W) {
-    this.add
-      .text(W / 2, 320, "オンライン友達対戦", {
-        fontSize: "38px",
-        color: "#f0dfbf",
-        fontFamily: DISPLAY_FONT,
-      })
-      .setOrigin(0.5);
-
-    this.roomPanel = this.add.graphics();
-    this.roomPanel.fillStyle(0x112238, 0.88);
-    this.roomPanel.lineStyle(3, 0xcde2ff, 0.45);
-    this.roomPanel.fillRoundedRect(W / 2 - 380, 370, 760, 640, 22);
-    this.roomPanel.strokeRoundedRect(W / 2 - 380, 370, 760, 640, 22);
-
-    this._createSmallButton({
-      x: W / 2 - 170,
-      y: 460,
-      label: "ルーム作成",
+    view.add(this._createButton({
+      x: W / 2,
+      y: 530,
+      width: 520,
+      height: 104,
+      frame: "claim",
+      fontSize: "44px",
+      label: "ルームを作る",
       onClick: () => this._createRoom(),
+    }));
+
+    const line = this.add.graphics();
+    line.lineStyle(2, 0xe6c98a, 0.25);
+    line.lineBetween(W / 2 - 300, 650, W / 2 - 150, 650);
+    line.lineBetween(W / 2 + 150, 650, W / 2 + 300, 650);
+    view.add(line);
+    view.add(this.add
+      .text(W / 2, 650, "コードで参加", {
+        fontSize: "30px",
+        color: "#c9d8ef",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5));
+
+    const totalW = DIGIT_W * 4 + DIGIT_GAP * 3;
+    const startX = W / 2 - totalW / 2 + DIGIT_W / 2;
+    this.digitBoxes = this.add.graphics();
+    view.add(this.digitBoxes);
+    this.digitTexts = [0, 1, 2, 3].map((i) => {
+      const t = this.add
+        .text(startX + i * (DIGIT_W + DIGIT_GAP), DIGIT_Y, "", {
+          fontSize: "64px",
+          color: "#f4f7ff",
+          fontFamily: UI_FONT,
+        })
+        .setOrigin(0.5);
+      view.add(t);
+      return t;
+    });
+    const tapZone = this.add
+      .zone(W / 2, DIGIT_Y, totalW + 20, 150)
+      .setInteractive({ useHandCursor: true });
+    tapZone.on("pointerdown", () => this._activateInput());
+    view.add(tapZone);
+
+    this.input.on("pointerdown", (_pointer, targets) => {
+      if (this.inputActive && !targets.includes(tapZone)) this._deactivateInput();
     });
 
-    this._createSmallButton({
-      x: W / 2 + 170,
-      y: 460,
-      label: "ルーム退出",
-      onClick: () => this._leaveRoom(),
-    });
-
-    this.roomStatusText = this.add
-      .text(W / 2 - 340, 387, "未参加", {
-        fontSize: "32px",
-        color: "#e2edff",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0);
-
-    this.codeText = this.add
-      .text(W / 2, 560, "Room: ----", {
-        fontSize: "34px",
-        color: "#e2edff",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5);
-
-    const inputBox = this.add.graphics();
-    inputBox.fillStyle(0x0a1829, 0.96);
-    inputBox.lineStyle(3, 0x8fb4dc, 0.75);
-    inputBox.fillRoundedRect(W / 2 - 300, 640, 390, 80, 16);
-    inputBox.strokeRoundedRect(W / 2 - 300, 640, 390, 80, 16);
-
-    this.joinCodeText = this.add
-      .text(W / 2 - 105, 680, "参加コード入力: _", {
-        fontSize: "34px",
-        color: "#c8d7f1",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5);
-
-    const inputHint = this.add
-      .text(W / 2 - 105, 740, "入力欄タップで4桁を入力", {
-        fontSize: "20px",
+    view.add(this.add
+      .text(W / 2, 880, "4桁を入れると自動で参加します", {
+        fontSize: "24px",
         color: "#8da7c7",
         fontFamily: UI_FONT,
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5));
 
-    const inputTapZone = this.add
-      .zone(W / 2 - 105, 680, 390, 80)
-      .setInteractive({ useHandCursor: true });
-    inputTapZone.on("pointerdown", () => {
-      this._activateInput();
-    });
+    this._renderDigits();
+  }
 
-    // 入力欄の外をタップしたら非アクティブに
-    this.input.on("pointerdown", (_pointer, targets) => {
-      if (this.inputActive && !targets.includes(inputTapZone)) {
-        this._deactivateInput();
-      }
-    });
+  _buildRoomView() {
+    const view = this.add.container(0, 0);
+    this.roomView = view;
 
-    this._createSmallButton({
-      x: W / 2 + 225,
-      y: 680,
-      label: "コード参加",
-      onClick: () => this._joinRoom(),
-    });
-
-    const readyText = this.add
-      .text(W / 2, 880, "準備完了", {
-        fontSize: "40px",
-        color: "#f8fbff",
-        backgroundColor: "#355178",
-        padding: { x: 30, y: 16 },
+    view.add(this.add
+      .text(W / 2, 480, "ルームコード", {
+        fontSize: "30px",
+        color: "#c9d8ef",
         fontFamily: UI_FONT,
       })
-      .setOrigin(0.5)
-      .setInteractive();
+      .setOrigin(0.5));
 
-    this.readyButton = readyText;
-    readyText.on("pointerdown", () => this._toggleReady());
-    readyText.on("pointerover", () => {
-      this.tweens.add({
-        targets: readyText,
-        scaleX: 1.05,
-        scaleY: 1.05,
-        duration: 110,
-        ease: "Sine.Out",
-      });
-    });
-    readyText.on("pointerout", () => {
-      this.tweens.add({
-        targets: readyText,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 110,
-        ease: "Sine.Out",
-      });
-    });
+    this.roomCodeText = this.add
+      .text(W / 2, 585, "", {
+        fontSize: "128px",
+        color: "#f4deb1",
+        fontFamily: DISPLAY_FONT,
+        stroke: "#1a130c",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5);
+    view.add(this.roomCodeText);
 
-    this.memberCountText = this.add
-      .text(W / 2, 950, "", {
-        fontSize: "24px",
-        color: "#b9cde8",
+    view.add(this.add
+      .text(W / 2, 690, "このコードを友達に伝えてください", {
+        fontSize: "26px",
+        color: "#8da7c7",
+        fontFamily: UI_FONT,
+      })
+      .setOrigin(0.5));
+
+    this.memberText = this.add
+      .text(W / 2, 790, "", {
+        fontSize: "36px",
+        color: "#e2edff",
         fontFamily: UI_FONT,
       })
       .setOrigin(0.5);
+    view.add(this.memberText);
 
-    this._refreshRoomUi();
+    view.add(this._createButton({
+      x: W / 2,
+      y: 900,
+      width: 300,
+      label: "退出",
+      onClick: () => this._leaveRoom(),
+    }));
   }
 
-  _drawBottomActions(W, H) {
-    this.noticeText = this.add
-      .text(W / 2, H - 280, "2人の準備完了でマッチ成立します", {
-        fontSize: "28px",
-        color: "#bcd0ec",
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.95);
-
-    this._createSmallButton({
-      x: W / 2 - 170,
-      y: H - 170,
-      label: "ロビーへ戻る",
-      onClick: () => this._returnToLobby(),
-    });
-
-    this._createSmallButton({
-      x: W / 2 + 170,
-      y: H - 170,
-      label: "ソロで確認",
-      onClick: () => this.scene.start("GameScene", { mode: "solo" }),
-    });
-  }
-
-  _createSmallButton({ x, y, label, onClick }) {
+  _createButton({ x, y, label, onClick, width = 310, height = 80, frame = "equip", fontSize = "34px" }) {
+    const container = this.add.container(x, y);
+    const bg = uiImage(this, frame, 0, 0, width, height);
     const text = this.add
-      .text(x, y, label, {
-        fontSize: "33px",
-        color: "#f8fbff",
-        backgroundColor: "#355178",
-        padding: { x: 20, y: 12 },
-        fontFamily: UI_FONT,
-      })
-      .setOrigin(0.5)
-      .setInteractive();
+      .text(0, 0, label, { fontSize, color: "#f8fbff", fontFamily: UI_FONT })
+      .setOrigin(0.5);
+    container.add([bg, text]);
+    container.setSize(width, height).setInteractive({ useHandCursor: true });
+    container.on("pointerdown", onClick);
+    container.on("pointerover", () => container.setScale(1.03));
+    container.on("pointerout", () => container.setScale(1));
+    return container;
+  }
 
-    text.on("pointerdown", onClick);
-    text.on("pointerover", () => {
-      this.tweens.add({
-        targets: text,
-        scaleX: 1.03,
-        scaleY: 1.03,
-        duration: 110,
-        ease: "Sine.Out",
-      });
-    });
-    text.on("pointerout", () => {
-      this.tweens.add({
-        targets: text,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 110,
-        ease: "Sine.Out",
-      });
-    });
-
-    return text;
+  _renderDigits() {
+    const g = this.digitBoxes;
+    if (!g) return;
+    const totalW = DIGIT_W * 4 + DIGIT_GAP * 3;
+    const left = W / 2 - totalW / 2;
+    const active = Math.min(this.joinCode.length, 3);
+    g.clear();
+    for (let i = 0; i < 4; i++) {
+      const x = left + i * (DIGIT_W + DIGIT_GAP);
+      const focused = this.inputActive && i === active;
+      g.fillStyle(0x0a1829, 0.96);
+      g.fillRoundedRect(x, DIGIT_Y - 70, DIGIT_W, 140, 18);
+      g.lineStyle(focused ? 4 : 2, focused ? 0xf0d39a : 0x8fb4dc, focused ? 1 : 0.6);
+      g.strokeRoundedRect(x, DIGIT_Y - 70, DIGIT_W, 140, 18);
+      const ch = this.joinCode[i] ?? (focused && this.cursorOn && !this.codeInputEl ? "|" : "");
+      this.digitTexts[i]?.setText(ch);
+    }
   }
 
   _setupKeyboardInput() {
     this.input.keyboard.on("keydown", (event) => {
-      if (!event || !this.joinCodeText) return;
-      if (!this.inputActive) return; // 入力欄がアクティブのときだけ受け付ける
-      if (this.codeInputEl && document.activeElement === this.codeInputEl)
-        return; // モバイルはinputイベントに任せる
-
+      if (!event || !this.inputActive || this.currentRoomCode) return;
+      if (this.codeInputEl && document.activeElement === this.codeInputEl) return;
       if (event.key === "Backspace") {
         this._setJoinCode(this.joinCode.slice(0, -1));
         return;
       }
-
-      const key = String(event.key || "");
-      if (!/^[0-9]$/.test(key)) return;
-      if (this.joinCode.length >= 4) return;
-
-      this._setJoinCode(this.joinCode + key);
+      if (/^[0-9]$/.test(String(event.key || "")) && this.joinCode.length < 4) {
+        this._setJoinCode(this.joinCode + event.key);
+      }
     });
   }
 
-  _isTouchDevice() {
-    return this.sys.game.device.input.touch;
-  }
-
   _activateInput() {
+    if (this.currentRoomCode) return;
+    if (this.joinCode.length === 4) this._setJoinCode("");
     this.inputActive = true;
-    if (this._isTouchDevice()) {
-      // モバイル: hidden inputを生成してフォーカス → キーボード起動
+    if (this.sys.game.device.input.touch) {
       this._ensureCodeInputElement();
-      this._focusCodeInput();
+      this.codeInputEl.value = this.joinCode;
+      this.codeInputEl.focus();
     } else {
-      // PC: カーソル点滅を開始
       this.cursorOn = true;
-      this._updateCursorText();
-      if (this.cursorTimer) this.cursorTimer.remove();
+      this.cursorTimer?.remove();
       this.cursorTimer = this.time.addEvent({
         delay: 530,
         loop: true,
         callback: () => {
           this.cursorOn = !this.cursorOn;
-          this._updateCursorText();
+          this._renderDigits();
         },
       });
     }
+    this._renderDigits();
   }
 
   _deactivateInput() {
     if (!this.inputActive) return;
     this.inputActive = false;
-    if (this.cursorTimer) {
-      this.cursorTimer.remove();
-      this.cursorTimer = null;
-    }
+    this.cursorTimer?.remove();
+    this.cursorTimer = null;
     this.cursorOn = false;
     this._disposeCodeInputElement();
-    if (this.joinCodeText) {
-      this.joinCodeText.setText(`参加コード入力: ${this.joinCode || "_"}`);
-    }
-  }
-
-  _updateCursorText() {
-    if (!this.joinCodeText) return;
-    const cursor = this.cursorOn ? "|" : " ";
-    this.joinCodeText.setText(`参加コード入力: ${this.joinCode}${cursor}`);
+    this._renderDigits();
   }
 
   _setJoinCode(nextCode) {
-    const normalized = String(nextCode || "")
-      .replace(/\D/g, "")
-      .slice(0, 4);
+    const normalized = String(nextCode || "").replace(/\D/g, "").slice(0, 4);
+    const completed = normalized.length === 4 && this.joinCode !== normalized;
     this.joinCode = normalized;
     this._persistJoinCode(normalized);
-    if (this.joinCodeText) {
-      if (this.inputActive && !this.codeInputEl) {
-        // PC カーソルモード
-        const cursor = this.cursorOn ? "|" : " ";
-        this.joinCodeText.setText(`参加コード入力: ${this.joinCode}${cursor}`);
-      } else {
-        this.joinCodeText.setText(`参加コード入力: ${this.joinCode || "_"}`);
-      }
-    }
     if (this.codeInputEl && this.codeInputEl.value !== normalized) {
       this.codeInputEl.value = normalized;
+    }
+    this._renderDigits();
+    if (completed && this.inputActive) {
+      this._deactivateInput();
+      this._joinRoom();
     }
   }
 
   _ensureCodeInputElement() {
     if (this.codeInputEl) return;
-
     const input = document.createElement("input");
     input.type = "text";
     input.inputMode = "numeric";
     input.pattern = "[0-9]*";
     input.maxLength = 4;
     input.autocomplete = "one-time-code";
-    input.style.position = "fixed";
-    input.style.left = "-9999px";
-    input.style.top = "0";
-    input.style.opacity = "0";
-    input.style.width = "1px";
-    input.style.height = "1px";
-    input.style.zIndex = "-1";
-
-    this.codeInputHandler = () => {
-      this._setJoinCode(input.value);
-    };
-
+    Object.assign(input.style, {
+      position: "fixed",
+      left: "-9999px",
+      top: "0",
+      opacity: "0",
+      width: "1px",
+      height: "1px",
+      zIndex: "-1",
+    });
+    this.codeInputHandler = () => this._setJoinCode(input.value);
     input.addEventListener("input", this.codeInputHandler);
     document.body.appendChild(input);
-
     this.codeInputEl = input;
-  }
-
-  _focusCodeInput() {
-    if (!this.codeInputEl) return;
-    this.codeInputEl.value = this.joinCode || "";
-    this.codeInputEl.focus();
-    this.codeInputEl.select();
   }
 
   _disposeCodeInputElement() {
     if (!this.codeInputEl) return;
-    if (this.codeInputHandler) {
-      this.codeInputEl.removeEventListener("input", this.codeInputHandler);
-    }
-    if (this.codeInputEl.parentElement) {
-      this.codeInputEl.parentElement.removeChild(this.codeInputEl);
-    }
+    this.codeInputEl.removeEventListener("input", this.codeInputHandler);
+    this.codeInputEl.remove();
     this.codeInputEl = null;
     this.codeInputHandler = null;
   }
@@ -454,186 +345,140 @@ export class FriendLobbyScene extends Phaser.Scene {
     try {
       window.localStorage.setItem(JOIN_CODE_STORAGE_KEY, code || "");
     } catch (_error) {
-      // Ignore storage errors and keep runtime behavior.
+      // 保存できなくても入力自体は続けられる
     }
   }
 
   _restoreJoinCode() {
     try {
-      const saved = window.localStorage.getItem(JOIN_CODE_STORAGE_KEY) || "";
-      this._setJoinCode(saved);
+      this.joinCode = (window.localStorage.getItem(JOIN_CODE_STORAGE_KEY) || "")
+        .replace(/\D/g, "")
+        .slice(0, 4);
     } catch (_error) {
-      // Ignore storage errors and keep runtime behavior.
+      this.joinCode = "";
     }
+    this._renderDigits();
   }
 
-  _showNotice(message) {
+  _showNotice(message, color = "#ffcc88") {
     if (!this.noticeText) return;
-    this.noticeText.setText(message);
-    this.noticeText.setAlpha(1);
-
+    this.noticeText.setText(message).setColor(color).setAlpha(1);
     this.tweens.killTweensOf(this.noticeText);
     this.tweens.add({
       targets: this.noticeText,
-      alpha: 0.58,
-      duration: 1400,
-      ease: "Sine.Out",
+      alpha: 0,
+      delay: 2600,
+      duration: 600,
+      ease: "Sine.In",
     });
   }
 
   _handleRoomClientMessage(message) {
     if (!message || typeof message.type !== "string") return;
 
-    if (message.type === "client_connecting") {
-      this._setConnectionState("connecting", "");
-      return;
+    switch (message.type) {
+      case "client_connecting":
+        if (!roomClient.connected) this._setConnectionState("connecting");
+        return;
+      case "client_open":
+        this._setConnectionState("connected");
+        return;
+      case "client_close":
+        this._setConnectionState("connecting");
+        this.currentRoomCode = null;
+        this.isReady = false;
+        this.pending = null;
+        this._refreshRoomUi();
+        return;
+      case "client_error":
+        if (!roomClient.connected) this._setConnectionState("connecting");
+        return;
+      case "welcome":
+        this.clientId = message.clientId;
+        return;
+      case "room_joined":
+        this.pending = null;
+        this.currentRoomCode = message.room?.code ?? null;
+        this.isReady = false;
+        this.joinCode = "";
+        this._persistJoinCode("");
+        this._refreshRoomUi(message.room);
+        this._ensureReady(message.room);
+        return;
+      case "room_state": {
+        const room = message.room;
+        this.currentRoomCode = room?.code ?? null;
+        const self = room?.members?.find((m) => m.clientId === this.clientId);
+        this.isReady = !!self?.ready;
+        this._refreshRoomUi(room);
+        this._ensureReady(room);
+        return;
+      }
+      case "room_left":
+        this.pending = null;
+        this.currentRoomCode = null;
+        this.isReady = false;
+        this._refreshRoomUi();
+        return;
+      case "match_start":
+        this._showMatchFoundOverlay(message);
+        return;
+      case "error":
+        this.pending = null;
+        this._showNotice(message.message || "サーバーエラー", "#ff9a9a");
+        if (!this.currentRoomCode) {
+          this._setJoinCode("");
+          this._activateInput();
+        }
+        return;
+      default:
     }
+  }
 
-    if (message.type === "client_open") {
-      this._setConnectionState("connected", "");
-      return;
-    }
-
-    if (message.type === "client_close") {
-      this._setConnectionState("reconnecting", "");
-      this.clientId = null;
-      this.isReady = false;
-      this.currentRoomCode = null;
-      this._refreshRoomUi();
-      return;
-    }
-
-    if (message.type === "client_error") {
-      this._setConnectionState("error", "");
-      if (message.message) this._showNotice(message.message);
-      return;
-    }
-
-    if (message.type === "welcome") {
-      this.clientId = message.clientId;
-      return;
-    }
-
-    if (message.type === "room_joined") {
-      this.currentRoomCode = message.room?.code ?? null;
-      this.isReady = false;
-      this._refreshRoomUi(message.room);
-      this._showNotice(`ルーム ${this.currentRoomCode} に参加しました`);
-      return;
-    }
-
-    if (message.type === "room_state") {
-      const room = message.room;
-      this.currentRoomCode = room?.code ?? null;
-      const self = room?.members?.find(
-        (member) => member.clientId === this.clientId,
-      );
-      this.isReady = !!self?.ready;
-      this._refreshRoomUi(room);
-      return;
-    }
-
-    if (message.type === "room_left") {
-      this.currentRoomCode = null;
-      this.isReady = false;
-      this._refreshRoomUi();
-      return;
-    }
-
-    if (message.type === "match_start") {
-      this._showMatchFoundOverlay(message);
-      return;
-    }
-
-    if (message.type === "error") {
-      this._showNotice(message.message || "サーバーエラー");
-    }
+  // 準備ボタンは廃止。入室したら自動で準備完了にし、2人そろった時点で対戦開始する。
+  _ensureReady(room) {
+    if (!room || this.isReady || room.match) return;
+    roomClient.send({ type: "set_ready", ready: true });
+    this.isReady = true;
   }
 
   _refreshRoomUi(room = null) {
-    const activeRoom = room ?? null;
-
-    if (!activeRoom) {
-      if (this.roomStatusText) {
-        this.roomStatusText.setText("未参加");
-      }
-      this.codeText?.setText("Room: ----");
-      this._updatePanelColor(false);
-      this._renderBackground(1080, 1920, false);
-      this.readyButton?.setText("準備完了");
-      this.readyButton?.setAlpha(0.55);
-      if (this.memberCountText) {
-        this.memberCountText.setText("");
-      }
-      return;
-    }
-
-    const members = activeRoom.members || [];
-    const readyCount = members.filter((member) => member.ready).length;
-    if (this.roomStatusText) {
-      this.roomStatusText.setText("参加中");
-    }
-    this.codeText?.setText(`Room: ${activeRoom.code}`);
-    this._updatePanelColor(true);
-    this._renderBackground(1080, 1920, readyCount > 0);
-    this.readyButton?.setText(this.isReady ? "準備解除" : "準備完了");
-    this.readyButton?.setAlpha(1);
-    if (this.memberCountText) {
-      this.memberCountText.setText(
-        `${members.length}/2人  準備 ${readyCount}/2`,
-      );
-    }
-  }
-
-  _updatePanelColor(inRoom) {
-    if (!this.roomPanel) return;
-    this.roomPanel.clear();
-    let fillColor, lineColor;
-    if (inRoom) {
-      fillColor = 0x1a3a5a; // 青色
-      lineColor = 0x5ba8ff;
-    } else {
-      fillColor = 0x3a1515; // 赤色（背景寄り）
-      lineColor = 0xcc6666;
-    }
-    const W = 1080;
-    this.roomPanel.fillStyle(fillColor, 0.88);
-    this.roomPanel.lineStyle(3, lineColor, 0.45);
-    this.roomPanel.fillRoundedRect(W / 2 - 380, 370, 760, 640, 22);
-    this.roomPanel.strokeRoundedRect(W / 2 - 380, 370, 760, 640, 22);
+    const inRoom = !!room?.code;
+    this.entryView?.setVisible(!inRoom);
+    this.roomView?.setVisible(inRoom);
+    if (!inRoom) return;
+    this._deactivateInput();
+    this.roomCodeText?.setText(room.code.split("").join(" "));
+    const members = room.members || [];
+    this.memberText?.setText(
+      members.length >= 2 ? "相手が入室しました。まもなく開始…" : "相手の入室を待っています…",
+    );
   }
 
   _createRoom() {
-    if (this.currentRoomCode) {
-      this._showNotice("すでにルーム参加中です");
-      return;
-    }
-    roomClient.send({ type: "create_room", playerName: getPlayerName() });
+    if (this.currentRoomCode || this.pending) return;
+    this.pending = "create";
+    roomClient.sendGuaranteed({ type: "create_room", playerName: getPlayerName() });
+    if (!roomClient.connected) this._showNotice("接続でき次第ルームを作ります");
   }
 
   _joinRoom() {
-    if (this.currentRoomCode) {
-      this._showNotice("参加中のルームを先に退出してください");
-      return;
-    }
-
+    if (this.currentRoomCode || this.pending) return;
     if (this.joinCode.length !== 4) {
-      this._showNotice("コードは4桁の数字を入力してください");
+      this._showNotice("4桁のコードを入力してください");
       return;
     }
-
-    roomClient.send({
+    this.pending = "join";
+    roomClient.sendGuaranteed({
       type: "join_room",
       code: this.joinCode,
       playerName: getPlayerName(),
     });
+    this._showNotice(roomClient.connected ? "参加しています…" : "接続でき次第参加します");
   }
 
   _leaveRoom() {
-    if (!this.currentRoomCode) {
-      this._showNotice("参加中のルームがありません");
-      return;
-    }
+    if (!this.currentRoomCode) return;
     roomClient.send({ type: "leave_room" });
   }
 
@@ -642,111 +487,26 @@ export class FriendLobbyScene extends Phaser.Scene {
     if (this.currentRoomCode) {
       roomClient.sendGuaranteed({ type: "set_ready", ready: false });
       roomClient.sendGuaranteed({ type: "leave_room" });
-      this.isReady = false;
-      this.currentRoomCode = null;
-      this._refreshRoomUi();
     }
     this.scene.start("LobbyScene");
   }
 
-  _toggleReady() {
-    if (!this.currentRoomCode) {
-      this._showNotice("ルーム参加後に準備できます");
+  _setConnectionState(state) {
+    if (!this.statusText) return;
+    this.statusTimer?.remove();
+    this.statusTimer = null;
+    if (state === "connected") {
+      this.statusText.setText("● オンライン").setColor("#8fe0a8");
       return;
     }
-    roomClient.send({ type: "set_ready", ready: !this.isReady });
-  }
-
-  _drawConnectionSpinner(W) {
-    const cx = W / 2;
-    const cy = 1245;
-    const r = 50;
-
-    const track = this.add.graphics();
-    track.lineStyle(8, 0x1e3456, 1);
-    track.strokeCircle(cx, cy, r);
-    this._spinTrack = track;
-
-    this.spinGraphics = this.add.graphics();
-    this._drawSpinnerArc(0);
-
-    this.spinTween = this.tweens.addCounter({
-      from: 0,
-      to: 360,
-      duration: 1100,
-      repeat: -1,
-      ease: "Linear",
-      onUpdate: (tween) => {
-        this.spinAngle = tween.getValue();
-        this._drawSpinnerArc(this.spinAngle);
-      },
-    });
-
-    this.connectionStatusText = this.add
-      .text(cx, cy + 125, "サーバーに接続中...\n(時間がかかる場合があります)", {
-        fontSize: "36px",
-        color: "#ff6666",
-        fontFamily: UI_FONT,
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setWordWrapWidth(680);
-  }
-
-  _drawSpinnerArc(angleDeg) {
-    const g = this.spinGraphics;
-    if (!g) return;
-    const cx = 1080 / 2;
-    const cy = 1245;
-    const r = 50;
-    g.clear();
-    g.lineStyle(8, 0xff3333, 1);
-    const startRad = Phaser.Math.DegToRad(angleDeg - 90);
-    const endRad = Phaser.Math.DegToRad(angleDeg + 210);
-    g.beginPath();
-    g.arc(cx, cy, r, startRad, endRad, false);
-    g.strokePath();
-  }
-
-  _setConnectionState(state, label) {
-    this.connectionState = state;
-
-    if (state === "connected") {
-      this._everConnected = true;
-    }
-
-    // スピナーは未接続の間（connecting / reconnecting）ずっと表示。
-    // connected になったら _everConnected = true で以降は出さない。
-    const showSpinner =
-      !this._everConnected &&
-      (state === "connecting" || state === "reconnecting");
-
-    this._spinTrack?.setVisible(showSpinner);
-    this.spinGraphics?.setVisible(showSpinner);
-    if (showSpinner) {
-      this.spinTween?.resume();
-    } else {
-      this.spinTween?.pause();
-    }
-
-    if (this.connectionStatusText) {
-      if (showSpinner) {
-        this.connectionStatusText.setText(
-          "サーバーに接続中...\n(時間がかかる場合があります)",
-        );
-        this.connectionStatusText.setColor("#ff6666");
-        this.connectionStatusText.setVisible(true);
-      } else {
-        this.connectionStatusText.setVisible(false);
-      }
-    }
-
-    // 再接続・エラーは通知テキストで控えめに知らせる
-    if (state === "reconnecting") {
-      this._showNotice("再接続中...");
-    } else if (state === "error" && this._everConnected) {
-      this._showNotice("接続が切れました");
-    }
+    const render = () => {
+      this.statusDots = (this.statusDots + 1) % 4;
+      this.statusText
+        .setText(`サーバーに接続中${".".repeat(this.statusDots)}（初回は30秒ほどかかります）`)
+        .setColor("#ffcf88");
+    };
+    render();
+    this.statusTimer = this.time.addEvent({ delay: 450, loop: true, callback: render });
   }
 
   _showMatchFoundOverlay(data) {

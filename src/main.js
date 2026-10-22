@@ -7,6 +7,7 @@ import { GameScene } from "./scenes/GameScene.js";
 import { UIScene } from "./scenes/UIScene.js";
 import { TutorialScene } from "./scenes/TutorialScene.js";
 import { ShopScene } from "./scenes/ShopScene.js";
+import { DailyMissionScene } from "./scenes/DailyMissionScene.js";
 
 const config = {
   type: Phaser.AUTO,
@@ -27,6 +28,7 @@ const config = {
     UIScene,
     TutorialScene,
     ShopScene,
+    DailyMissionScene,
   ],
 };
 

@@ -11,16 +11,21 @@ function getRewardedAdUnitId() {
     : REWARDED_AD_ID_ANDROID;
 }
 
+export function isRewardedAdAvailable() {
+  return Capacitor.isNativePlatform() && Boolean(getRewardedAdUnitId());
+}
+
 let initPromise = null;
 
 /** アプリ起動時に一度だけ呼ぶ（BootScene等） */
 export function initAds() {
-  if (!Capacitor.isNativePlatform()) return Promise.resolve(false);
+  if (!isRewardedAdAvailable()) return Promise.resolve(false);
   if (initPromise) return initPromise;
   initPromise = AdMob.initialize({ initializeForTesting: false })
     .then(() => true)
     .catch((e) => {
       console.warn("[ads] AdMob初期化に失敗しました", e);
+      initPromise = null;
       return false;
     });
   return initPromise;
@@ -31,40 +36,53 @@ export function initAds() {
  * @returns {Promise<boolean>} 視聴完了して報酬を獲得したら true
  */
 export async function showRewardedAd() {
-  if (!Capacitor.isNativePlatform()) {
-    // ブラウザ開発時はAdMobが動作しないため、動作確認用に成功扱いにする
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    return true;
+  if (!isRewardedAdAvailable()) return false;
+
+  if (!(await initAds())) return false;
+
+  let settled = false;
+  const handles = [];
+  let resolveResult;
+  const result = new Promise((resolve) => {
+    resolveResult = resolve;
+  });
+  const finish = (rewarded) => {
+    if (settled) return;
+    settled = true;
+    handles.forEach((handle) => {
+      handle.remove().catch((e) => {
+        console.warn("[ads] 広告イベントの解除に失敗しました", e);
+      });
+    });
+    resolveResult(rewarded);
+  };
+
+  try {
+    const events = [
+      [RewardAdPluginEvents.Rewarded, true],
+      [RewardAdPluginEvents.FailedToShow, false],
+      [RewardAdPluginEvents.FailedToLoad, false],
+      [RewardAdPluginEvents.Dismissed, false],
+    ];
+    for (const [event, rewarded] of events) {
+      const handle = await AdMob.addListener(event, () => finish(rewarded));
+      handles.push(handle);
+    }
+  } catch (e) {
+    console.warn("[ads] 広告イベントの登録に失敗しました", e);
+    finish(false);
+    return result;
   }
 
-  await initAds();
-
-  return new Promise((resolve) => {
-    let settled = false;
-    let handles = [];
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      handles.forEach((h) => h.remove());
-      resolve(result);
-    };
-
-    Promise.all([
-      AdMob.addListener(RewardAdPluginEvents.Rewarded, () => finish(true)),
-      AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => finish(false)),
-      AdMob.addListener(RewardAdPluginEvents.FailedToLoad, () => finish(false)),
-      AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish(false)),
-    ]).then((addedHandles) => {
-      handles = addedHandles;
-      AdMob.prepareRewardVideoAd({
-        adId: getRewardedAdUnitId(),
-        isTesting: false,
-      })
-        .then(() => AdMob.showRewardVideoAd())
-        .catch((e) => {
-          console.warn("[ads] リワード広告の表示に失敗しました", e);
-          finish(false);
-        });
+  AdMob.prepareRewardVideoAd({
+    adId: getRewardedAdUnitId(),
+    isTesting: false,
+  })
+    .then(() => AdMob.showRewardVideoAd())
+    .catch((e) => {
+      console.warn("[ads] リワード広告の表示に失敗しました", e);
+      finish(false);
     });
-  });
+
+  return result;
 }

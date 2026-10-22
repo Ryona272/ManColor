@@ -71,11 +71,14 @@ class RoomClient {
   }
 
   resolveUrl() {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const host = resolveRoomServerHost();
     const port = resolveRoomServerPort();
+    const secure = window.location.protocol === "https:" || port === 443;
+    const protocol = secure ? "wss" : "ws";
+    const host = resolveRoomServerHost();
+    const defaultPort = secure ? 443 : 80;
+    const portPart = port === defaultPort ? "" : `:${port}`;
     const encodedKey = encodeURIComponent(this.clientKey);
-    return `${protocol}://${host}:${port}/?clientKey=${encodedKey}`;
+    return `${protocol}://${host}${portPart}/?clientKey=${encodedKey}`;
   }
 
   connect() {
